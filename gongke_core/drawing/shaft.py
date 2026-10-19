@@ -30,7 +30,8 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
     z_start = segs[0].z0
     S = [((s.z0 - z_start) * 1e3, (s.z1 - z_start) * 1e3, s) for s in segs]  # (x0, x1, seg) in mm
     L = S[-1][1]
-    pairs = {"high": design.high, "low": design.low, "bevel": getattr(design, "bevel", None)}
+    pairs = {"high": design.high, "low": getattr(design, "low", None), "bevel": getattr(design, "bevel", None),
+             "worm": getattr(design, "worm", None)}
     integral = next((g for g in lay.gears if g.integral), None)
     bevel = None  # 锥齿轮轴：齿部轮廓（x, r），x 为图上沿轴线的坐标（mm）
     if integral is not None and integral.pair == "bevel":
@@ -45,17 +46,36 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
     tip_d = integral.tip_d * 1e3 if integral else 0
     d_max = max(max((s.root_d or s.d) * 1e3 for _, _, s in S), tip_d)
 
-    # 选图幅和比例：主视图 + 下方断面图
+    # 选图幅和比例：主视图 + 下方断面图；断面图不得压到标题栏和技术要求
+    keyed = [((a + b) / 2, seg.d * 1e3) for a, b, seg in S if seg.keyway]
+    d_key = max((dk for _, dk in keyed), default=0)
+
+    def sections_fit(sh, s, cx, cy):
+        x0, y0, x1, y1 = sh.inner
+        sec_y = cy - (d_max / 2) * s - 62 - d_key * s / 2
+        sx = x0 + 40
+        for k, (xm, dk) in enumerate(keyed):
+            rs = dk / 2 * s
+            c = max(sx + rs + 10, cx + xm * s) if k == 0 else sx + rs + 10
+            sx = c + rs + 25
+            low = y0 + 64 if c + rs > x1 - 335 else y0 + 5
+            if sec_y - rs < low or c + rs > x1 - 5:
+                return False
+        return True
+
+    from gongke_core.drawing.sheet import SCALES
     for size in ("A3", "A2", "A1"):
         sh = Sheet(size)
         x0, y0, x1, y1 = sh.inner
         avail_w = x1 - x0 - 40 - (85 if integral else 0)  # 齿轮轴右上角留出参数表
         avail_h = (y1 - y0 - 56 - 30) / 2.2
         s = pick_scale(L, d_max, avail_w, avail_h)
+        cy = y1 - 20 - (y1 - y0 - 56) * 0.32
+        while not sections_fit(sh, s, x0 + 20 + (avail_w - L * s) / 2, cy) and s > SCALES[0]:
+            s = max(v for v in SCALES if v < s)
         if s >= 0.5 or size == "A1":
             break
     cx = x0 + 20 + (avail_w - L * s) / 2
-    cy = y1 - 20 - (y1 - y0 - 56) * 0.32
     v = View(sh, (cx, cy), s)
 
     # ------------------------------------------------ 主视图外形
@@ -222,13 +242,24 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
 
     # ------------------------------------------------ 图框
     is_gear_shaft = integral is not None
-    mat = material_name(pairs[integral.pair].inp.material1) if is_gear_shaft else "45"
-    name = lay.name.split("（")[0] + ("（齿轮轴）" if is_gear_shaft else "")
-    reqs = [f"{'调质处理 241～286HBW' if mat.startswith('40Cr') else '调质处理 217～255HBW'}。",
+    worm = is_gear_shaft and integral.pair == "worm"
+    if worm:
+        mat, name = "45", "蜗杆"
+    else:
+        mat = material_name(pairs[integral.pair].inp.material1) if is_gear_shaft else "45"
+        name = lay.name.split("（")[0] + ("（齿轮轴）" if is_gear_shaft else "")
+    heat = "调质处理 241～286HBW" if mat.startswith("40Cr") else "调质处理 217～255HBW"
+    if worm:
+        heat += "，螺纹齿面高频淬火 45～55HRC"
+    reqs = [f"{heat}。",
             "未注倒角 C1.5，未注圆角 R1。",
             "未注尺寸公差按 GB/T 1804-m。",
             "未注几何公差按 GB/T 1184-K。"]
-    if is_gear_shaft and bevel is not None:
+    if worm:
+        from gongke_core.drawing.worm_wheel import param_table
+        param_table(sh, design.worm, 1)
+        reqs.insert(1, "螺纹两端倒角至齿根，齿面磨削。")
+    elif is_gear_shaft and bevel is not None:
         from gongke_core.drawing.bevel_gear import param_table
         param_table(sh, design.bevel, 1)
     elif is_gear_shaft:

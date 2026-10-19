@@ -43,13 +43,16 @@ def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile
             render.to_svg(dxf, svg_path, sh.w, sh.h)
         files.append(DrawingFile(name, number, dxf, svg_path, sh.size))
 
-    sh = assembly.draw(design, out / "assembly.dxf", "GK-00")
-    done(sh, "减速器装配图", "GK-00", "assembly")
+    worm = getattr(design, "worm_shaft", None) is not None
+    if not worm:
+        sh = assembly.draw(design, out / "assembly.dxf", "GK-00")
+        done(sh, "减速器装配图", "GK-00", "assembly")
     for i, sr in enumerate(design.shafts, 1):
         no = f"GK-01-0{i}"
         sh = shaft.draw(design, sr, out / f"shaft{i}.dxf", no)
-        done(sh, sr.layout.name.split("（")[0] + "零件图", no, f"shaft{i}")
-    pairs = {"high": design.high, "low": design.low}
+        name = "蜗杆" if worm and i == 1 else sr.layout.name.split("（")[0]
+        done(sh, name + "零件图", no, f"shaft{i}")
+    pairs = {"high": design.high, "low": getattr(design, "low", None)}
     k = 0
     for sr in design.shafts:
         for g in sr.layout.gears:
@@ -58,6 +61,13 @@ def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile
             k += 1
             no = f"GK-02-0{k}"
             stem = f"gear_{g.pair}{g.member}"
+            if g.pair == "worm":
+                from gongke_core.drawing import worm_wheel
+
+                title = "蜗轮"
+                sh = worm_wheel.draw(design.worm, g.seat_d, g.width, out / "wheel.dxf", title, no)
+                done(sh, title + "零件图", no, "wheel")
+                continue
             if g.pair == "bevel":
                 from gongke_core.drawing import bevel_gear
 

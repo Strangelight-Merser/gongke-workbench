@@ -118,3 +118,15 @@ def test_bevel_scheme_drawings(tmp_path):
     assert "圆锥-圆柱齿轮减速器" in asm and "圆锥滚子轴承 " in asm and "套杯" in asm
     big = texts(next(f for f in files if f.name == "大锥齿轮零件图"))
     assert "分度圆锥角" in big and "GB/T 11365" in big
+
+
+def test_worm_scheme_drawings(tmp_path):
+    d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_worm.yaml"))
+    files = drawing.build_all(d, tmp_path, svg=False)
+    names = [f.name for f in files]
+    assert "蜗杆零件图" in names and "蜗轮零件图" in names
+    texts = lambda f: " ".join(e.dxf.text for e in ezdxf.readfile(f.dxf).modelspace().query("TEXT"))  # noqa: E731
+    worm = texts(next(f for f in files if f.name == "蜗杆零件图"))
+    assert "导程角" in worm and "GB/T 10089" in worm and "高频淬火" in worm
+    wheel = texts(next(f for f in files if f.name == "蜗轮零件图"))
+    assert "变位系数" in wheel and "HT200" in wheel and f"R{d.worm.throat_radius * 1e3:g}" in wheel
