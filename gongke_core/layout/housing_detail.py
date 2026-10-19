@@ -59,9 +59,16 @@ def _upper_hull_order(circles: list[tuple[float, float]]) -> list[int]:
     return order
 
 
-def upper_envelope(circles: list[tuple[float, float]]) -> list[Arc | Seg]:
-    """圆心在 y = 0 上的若干圆的上凸包：圆弧 + 外公切线，从左端 (x−R, 0) 到右端 (x+R, 0)。"""
+def upper_envelope(circles: list[tuple[float, float]],
+                   left_wall: tuple[float, float] | None = None) -> list[Arc | Seg]:
+    """圆心在 y = 0 上的若干圆的上凸包：圆弧 + 外公切线，从左端 (x−R, 0) 到右端 (x+R, 0)。
+
+    left_wall = (x_w, h_w) 时左端改为竖直端壁：从 (x_w, 0) 竖直向上到 h_w，再作切线接到第一个圆
+    （圆心须在 x_w 右侧；端壁顶点落在圆内时，端壁只升到与圆相交处）。
+    """
     order = _upper_hull_order(circles)
+    if left_wall is not None:
+        return _with_left_wall(circles, order, left_wall)
     # 相邻两圆的上外公切线：法向 n = (cos φ, sin φ)，cos φ = (R1 − R2)/d
     phis = []
     for i, j in zip(order, order[1:]):
@@ -79,6 +86,34 @@ def upper_envelope(circles: list[tuple[float, float]]) -> list[Arc | Seg]:
             cx2, r2 = circles[order[k + 1]]
             out.append(Seg((cx + r * math.cos(phi), r * math.sin(phi)), (cx2 + r2 * math.cos(phi), r2 * math.sin(phi))))
     return out
+
+
+def _with_left_wall(circles, order, wall) -> list[Arc | Seg]:
+    xw, hw = wall
+    env = upper_envelope([circles[i] for i in order])
+    arcs = [k for k, e in enumerate(env) if isinstance(e, Arc)]
+    for n, k in enumerate(arcs):
+        arc = env[k]
+        cx, r = arc.cx, arc.r
+        dx = xw - cx
+        seg: list[Arc | Seg] = []
+        if math.hypot(dx, hw) <= r + 1e-12:
+            y = math.sqrt(max(r * r - dx * dx, 0.0))
+            seg.append(Seg((xw, 0.0), (xw, y)))
+            a_start = math.degrees(math.atan2(y, dx))
+        else:
+            seg.append(Seg((xw, 0.0), (xw, hw)))
+            a_start = math.degrees(math.atan2(hw, dx) - math.acos(r / math.hypot(dx, hw)))
+            t = math.radians(a_start)
+            seg.append(Seg((xw, hw), (cx + r * math.cos(t), r * math.sin(t))))
+        # 切点越过本段圆弧的右端时，说明端壁顶点直接与后面的圆相切
+        if a_start <= arc.a0 + 1e-9 and n < len(arcs) - 1:
+            continue
+        a_start = max(a_start, arc.a0)
+        if a_start - arc.a0 > 1e-6:
+            seg.append(Arc(cx, 0.0, r, arc.a0, a_start))
+        return seg + env[k + 1:]
+    raise AssertionError("unreachable")
 
 
 def envelope_points(env: list[Arc | Seg], step_deg: float = 3.0) -> list[tuple[float, float]]:
@@ -164,6 +199,17 @@ class InspectionCover:
 
 
 @dataclass
+class SideBore:
+    """圆锥-圆柱减速器Ⅰ轴穿过 −x 端壁的轴承座孔（装套杯），轴线沿 −x、在剖分面上 z 处。"""
+
+    z: float
+    D: float  # 座孔直径（套杯外径）
+    boss_r: float
+    x_face: float  # 轴承座外端面（套杯凸缘贴合面）的 x
+    cap: BearingCap  # 套杯凸缘与轴承盖的螺钉
+
+
+@dataclass
 class HousingDetail:
     h: Housing
     shaft_x: list[float]
@@ -192,6 +238,7 @@ class HousingDetail:
     drain: tuple[float, float]  # 放油螺塞中心 (x, y)
     drain_d: float
     hooks: list[float] = field(default_factory=list)  # 吊钩所在端壁 x
+    side_bore: SideBore | None = None
 
     @property
     def z_range(self) -> tuple[float, float]:
@@ -219,16 +266,32 @@ def _fill(a: float, b: float, max_pitch: float) -> list[float]:
 def detail(d) -> HousingDetail:
     """由设计结果（`design.ReducerDesign`）确定箱体细部。"""
     h = d.housing
-    xs = [s.layout.x for s in d.shafts]
-    Ds = [s.layout.bearing.D for s in d.shafts]
+    bevel = getattr(d, "bevel", None)
+    # 轴线沿 z 的各轴（圆锥-圆柱减速器的Ⅰ轴沿 x，单独处理）
+    zs = d.shafts[1:] if bevel else d.shafts
+    xs = [s.layout.x for s in zs]
+    Ds = [s.layout.bearing.D for s in zs]
     caps = [BearingCap(D, *cap_screw(D)) for D in Ds]
     boss = [boss_radius(D) for D in Ds]
-    # 各轴上最大的齿轮齿顶圆
-    tips = [d.high.da1 / 2, max(d.high.da2, d.low.da1) / 2, d.low.da2 / 2]
-    cover_r = [max(t + h.gap_radial + h.delta, b) for t, b in zip(tips, boss)]
-    outer = upper_envelope(list(zip(xs, cover_r)))
-    inner = upper_envelope([(x, r - h.delta1) for x, r in zip(xs, cover_r)])
     xo = (h.x_range[0] - h.delta, h.x_range[1] + h.delta)
+    # 各轴上最大的齿轮齿顶圆
+    if bevel:
+        tips = [max(bevel.da2, d.low.da1) / 2, d.low.da2 / 2]
+    else:
+        tips = [d.high.da1 / 2, max(d.high.da2, d.low.da1) / 2, d.low.da2 / 2]
+    cover_r = [max(t + h.gap_radial + h.delta, b) for t, b in zip(tips, boss)]
+    side = None
+    wall_o = wall_i = None
+    if bevel:
+        from gongke_core.layout.bevel_reducer import cup
+
+        c = cup(d.pinion)
+        side = SideBore(d.positions.z_apex, c.D_out, boss_radius(c.D_out), -c.u_flange,
+                        BearingCap(c.D_out, c.screw_d, c.screws))
+        hw = max(side.boss_r, bevel.da1 / 2 + h.gap_radial + h.delta1)
+        wall_o, wall_i = (xo[0], hw), (h.x_range[0], hw - h.delta1)
+    outer = upper_envelope(list(zip(xs, cover_r)), wall_o)
+    inner = upper_envelope([(x, r - h.delta1) for x, r in zip(xs, cover_r)], wall_i)
     fw = h.c1 + h.c2
     y_bottom = h.y_range[0] - h.delta
     cf = SPANNER_CLEARANCE_MM.get(round(h.bolt_foot / MM), (26, 24))
@@ -255,7 +318,10 @@ def detail(d) -> HousingDetail:
     fb.sort()
 
     W = h.inner_width
-    pins = [(xo[0] - fw / 2, W * 0.25), (xo[1] + fw / 2, W * 0.75)]
+    if side:  # 左端壁上有Ⅰ轴轴承座，定位销改放在凸缘的对角上
+        pins = [(xo[0] - fw / 2, -h.delta - fw / 2), (xo[1] + fw / 2, W + h.delta + fw / 2)]
+    else:
+        pins = [(xo[0] - fw / 2, W * 0.25), (xo[1] + fw / 2, W * 0.75)]
     # 起盖螺钉：装在前侧凸缘上，离各螺栓最远、且不被轴承盖挡住（主视图中可见）的位置
     xs_all = merged + fb
     best, jx = -1.0, xo[0] - fw / 2
@@ -263,6 +329,8 @@ def detail(d) -> HousingDetail:
     for k in range(n + 1):
         x = xo[0] - fw + h.bolt_flange + (xo[1] - xo[0] + 2 * fw - 2 * h.bolt_flange) * k / n
         if any(abs(x - xc) < cap.D2 / 2 + h.bolt_flange for xc, cap in zip(xs, caps)):
+            continue
+        if side and x < xo[0] + h.bolt_flange:
             continue
         score = min(abs(x - b) for b in xs_all)
         if score > best:
@@ -272,7 +340,7 @@ def detail(d) -> HousingDetail:
     foot_bolts = [(x, z) for x in (xo[0] + 0.15 * (xo[1] - xo[0]), xo[1] - 0.1 * (xo[1] - xo[0])) for z in zfoot]
 
     # 视孔盖：放在低速级啮合区上方那段公切线上（没有公切线时放在最高圆顶部）
-    x_mesh = xs[1] + d.low.d1 / 2
+    x_mesh = xs[-2] + d.low.d1 / 2
     seg = None
     for e in outer:
         if isinstance(e, Seg) and e.p[0] - 1e-9 <= x_mesh <= e.q[0] + 1e-9:
@@ -289,22 +357,29 @@ def detail(d) -> HousingDetail:
         t = min(max(t, length / 2 / L + 0.02), 1 - length / 2 / L - 0.02)
         c = (seg.p[0] + t * (seg.q[0] - seg.p[0]), seg.p[1] + t * (seg.q[1] - seg.p[1]))
     else:
-        i = max(range(3), key=lambda k: cover_r[k])
+        i = max(range(len(xs)), key=lambda k: cover_r[k])
         length, ang, c = 120 * MM, 0.0, (xs[i], cover_r[i])
     insp = InspectionCover(c, ang, length, hole_w + 40 * MM, 6 * MM, length - 40 * MM, hole_w, 6 * MM, 16 * MM)
 
     # 吊环螺钉：装在箱盖两端的顶部（高速轴、低速轴上方）
-    eye_d = 10 * MM if d.high.a + d.low.a <= 350 * MM else 12 * MM
-    eyebolts = [xs[0] + 0.3 * (xs[1] - xs[0]), xs[2]]
+    if bevel:
+        eye_d = 10 * MM if d.low.a + bevel.d2 / 2 <= 350 * MM else 12 * MM
+        eyebolts = [(xo[0] + xs[0]) / 2, xs[-1]]
+    else:
+        eye_d = 10 * MM if d.high.a + d.low.a <= 350 * MM else 12 * MM
+        eyebolts = [xs[0] + 0.3 * (xs[1] - xs[0]), xs[2]]
     # 油面：低速级大齿轮浸油 1～2 个齿高且不小于 10 mm
     immerse = max(10 * MM, 2 * 2.25 * d.low.mn)
     # 同时保证高速级大齿轮浸到约一个齿高（与 design 中的浸油深度校核一致）
-    oil = max(-d.low.da2 / 2 + immerse, -d.high.da2 / 2 + 2.25 * d.high.mn)
+    if bevel:  # 大锥齿轮浸入 0.7 倍齿宽（与 bevel_design 的浸油校核一致）
+        oil = max(-d.low.da2 / 2 + immerse, -bevel.da2 / 2 + 0.7 * bevel.b * math.sin(bevel.delta2))
+    else:
+        oil = max(-d.low.da2 / 2 + immerse, -d.high.da2 / 2 + 2.25 * d.high.mn)
     dip = ((xo[1], oil + 20 * MM), 45.0)  # 油标座在油面以上，油标杆斜插入油池
     drain = (xo[1], y_bottom + h.flange_foot + 0.9 * 16 * MM + 3 * MM)  # 紧贴底座凸缘上方，尽量低
     return HousingDetail(
         h, xs, caps, boss, cover_r, outer, inner, xo, fw, y_bottom, foot_w,
         merged, fb, bolt_length(h, h.bolt_bearing), bolt_length(h, h.bolt_flange),
         pins, max(0.75 * h.bolt_flange, 6 * MM), jack, foot_bolts, insp, eyebolts, eye_d, oil, dip, drain,
-        16 * MM, [xo[0], xo[1]],
+        16 * MM, [xo[1]] if side else [xo[0], xo[1]], side,
     )

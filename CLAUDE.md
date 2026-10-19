@@ -6,7 +6,7 @@
 
 - `gongke_core/` 是纯 Python，不得 import FreeCAD。所有计算、国标查询、说明书生成都放这里，方便脱离 FreeCAD 测试。
   - `calc/` 计算，`layout/` 结构布置，`design.py` 总流程，`geometry/` 用 build123d 建模，`report/` 说明书，`drawing/` 用 ezdxf 按 GB 规定画法出图（`sheet.py` 是图框、图线、尺寸、符号等通用部分）。
-  - 齿轮腹板等结构尺寸只在 `layout/gear_blank.py` 定义，带轮结构只在 `layout/pulley.py` 定义，三维和二维共用，不要各算一遍。
+  - 齿轮腹板等结构尺寸只在 `layout/gear_blank.py` 定义，带轮结构只在 `layout/pulley.py` 定义，锥齿轮结构只在 `layout/bevel_blank.py` 定义，三维和二维共用，不要各算一遍。
   - 三维几何由 `gongke_core.geometry` 生成 STEP；FreeCAD 工作台在**独立进程**中调用（`freecad/gongke/runner.py`），避免 FreeCAD 的 OCCT 与 OCP 冲突。
 - `freecad/gongke/` 只做界面和建模调用，业务逻辑调用 `gongke_core`。
 - 输出文件名用 ASCII（`report.docx`、`reducer_assembly.step`），C/ASCII 区域设置下中文路径会出错；显示给用户的名称用中文。

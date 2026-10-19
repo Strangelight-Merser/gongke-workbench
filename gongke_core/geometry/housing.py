@@ -50,10 +50,17 @@ def cover(t: HousingDetail) -> bd.Solid:
     for x, rb in zip(t.shaft_x, t.boss_r):
         for z0 in (-L1, W):
             body = body.fuse(bd.Solid.make_cylinder(_mm(rb), L1, bd.Plane((_mm(x), 0, z0))))
+    if t.side_bore is not None:
+        from gongke_core.geometry.parts import side_boss
+
+        side_solids = side_boss(t.side_bore, h.x_range[0])
+        body = body.fuse(side_solids[0])
     big = 1e4
     body = body.cut(_box(-big, -big, -big, big, 0, big))
     for x, cap in zip(t.shaft_x, t.caps):
         body = body.cut(bd.Solid.make_cylinder(_mm(cap.D) / 2, W + 2 * L1 + 2, bd.Plane((_mm(x), 0, -L1 - 1))))
+    if t.side_bore is not None:
+        body = body.cut(side_solids[1])
     # 视孔
     ins = t.inspection
     pl = _inspection_plane(t)

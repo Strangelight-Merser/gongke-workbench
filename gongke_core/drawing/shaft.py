@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from gongke_core.design import ReducerDesign, ShaftResult
@@ -29,8 +30,18 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
     z_start = segs[0].z0
     S = [((s.z0 - z_start) * 1e3, (s.z1 - z_start) * 1e3, s) for s in segs]  # (x0, x1, seg) in mm
     L = S[-1][1]
-    pairs = {"high": design.high, "low": design.low}
+    pairs = {"high": design.high, "low": design.low, "bevel": getattr(design, "bevel", None)}
     integral = next((g for g in lay.gears if g.integral), None)
+    bevel = None  # 锥齿轮轴：齿部轮廓（x, r），x 为图上沿轴线的坐标（mm）
+    if integral is not None and integral.pair == "bevel":
+        from gongke_core.layout.bevel_blank import blank as bevel_blank
+
+        ps = design.pinion
+        gb = bevel_blank(design.bevel, 1, ps.diameters["齿轮"], ps.pinion_length)
+        X = lambda p: ((p[0] - z_start) * 1e3, p[1] * 1e3)  # noqa: E731
+        bevel = {"tipS": X(gb.tip_small), "tipL": X(gb.tip_large), "rootL": X(gb.root_large),
+                 "rootS": X(gb.root_small), "K": X(gb.back_point), "rh": gb.hub_r * 1e3,
+                 "R": gb.R * 1e3, "delta": gb.delta, "x_apex": -z_start * 1e3}
     tip_d = integral.tip_d * 1e3 if integral else 0
     d_max = max(max((s.root_d or s.d) * 1e3 for _, _, s in S), tip_d)
 
@@ -51,7 +62,20 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
     prev_r = None
     for i, (a, b, seg) in enumerate(S):
         r = seg.d * 1e3 / 2
-        if seg.role == "齿轮轴":
+        if seg.role == "齿轮轴" and bevel is not None:
+            tS, tL, rL, rS, K, rh = (bevel[k] for k in ("tipS", "tipL", "rootL", "rootS", "K", "rh"))
+            for sgn in (1, -1):
+                f = lambda p: (p[0], sgn * p[1])  # noqa: E731
+                v.poly([f(rS), f(tS), f(tL), f(rL), f(K), f((K[0], rh)), f((b, rh))])
+                v.line(f(rS), f(rL), "细实线")
+                # 分度线：分度圆锥母线在齿宽范围内的一段（两端各伸出 2 mm）
+                c, sn = math.cos(bevel["delta"]), math.sin(bevel["delta"])
+                xa = bevel["x_apex"]
+                r0, r1 = bevel["R"] - (tL[0] - tS[0]) / c - 2 / s, bevel["R"] + 2 / s
+                v.line((xa + r0 * c, sgn * r0 * sn), (xa + r1 * c, sgn * r1 * sn), "点画线")
+            v.line((rS[0], -rS[1]), (rS[0], rS[1]))  # 小端端面
+            r_draw = rh
+        elif seg.role == "齿轮轴":
             g = integral
             pair = pairs[g.pair]
             ra, rf, rp = g.tip_d * 1e3 / 2, g.root_d * 1e3 / 2, pair.d1 * 1e3 / 2
@@ -108,7 +132,6 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         rs = r * s
         c = (max(sec_x + rs + 10, v.P(xm, 0)[0]) if k == 0 else sec_x + rs + 10, sec_y)
         sec_x = c[0] + rs + 25
-        import math
         hb = kb / 2 * s
         top = rs - t1 * s
         ang = math.degrees(math.asin(min(hb / rs, 1)))
@@ -144,6 +167,10 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         fit = FITS.get(seg.role, "")
         txt = f"%%c<>{fit}" if seg.role != "齿轮轴" else "%%c<>h11"
         narrow = (b - a) * s < 14
+        if seg.role == "齿轮轴" and bevel is not None:
+            xt, rt = bevel["tipL"]
+            v.dim((xt, -rt), (xt, rt), (xt, 0), 90, "%%c<>h11", 2)
+            continue
         if seg.keyway or narrow:
             # 文字放不下或与键槽重叠：把文字引到轴的下方
             xm = (a + b) / 2 if narrow else a + (b - a - seg.keyway[2] * 1e3) / 4
@@ -186,6 +213,9 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
                 r = (seg.d if seg.role != "齿轮轴" else integral.tip_d) * 1e3 / 2
                 xm = (a + b) / 2
                 px, py = v.P(a + (b - a) * 0.3, r)
+                if seg.role == "齿轮轴" and bevel is not None:  # 齿顶圆锥中部
+                    (x0_, y0_), (x1_, y1_) = bevel["tipS"], bevel["tipL"]
+                    px, py = v.P((x0_ + x1_) / 2, (y0_ + y1_) / 2)
                 fx, fy = px - 6, py + 24
                 sh.arrow((fx, fy), (px, py), 2.5, "细实线")
                 sh.gtol(fx, fy, "runout", RUNOUT[seg.role], "A-B")
@@ -198,7 +228,10 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
             "未注倒角 C1.5，未注圆角 R1。",
             "未注尺寸公差按 GB/T 1804-m。",
             "未注几何公差按 GB/T 1184-K。"]
-    if is_gear_shaft:
+    if is_gear_shaft and bevel is not None:
+        from gongke_core.drawing.bevel_gear import param_table
+        param_table(sh, design.bevel, 1)
+    elif is_gear_shaft:
         from gongke_core.drawing.gear import param_table
         param_table(sh, pairs[integral.pair], integral.member)
     sh.frame(TitleInfo(name, mat, s, "1", drawing_no), reqs, "Ra 6.3")

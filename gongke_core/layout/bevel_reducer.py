@@ -21,6 +21,7 @@ from gongke_core import standards
 from gongke_core.calc import shaft as shaft_calc
 from gongke_core.calc.bevel import BevelPair
 from gongke_core.calc.gear import GearPair
+from gongke_core.layout import bevel_blank
 from gongke_core.layout.reducer import (SPANNER_CLEARANCE_MM, Housing, bolt, ceil_to, std_diameter)
 
 MM = 1e-3
@@ -51,8 +52,8 @@ def housing(bevel: BevelPair, low: GearPair, bevel_hub: float) -> Housing:
 
 
 def bevel_gear_hub(bevel: BevelPair, seat_d: float) -> float:
-    """大锥齿轮轮毂长度：L = (1～1.2)d，且容得下齿宽在轴向的投影 b cos δ2 和大端背锥。"""
-    return ceil_to(max(1.2 * seat_d, bevel.m + bevel.b * math.cos(bevel.delta2) + 6 * MM), MM)
+    """大锥齿轮轮毂长度，见 `bevel_blank.blank`。"""
+    return bevel_blank.hub_length(bevel, 2, seat_d)
 
 
 @dataclass
@@ -64,12 +65,15 @@ class BevelPositions:
     hub: float
 
 
-def bevel_positions(h: Housing, bevel: BevelPair, hub: float) -> BevelPositions:
+def bevel_positions(h: Housing, bevel: BevelPair, hub: float, seat_d: float) -> BevelPositions:
+    """大锥齿轮背面贴近 z = 0 一侧内壁（留轴向间隙），沿Ⅱ轴 z = z_apex − t。"""
+    g = bevel_blank.blank(bevel, 2, seat_d, hub)
     z_back = h.gap_axial
-    z_large = z_back + bevel.m  # 大端背锥处留出约一个模数的轮缘
-    z_apex = z_large + bevel.d1 / 2  # R cos δ2 = d1/2
-    z_mean = z_large + bevel.b / 2 * math.cos(bevel.delta2)
-    return BevelPositions(z_back, z_large, z_apex, z_mean, hub)
+    z_apex = z_back + g.t_back
+    c2 = math.cos(bevel.delta2)
+    z_large = z_apex - bevel.cone_distance * c2  # = z_apex − d1/2
+    z_mean = z_apex - (bevel.cone_distance - bevel.b / 2) * c2
+    return BevelPositions(z_back, z_large, z_apex, z_mean, g.hub_length)
 
 
 @dataclass
@@ -110,13 +114,11 @@ def pinion_shaft(h: Housing, bevel: BevelPair, brg: standards.TaperedBearing, d_
     shoulder = ceil_to(max(d_b + 0.2 * (brg.D - d_b), d_b + 3 * MM), MM)
     seat = std_diameter(d_b - 3 * MM)  # 小锥齿轮孔径略小于轴承内径，由轴肩定位
     integral = pinion_needs_integral(bevel, seat)
-    c1 = math.cos(bevel.delta1)
-    u_small = (bevel.cone_distance - bevel.b) * c1
-    u_large = bevel.cone_distance * c1
-    u_mean = (bevel.cone_distance - bevel.b / 2) * c1
-    # 小锥齿轮：齿面 + 大端背锥轮缘（约 1.5m）+ 轮毂，总长不小于 (1～1.2)d
-    lp = ceil_to(max(u_large - u_small + 1.5 * bevel.m, (1.0 if integral else 1.2) * seat), MM)
-    u_end = u_small - (0 if integral else 2 * MM)  # 轴端比轮毂短 2 mm，用轴端挡圈压紧
+    g = bevel_blank.blank(bevel, 1, seat)
+    u_small = g.t_front  # 小端端面
+    u_mean = (bevel.cone_distance - bevel.b / 2) * math.cos(bevel.delta1)
+    lp = g.hub_length
+    u_end = u_small + (0 if integral else 2 * MM)  # 轴端比轮毂缩进 2 mm，用轴端挡圈压紧
     u_wall = -h.x_range[0]
     segs: list[S] = []
 
@@ -147,3 +149,37 @@ def pinion_shaft(h: Housing, bevel: BevelPair, brg: standards.TaperedBearing, d_
     add(u_b0 + T + outer, u_b0 + T + outer + hub - 2 * MM, d_end, "端部")
     return PinionShaft(segs, brg, (ua_load, ub_load), u_mean, u_wall, integral, None if integral else seat, hub,
                        {"端部": d_end, "密封": d_seal, "轴承": d_b, "齿轮": seat, "轴肩": shoulder}, lp)
+
+
+@dataclass
+class Cup:
+    """Ⅰ轴轴承套杯（坐标 u）：穿过 −x 端壁的座孔，外端凸缘与轴承座端面贴合并用螺钉固定，
+    两轴承外圈靠在中间的挡肩上（反装）。壁厚 δ3 取 8 mm（指导书 7～12 mm）。"""
+
+    D: float  # 内孔（轴承外径）
+    D_out: float  # 外径 = 座孔直径
+    u0: float  # 内端面（与箱体内壁齐平）
+    u_flange: float  # 凸缘内侧端面（= 轴承座外端面）
+    flange_t: float
+    flange_D: float
+    rib: tuple[float, float]  # 挡肩沿 u 的范围
+    rib_d: float  # 挡肩孔径
+    screw_d: float
+    screws: int
+
+
+CUP_WALL = 8 * MM
+CUP_FLANGE = 8 * MM  # 与 pinion_shaft 中密封段长度的取值一致
+
+
+def cup(ps: PinionShaft) -> Cup:
+    from gongke_core.layout.housing_detail import cap_screw
+
+    brg = ps.bearing
+    D = brg.D
+    D_out = D + 2 * CUP_WALL
+    d3, n = cap_screw(D_out)
+    b = [s for s in ps.segments if s.role == "轴承"]
+    rib = (b[0].z1, b[1].z0)
+    w = (D - brg.d) / 2
+    return Cup(D, D_out, ps.u_wall, b[1].z1, CUP_FLANGE, D_out + 5 * d3, rib, D - 0.6 * w, d3, n)

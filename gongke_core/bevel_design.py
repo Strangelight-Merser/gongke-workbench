@@ -211,13 +211,14 @@ def run(task: ReducerTask) -> BevelReducerDesign:
     hub = blay.bevel_gear_hub(bevel, seat_guess)
     for _ in range(4):
         h = blay.housing(bevel, low, hub)
-        pos = blay.bevel_positions(h, bevel, hub)
+        pos = blay.bevel_positions(h, bevel, hub, seat_guess)
         z_low = h.gap_axial + hub + h.gap_gears + low.b1 / 2
         s2 = _intermediate_shaft(task, kin, h, bevel, low, pos, z_low)
-        hub_need = blay.bevel_gear_hub(bevel, s2.layout.diameters["齿轮"])
-        if hub_need <= hub + 1e-9:
+        seat = s2.layout.diameters["齿轮"]
+        hub_need = blay.bevel_gear_hub(bevel, seat)
+        if hub_need <= hub + 1e-9 and seat <= seat_guess + 1e-9:
             break
-        hub = hub_need
+        hub, seat_guess = max(hub, hub_need), seat
     s1, ps = _pinion_shaft(task, kin, h, bevel)
     s3 = _shaft(3, task, kin, h, SimpleNamespace(a=0.0), low, 0.0, z_low)
     s3.layout.x = low.a

@@ -24,8 +24,9 @@ try:
     dlg = Gui.Control.activeDialog()
     P("dialog open", dlg)
     p = ReducerTaskPanel()
-    if os.environ.get("GONGKE_E2E_SCHEME") == "vbelt":
-        p.scheme.setCurrentIndex(1)
+    scheme = os.environ.get("GONGKE_E2E_SCHEME")
+    if scheme in ("vbelt", "bevel"):
+        p.scheme.setCurrentIndex(("coupling", "vbelt", "bevel").index(scheme))
     p.run()
     ok = p.proc.waitForFinished(600000)
     P("finished", ok, p.proc.exitCode())
@@ -39,6 +40,8 @@ try:
     assert "GK-00" in p.result.toPlainText(), "工程图未生成"
     if os.environ.get("GONGKE_E2E_SCHEME") == "vbelt":
         assert "GK-03-01" in p.result.toPlainText(), "大带轮零件图未生成"
+    if os.environ.get("GONGKE_E2E_SCHEME") == "bevel":
+        assert "锥齿轮" in p.result.toPlainText(), "锥齿轮零件图未生成"
     v = Gui.activeDocument().activeView()
     v.viewIsometric(); Gui.SendMsgToActiveView("ViewFit")
     QtGui.QApplication.processEvents()

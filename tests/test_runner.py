@@ -40,14 +40,16 @@ def test_cli_drawings_index(tmp_path):
 
 
 def test_cli_bevel_scheme(tmp_path):
-    # 圆锥-圆柱方案：只有计算和说明书，面板能显示锥齿轮参数
+    # 圆锥-圆柱方案：三维模型、锥齿轮零件图和装配图都生成，面板能显示锥齿轮参数
     path = runner.write_task(runner.FormValues(scheme="bevel", belt_pull_N=2200, belt_speed_m_s=1.5,
                                                drum_diameter_mm=300), tmp_path)
     prog, args, cwd = runner.command(sys.executable, path, tmp_path, step=True, drawings=True)
     p = subprocess.run([prog] + args, cwd=cwd, env=runner.environment(), capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     out = runner.read_outputs(tmp_path)
-    assert "reducer_assembly.step" not in out["files"] and not out["drawings"]
+    assert "reducer_assembly.step" in out["files"]
+    numbers = {d["number"]: d["name"] for d in out["drawings"]}
+    assert "GK-00" in numbers and any("锥齿轮" in n for n in numbers.values())
     g = out["summary"]["gears"]
     assert runner.gear_line(g["high"]).startswith("直齿锥齿轮")
     assert runner.gear_line(g["low"]).startswith("mn=")

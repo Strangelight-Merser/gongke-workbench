@@ -106,3 +106,15 @@ def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
     pul = next(f for f in files if f.number == "GK-03-01")
     texts = " ".join(e.dxf.text for e in ezdxf.readfile(pul.dxf).modelspace().query("TEXT"))
     assert "大带轮" in texts and "HT200" in texts and "槽角" in texts
+
+
+def test_bevel_scheme_drawings(tmp_path):
+    d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_bevel.yaml"))
+    files = drawing.build_all(d, tmp_path, svg=False)
+    names = [f.name for f in files]
+    assert names[0] == "减速器装配图" and "大锥齿轮零件图" in names
+    texts = lambda f: " ".join(e.dxf.text for e in ezdxf.readfile(f.dxf).modelspace().query("TEXT"))  # noqa: E731
+    asm = texts(files[0])
+    assert "圆锥-圆柱齿轮减速器" in asm and "圆锥滚子轴承 " in asm and "套杯" in asm
+    big = texts(next(f for f in files if f.name == "大锥齿轮零件图"))
+    assert "分度圆锥角" in big and "GB/T 11365" in big

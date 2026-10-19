@@ -86,6 +86,7 @@ class Sheet:
         ds.dxf.dimtoh = 0
         ds.dxf.dimdec = 1
         ds.dxf.dimzin = 8  # 去掉小数末尾的 0
+        ds.dxf.dimdsep = ord(".")  # 小数点（ezdxf 默认用逗号）
         ds.dxf.dimclrd = 3
         ds.dxf.dimclre = 3
         ds.dxf.dimclrt = 7

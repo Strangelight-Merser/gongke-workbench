@@ -15,8 +15,8 @@ FC="$WORK/squashfs-root/usr/bin"
 mkdir -p "$HOME/.local/share/FreeCAD/Mod"
 ln -sfn "$REPO" "$HOME/.local/share/FreeCAD/Mod/gongke-workbench"
 export GONGKE_PYTHON="$FC/python" GONGKE_E2E_OUT="${GONGKE_E2E_OUT:-/tmp/gongke_e2e}"
-# 两种传动方案各跑一遍
-for scheme in coupling vbelt; do
+# 三种传动方案各跑一遍
+for scheme in coupling vbelt bevel; do
   rm -f "$GONGKE_E2E_OUT/ok"
   (cd "$WORK/squashfs-root" && GONGKE_E2E_SCHEME=$scheme xvfb-run -a -s "-screen 0 1600x1000x24" ./usr/bin/freecad "$REPO/tests/e2e/freecad_gui_macro.py" >/dev/null 2>&1 || true)
   cat "$GONGKE_E2E_OUT/log.txt"

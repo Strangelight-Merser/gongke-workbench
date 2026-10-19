@@ -80,3 +80,28 @@ def test_v_pulley_volume_matches_pappus():
     solid = parts.v_pulley(p)
     assert solid.is_valid
     assert solid.volume == pytest.approx(vol, rel=0.03)
+
+
+def test_bevel_gear_volume_matches_pappus():
+    # 锥齿轮按齿顶圆锥简化：体积 = 半剖面面积 × 2π × 形心半径 − 键槽体积（≤ 3%）
+    import math
+
+    from gongke_core.calc import bevel as bv
+    from gongke_core.calc import kinematics
+    from gongke_core.geometry import bevel as bg
+    from gongke_core.layout import bevel_blank
+
+    t = kinematics.torque_from_power(4e3, 1440)
+    pair = bv.design(bv.BevelPairInput("高速级", t, 1440, 3.0, 15 * 300 * 16))
+    g = bevel_blank.blank(pair, 2, 35e-3)
+    pts = [(z * 1e3, r * 1e3) for z, r in g.profile()]
+    a = cr = 0.0
+    for (z0, r0), (z1, r1) in zip(pts, pts[1:] + pts[:1]):
+        c = z0 * r1 - z1 * r0
+        a += c
+        cr += (r0 + r1) * c
+    a /= 2
+    vol = abs(a) * 2 * math.pi * cr / (6 * a)
+    solid = bg.bevel_gear(g)
+    assert solid.is_valid
+    assert solid.volume == pytest.approx(vol, rel=0.03)

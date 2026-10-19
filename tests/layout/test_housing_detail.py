@@ -79,3 +79,18 @@ def test_oil_level_and_accessories(det):
     c = t.inspection.center
     assert c[1] == pytest.approx(hd.envelope_height(t.cover_outer, c[0]), abs=1e-6)
     assert t.bolt_length_d1 >= d.housing.flange_base + d.housing.flange_cover + 1.35 * d.housing.bolt_bearing
+
+
+def test_envelope_left_wall_tangent():
+    # 端壁顶点 (−1, 1) 到单位圆 (0, 0) 的切线：切点 (0, 1)（解析解），端壁竖直
+    env = hd.upper_envelope([(0.0, 1.0)], left_wall=(-1.0, 1.0))
+    assert isinstance(env[0], hd.Seg) and env[0].p == pytest.approx((-1.0, 0.0)) and env[0].q == pytest.approx((-1.0, 1.0))
+    assert env[1].q == pytest.approx((0.0, 1.0), abs=1e-12)
+    assert hd.envelope_height(env, -0.5) == pytest.approx(1.0)
+    assert hd.envelope_points(env)[-1] == pytest.approx((1.0, 0.0))
+    # 端壁顶点在圆内：端壁只升到圆上
+    env = hd.upper_envelope([(0.0, 1.0)], left_wall=(-0.6, 0.5))
+    assert env[0].q == pytest.approx((-0.6, 0.8))
+    # 顶点直接与后面更大的圆相切
+    env = hd.upper_envelope([(0.0, 0.5), (2.0, 2.0)], left_wall=(-0.5, 2.0))
+    assert env[1].q == pytest.approx((2.0, 2.0)) and len([e for e in env if isinstance(e, hd.Arc)]) == 1

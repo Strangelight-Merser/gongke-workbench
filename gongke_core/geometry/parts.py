@@ -203,8 +203,19 @@ def v_pulley(p) -> bd.Solid:
     return body.cut(key).clean()
 
 
-def housing_base(h: Housing, shaft_x: list[float], bearing_D: list[float]) -> bd.Solid:
-    """箱座（剖分面以下）简化模型：壁、上凸缘、底座、轴承座和轴承孔。剖分面为 y = 0。"""
+def side_boss(side, x_inner: float) -> tuple[bd.Solid, bd.Solid]:
+    """−x 端壁上Ⅰ轴的轴承座（`housing_detail.SideBore`）：返回 (凸台, 座孔)，从内壁 x_inner 到外端面，单位 mm。"""
+    x0, x1 = _mm(side.x_face), _mm(x_inner)
+    pl = bd.Plane((x0, 0, _mm(side.z)), z_dir=(1, 0, 0))
+    boss = bd.Solid.make_cylinder(_mm(side.boss_r), x1 - x0, pl)
+    bore = bd.Solid.make_cylinder(_mm(side.D) / 2, x1 - x0 + 2, bd.Plane((x0 - 1, 0, _mm(side.z)), z_dir=(1, 0, 0)))
+    return boss, bore
+
+
+def housing_base(h: Housing, shaft_x: list[float], bearing_D: list[float], side=None) -> bd.Solid:
+    """箱座（剖分面以下）简化模型：壁、上凸缘、底座、轴承座和轴承孔。剖分面为 y = 0。
+
+    side 为圆锥-圆柱减速器 −x 端壁上的Ⅰ轴轴承座（`housing_detail.SideBore`）。"""
     d = _mm(h.delta)
     x0, x1 = (_mm(v) for v in h.x_range)
     y0 = _mm(h.y_range[0])
@@ -231,6 +242,9 @@ def housing_base(h: Housing, shaft_x: list[float], bearing_D: list[float]) -> bd
         for z0 in (-L1, w):
             boss = bd.Solid.make_cylinder(boss_d / 2, L1, bd.Plane((_mm(x), 0, z0)))
             body = body.fuse(boss)
+    if side is not None:
+        side_solids = side_boss(side, h.x_range[0])
+        body = body.fuse(side_solids[0])
     # 剖分面以上的部分去掉
     big = 1e4
     body = body.cut(bd.Solid.make_box(2 * big, big, 2 * big).moved(bd.Location((-big, 0, -big))))
@@ -238,4 +252,6 @@ def housing_base(h: Housing, shaft_x: list[float], bearing_D: list[float]) -> bd
     for x, D in zip(shaft_x, bearing_D):
         bore = bd.Solid.make_cylinder(_mm(D) / 2, w + 2 * L1 + 2, bd.Plane((_mm(x), 0, -L1 - 1)))
         body = body.cut(bore)
+    if side is not None:
+        body = body.cut(side_solids[1])
     return body.clean()

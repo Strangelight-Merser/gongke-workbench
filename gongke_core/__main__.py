@@ -46,9 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         except ImportError:
             print("未安装 python-docx，跳过 Word 说明书", file=sys.stderr)
     print(f"计算完成（{time.time()-t0:.1f} s）：{'全部校核通过' if res.ok else '有校核项不满足，见 summary.json'}")
-    no_geometry = res.task.scheme == "bevel"
-    if no_geometry:
-        print("圆锥-圆柱齿轮减速器方案暂不生成三维模型和工程图（后续版本提供）", file=sys.stderr)
+    no_geometry = False
     if not args.no_drawings and not no_geometry:
         try:
             from gongke_core import drawing
