@@ -1,0 +1,33 @@
+# 带式输送机传动装置设计任务书（示例二：V 带 + 展开式二级圆柱齿轮减速器）
+title: 带式输送机传动装置设计
+scheme: vbelt              # 传动方案：coupling（电动机经联轴器直连）或 vbelt（电动机经 V 带传动）
+conveyor:
+  belt_pull_N: 3200        # 输送带工作拉力 F
+  belt_speed_m_s: 1.2      # 输送带速度 v
+  drum_diameter_mm: 380    # 卷筒直径 D
+life:
+  years: 8
+  days_per_year: 300
+  shifts: 2                # 每班 8 小时
+bearing_life_years: 3      # 轴承按检修期 3 年计
+motor_sync_speed_rpm: 1500
+ratio_split: 1.3           # 高速级传动比 i1 = √(1.3 i减)
+vbelt:
+  ratio: 2.5               # V 带传动比（推荐 2～4）
+  # section: A             # 指定带型（不填时程序在 A、B 型中自动选择）
+  # dd1_mm: 112            # 指定小带轮基准直径
+  # a0_mm: 500             # 指定初定中心距
+  # KA: 1.2                # 工况系数（不填时按每天工作小时数取 1.1/1.2/1.3）
+gears:
+  high:
+    material1: 40Cr_QT
+    material2: 45_QT
+    grade: 8
+    z1: 24
+    beta_deg: 14
+  low:
+    material1: 40Cr_QT
+    material2: 45_QT
+    grade: 8
+    z1: 24
+    beta_deg: 14

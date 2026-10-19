@@ -149,8 +149,8 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
     rows = [["技术特性", ""],
             ["输入功率", f"{k.shafts[1].power / 1e3:.2f} kW"],
             ["输入转速", f"{k.shafts[1].speed_rpm:.0f} r/min"],
-            ["总传动比", f"{d.actual_ratio:.2f}"],
-            ["总效率", f"{k.eta_total:.3f}"]]
+            ["传动比", f"{d.high.u * d.low.u:.2f}"],
+            ["效率", f"{k.task.efficiencies.bearing_pair ** 3 * k.task.efficiencies.gear_pair ** 2:.3f}"]]
     for p in (d.high, d.low):
         rows.append([p.inp.name, f"mn={p.mn * MM:g}  z={p.z1}/{p.z2}  β={dms(p.beta)}  {p.inp.grade}级"])
     tx = col_tr + 22
@@ -357,7 +357,7 @@ def _top_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
                 kb, _, kl = (v_ * MM for v_ in seg.keyway)
                 key_at.setdefault(f"键 {kb:g}×{kl:g}", ((seg.z0 + seg.z1) / 2 * MM + kl / 4, x))
 
-        # 联轴器（相邻零件，细实线画外形）
+        # 联轴器或大带轮的轮毂（相邻零件，细实线画外形）
         if lay.extension:
             end = next(sg for sg in lay.segments if sg.role == "端部")
             a, bb = end.z0 * MM, end.z1 * MM

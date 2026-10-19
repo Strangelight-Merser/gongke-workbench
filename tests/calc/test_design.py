@@ -67,3 +67,20 @@ def test_other_tasks_converge(pull, speed, drum):
         {"conveyor": {"belt_pull_N": pull, "belt_speed_m_s": speed, "drum_diameter_mm": drum}}))
     failed = [c for c in r.checks if not c[1]]
     assert not failed, failed
+
+
+VBELT = Path(__file__).resolve().parents[2] / "examples" / "conveyor_vbelt.yaml"
+
+
+def test_vbelt_scheme():
+    d = design.run(design.ReducerTask.from_yaml(VBELT))
+    assert d.ok, [c for c in d.checks if not c[1]]
+    assert d.belt is not None and len(d.couplings) == 1
+    assert d.actual_ratio == pytest.approx(d.belt.ratio * d.high.u * d.low.u)
+    s1 = d.shafts[0]
+    fp = next(p for p in s1.load_case.loads if p.label == "带轮压轴力")
+    assert fp.fx == pytest.approx(-d.belt.fp)
+    # 带轮轮毂不短于轮缘宽度，压轴力作用在轴伸中点
+    assert s1.layout.coupling_hub >= d.belt.width - 1e-9
+    end = s1.layout.segment("端部")
+    assert fp.z == pytest.approx(end.z0 + end.length / 2)

@@ -10,6 +10,20 @@ from gongke_core.report import Doc
 from gongke_core.report import diagrams
 
 
+_NUMERALS = "一二三四五六七八九十"
+
+
+def _h1(doc: Doc, title: str):
+    """章标题，自动编号（一、二、……十一、十二……）。"""
+    n = getattr(doc, "_chapter", 0) + 1
+    doc._chapter = n
+    if n <= 10:
+        num = _NUMERALS[n - 1]
+    else:
+        num = ("" if n < 20 else _NUMERALS[n // 10 - 1]) + "十" + (_NUMERALS[n % 10 - 1] if n % 10 else "")
+    doc.h1(f"{num}、{title}")
+
+
 def f(v: float, nd: int = 2) -> str:
     return f"{v:.{nd}f}"
 
@@ -27,6 +41,8 @@ def build(d: ReducerDesign, with_diagrams: bool = True) -> Doc:
     _task(doc, d)
     _motor(doc, d)
     _ratios(doc, d)
+    if d.belt:
+        _belt(doc, d)
     for p in (d.high, d.low):
         _gear(doc, p)
     for s in d.shafts:
@@ -43,8 +59,9 @@ def build(d: ReducerDesign, with_diagrams: bool = True) -> Doc:
 
 def _task(doc: Doc, d: ReducerDesign):
     t = d.task.conveyor
-    doc.h1("一、设计任务")
-    doc.p("设计带式输送机的传动装置。传动方案为：电动机 → 弹性联轴器 → 展开式二级斜齿圆柱齿轮减速器 → "
+    _h1(doc, "设计任务")
+    first = "普通 V 带传动" if d.belt else "弹性联轴器"
+    doc.p(f"设计带式输送机的传动装置。传动方案为：电动机 → {first} → 展开式二级斜齿圆柱齿轮减速器 → "
           "弹性联轴器 → 卷筒。原始数据如下：")
     doc.table(["参数", "数值"], [
         ["输送带工作拉力 F", f"{t.belt_pull:.0f} N"],
@@ -53,7 +70,11 @@ def _task(doc: Doc, d: ReducerDesign):
         ["设计寿命", f"{t.life_hours:.0f} h"],
         ["轴承预期寿命", f"{d.task.bearing_life_hours:.0f} h"],
     ])
-    doc.p("展开式布置中，高速级齿轮布置在远离输入联轴器的一侧，低速级齿轮布置在远离输出联轴器的一侧，"
+    if d.belt:
+        doc.p("V 带传动布置在高速级：带传动平稳、能缓冲吸振，过载时打滑起保护作用，放在转速高、转矩小的一级"
+              "可以减小带传动的尺寸。")
+    inp = "带轮" if d.belt else "输入联轴器"
+    doc.p(f"展开式布置中，高速级齿轮布置在远离{inp}的一侧，低速级齿轮布置在远离输出联轴器的一侧，"
           "使轴的扭转变形部分抵消弯曲变形引起的载荷沿齿宽分布不均。")
 
 
@@ -61,10 +82,14 @@ def _motor(doc: Doc, d: ReducerDesign):
     k = d.kin
     t = d.task.conveyor
     e = t.efficiencies
-    doc.h1("二、电动机的选择")
+    _h1(doc, "电动机的选择")
     doc.eq(f"工作机所需功率 Pw = F·v = {t.belt_pull:.0f} × {t.belt_speed:.2f} = {k.work_power/1e3:.3f} kW")
-    doc.eq(f"传动装置总效率 η = η联² · η轴承³ · η齿轮² · η卷筒 = {e.coupling}² × {e.bearing_pair}³ × "
-           f"{e.gear_pair}² × {e.drum} = {k.eta_total:.4f}")
+    if d.belt:
+        doc.eq(f"传动装置总效率 η = η带 · η联 · η轴承³ · η齿轮² · η卷筒 = {e.belt} × {e.coupling} × {e.bearing_pair}³ × "
+               f"{e.gear_pair}² × {e.drum} = {k.eta_total:.4f}")
+    else:
+        doc.eq(f"传动装置总效率 η = η联² · η轴承³ · η齿轮² · η卷筒 = {e.coupling}² × {e.bearing_pair}³ × "
+               f"{e.gear_pair}² × {e.drum} = {k.eta_total:.4f}")
     doc.eq(f"电动机所需功率 Pd = Pw / η = {k.work_power/1e3:.3f} / {k.eta_total:.4f} = {k.required_power/1e3:.3f} kW")
     m = k.motor
     doc.p(f"按同步转速 {m.sync_speed_rpm:.0f} r/min，选额定功率不小于 Pd 的 Y 系列三相异步电动机 {m.model}："
@@ -74,12 +99,21 @@ def _motor(doc: Doc, d: ReducerDesign):
 def _ratios(doc: Doc, d: ReducerDesign):
     k = d.kin
     t = d.task.conveyor
-    doc.h1("三、传动比分配与各轴运动、动力参数")
+    _h1(doc, "传动比分配与各轴运动、动力参数")
     doc.eq(f"卷筒转速 nw = 60v / (πD) = 60 × {t.belt_speed:.2f} / (π × {t.drum_diameter:.3f}) = {k.drum_speed_rpm:.2f} r/min")
     doc.eq(f"总传动比 i = nm / nw = {k.motor.speed_rpm:.0f} / {k.drum_speed_rpm:.2f} = {k.total_ratio:.3f}")
-    doc.eq(f"高速级 i1 = √({t.ratio_split} i) = {k.i_high:.3f}，低速级 i2 = i / i1 = {k.i_low:.3f}")
+    if d.belt:
+        b = d.belt
+        doc.p(f"V 带传动比初取 i带 = {t.belt_ratio:g}（推荐 2～4，宜小于齿轮传动比）。带轮直径圆整后实际传动比 "
+              f"i带 = dd2/dd1 = {mm(b.dd2,0)}/{mm(b.dd1,0)} = {b.ratio:.3f}（不计弹性滑动），据此分配减速器传动比：")
+        doc.eq(f"减速器传动比 i减 = i / i带 = {k.total_ratio:.3f} / {b.ratio:.3f} = {k.reducer_ratio:.3f}")
+        doc.eq(f"高速级 i1 = √({t.ratio_split} i减) = {k.i_high:.3f}，低速级 i2 = i减 / i1 = {k.i_low:.3f}")
+        tot = f"i带 i1' i2' = {d.actual_ratio:.3f}"
+    else:
+        doc.eq(f"高速级 i1 = √({t.ratio_split} i) = {k.i_high:.3f}，低速级 i2 = i / i1 = {k.i_low:.3f}")
+        tot = f"{d.actual_ratio:.3f}"
     doc.p(f"齿数圆整后实际传动比 i1' = {d.high.z2}/{d.high.z1} = {d.high.u:.3f}，"
-          f"i2' = {d.low.z2}/{d.low.z1} = {d.low.u:.3f}，总传动比 {d.actual_ratio:.3f}，"
+          f"i2' = {d.low.z2}/{d.low.z1} = {d.low.u:.3f}，总传动比 {tot}，"
           f"输送带速度误差 {d.output_speed_error*100:+.2f}%（允许 ±5%）。")
     doc.p("各轴功率按电动机所需功率 Pd 逐级乘以效率计算，转矩 T = 9550 P / n。")
     doc.table(["轴", "功率 P / kW", "转速 n / (r/min)", "转矩 T / (N·m)"],
@@ -91,7 +125,7 @@ def _gear(doc: Doc, p: GearPair):
     i = p.inp
     c = p.check
     m1, m2 = standards.gear_material(i.material1), standards.gear_material(i.material2)
-    doc.h1(f"四、{i.name}斜齿圆柱齿轮传动设计" if i.name.startswith("高速") else f"五、{i.name}斜齿圆柱齿轮传动设计")
+    _h1(doc, f"{i.name}斜齿圆柱齿轮传动设计")
     doc.h2("1. 选择材料、精度和齿数")
     doc.p(f"小齿轮 {m1.name}，{m1.hardness_hb:.0f} HBW；大齿轮 {m2.name}，{m2.hardness_hb:.0f} HBW；软齿面闭式传动。"
           f"精度等级 {i.grade} 级（GB/T 10095）。初选 z1 = {i.z1}，螺旋角 β = {i.beta_deg}°，齿宽系数 φd = {i.phi_d}。")
@@ -138,6 +172,50 @@ def _gear(doc: Doc, p: GearPair):
            f"Fa = Ft tan β = {p.axial_force:.1f} N")
 
 
+def _belt(doc: Doc, d: ReducerDesign):
+    b = d.belt
+    sec = b.sec
+    k = d.kin
+    n1 = b.inp.n1
+    _h1(doc, "普通 V 带传动设计")
+    doc.p(f"小带轮装在电动机轴上，n1 = {n1:.0f} r/min；大带轮装在Ⅰ轴轴伸上。传递功率取电动机所需功率 "
+          f"P = {b.inp.power/1e3:.3f} kW，要求传动比 i = {b.inp.ratio:g}。")
+    doc.h2("1. 计算功率和带型")
+    doc.eq(f"工况系数 KA = {b.inp.service_factor:g}（载荷变动小，每天工作 {d.task.hours_per_day:g} h），"
+           f"Pca = KA P = {b.inp.service_factor:g} × {b.inp.power/1e3:.3f} = {b.p_ca/1e3:.3f} kW")
+    doc.p(f"按 Pca 和 n1 选 {sec.name} 型普通 V 带（GB/T 11544）：节宽 bp = {mm(sec.bp,0)} mm，顶宽 b = {mm(sec.b,0)} mm，"
+          f"高 h = {mm(sec.h,0)} mm，单位长度质量 q = {sec.q:g} kg/m。")
+    doc.h2("2. 带轮基准直径和带速")
+    doc.eq(f"小带轮基准直径 dd1 = {mm(b.dd1,0)} mm ≥ ddmin = {mm(sec.dd_min,0)} mm；"
+           f"带速 v = π dd1 n1 / 60000 = π × {mm(b.dd1,0)} × {n1:.0f} / 60000 = {b.v:.2f} m/s，在 5～25 m/s 范围内")
+    doc.eq(f"大带轮基准直径 dd2 = i dd1 = {b.inp.ratio:g} × {mm(b.dd1,0)} = {mm(b.inp.ratio*b.dd1,1)} mm，"
+           f"按基准直径系列取 dd2 = {mm(b.dd2,0)} mm")
+    if b.inp.motor_shaft_d:
+        doc.p(f"小带轮轮缘内径 dd1 − 2(hf + δ) = {mm(b.dd1 - 2*(sec.hf+sec.delta),1)} mm，不小于电动机轴（d = "
+              f"{mm(b.inp.motor_shaft_d,0)} mm）上轮毂的外径 1.8d = {mm(1.8*b.inp.motor_shaft_d,1)} mm。")
+    doc.h2("3. 中心距和基准长度")
+    doc.eq(f"0.7(dd1 + dd2) ≤ a0 ≤ 2(dd1 + dd2)，初定 a0 = {mm(b.a0,0)} mm")
+    doc.eq(f"Ld0 = 2a0 + π(dd1 + dd2)/2 + (dd2 − dd1)²/(4a0) = {mm(b.ld0,1)} mm，取基准长度 Ld = {mm(b.ld,0)} mm")
+    doc.eq(f"实际中心距 a ≈ a0 + (Ld − Ld0)/2 = {mm(b.a,1)} mm；安装调整范围 amin = a − 0.015Ld = {mm(b.a_range[0],1)} mm，"
+           f"amax = a + 0.03Ld = {mm(b.a_range[1],1)} mm")
+    doc.eq(f"小带轮包角 α1 = 180° − (dd2 − dd1) × 57.3°/a = {b.alpha1:.1f}° ≥ 120°")
+    doc.h2("4. 带的根数")
+    doc.eq(f"单根 V 带基本额定功率 P0 = {b.p0:.3f} kW（dd1 = {mm(b.dd1,0)} mm，n1 = {n1:.0f} r/min，查表插值）")
+    doc.eq(f"额定功率增量 ΔP0 = Kb n1 (1 − 1/Ki) = {b.dp0:.3f} kW；包角系数 Kα = 1.25(1 − 5^(−α1/180°)) = {b.k_alpha:.3f}；"
+           f"带长修正系数 KL = {b.k_l:.2f}")
+    doc.eq(f"z = Pca / [(P0 + ΔP0) Kα KL] = {b.p_ca/1e3:.3f} / [({b.p0:.3f} + {b.dp0:.3f}) × {b.k_alpha:.3f} × {b.k_l:.2f}] "
+           f"= {b.z_exact:.2f}，取 z = {b.z} 根")
+    doc.h2("5. 初拉力和压轴力")
+    doc.eq(f"(F0)min = 500 (2.5 − Kα) Pca / (Kα z v) + q v² = {b.f0:.1f} N（新带安装时取 1.5 倍）")
+    doc.eq(f"(Fp)min = 2 z (F0)min sin(α1/2) = {b.fp:.1f} N，作为Ⅰ轴轴伸上的径向载荷")
+    doc.h2("6. 带轮结构")
+    doc.p(f"带轮材料 HT200。轮槽按 GB/T 10412：ha = {mm(sec.ha,2)} mm，hf = {mm(sec.hf,1)} mm，e = {mm(sec.e,1)} mm，"
+          f"f = {mm(sec.f,1)} mm，δ = {mm(sec.delta,1)} mm；小带轮轮槽角 {sec.groove_angle(b.dd1):.0f}°，"
+          f"大带轮 {sec.groove_angle(b.dd2):.0f}°。轮缘宽 B = (z − 1)e + 2f = {mm(b.width,0)} mm。"
+          f"大带轮轮毂长度 L = {mm(d.shafts[0].layout.coupling_hub,0)} mm（(1.5～2)d，且不小于 B）。")
+    doc.note("P0、KL 数据和带型选择为程序按表试算的结果，提交前请对照教材表 8-4、8-2 和图 8-11 核对。")
+
+
 def _dms(rad: float) -> str:
     deg = math.degrees(rad)
     d = int(deg)
@@ -150,12 +228,12 @@ def _dms(rad: float) -> str:
 
 def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
     lay = s.layout
-    no = {1: "六", 2: "七", 3: "八"}[lay.index]
-    doc.h1(f"{no}、{lay.name}的设计")
+    _h1(doc, f"{lay.name}的设计")
     doc.h2("1. 估算最小直径")
     doc.eq(f"材料 45 钢调质，A0 = 112：d ≥ A0 ∛(P/n) = 112 × ∛({s.power/1e3:.3f} / {s.speed_rpm:.2f}) = {mm(lay.d_min)} mm")
     if lay.extension:
-        doc.p(f"轴端有键槽，直径加大 5%，并考虑与联轴器孔径相配，取轴端直径 {mm(lay.diameters['端部'],0)} mm。")
+        what = "带轮" if lay.index == 1 and s.load_case.loads[-1].label == "带轮压轴力" else "联轴器"
+        doc.p(f"轴端有键槽，直径加大 5%，并考虑与{what}孔径相配，取轴端直径 {mm(lay.diameters['端部'],0)} mm。")
     doc.h2("2. 结构设计")
     gear_note = []
     for g in lay.gears:
@@ -173,7 +251,7 @@ def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
     doc.p(f"轴承中心位置 zA = {mm(lay.bearing_z[0],1)} mm，zB = {mm(lay.bearing_z[1],1)} mm，支承跨距 "
           f"{mm(lay.bearing_z[1]-lay.bearing_z[0],1)} mm。x 为中心连线方向（水平面），y 为铅垂方向。")
     doc.table(["载荷", "z / mm", "Fx / N", "Fy / N", "Fz / N", "力偶 Fa·d/2 / (N·m)"],
-              [[p.label, mm(p.z, 1), f(p.fx, 1), f(p.fy, 1), f(p.fz, 1), f(p.couple_xz, 2)] for p in s.load_case.loads])
+              [[p.label, mm(p.z, 1), f(p.fx, 1), f(p.fy, 1), f(p.fz, 1), f(round(p.couple_xz, 2) + 0.0, 2)] for p in s.load_case.loads])
     r = s.strength.reactions
     doc.eq(f"水平面支反力 RAx = {r.ax:.1f} N，RBx = {r.bx:.1f} N；铅垂面支反力 RAy = {r.ay:.1f} N，RBy = {r.by:.1f} N")
     doc.eq(f"合成径向载荷 FrA = {r.radial_a:.1f} N，FrB = {r.radial_b:.1f} N；轴向合力 Fa = {r.axial:.1f} N")
@@ -212,7 +290,7 @@ def _fatigue(doc: Doc, s: ShaftResult):
 
 
 def _bearings(doc: Doc, d: ReducerDesign):
-    doc.h1("九、滚动轴承寿命计算")
+    _h1(doc, "滚动轴承寿命计算")
     doc.p(f"深沟球轴承，两端固定。当量动载荷 P = fp (X Fr + Y Fa)，fp = {d.task.load_factor_bearing}；"
           f"寿命 L10h = 10⁶/(60n) (C/P)³。预期寿命 {d.task.bearing_life_hours:.0f} h。")
     rows = []
@@ -226,7 +304,7 @@ def _bearings(doc: Doc, d: ReducerDesign):
 
 
 def _keys(doc: Doc, d: ReducerDesign):
-    doc.h1("十、键连接的选择与校核")
+    _h1(doc, "键连接的选择与校核")
     doc.p("均采用 A 型普通平键（GB/T 1096），挤压强度 σp = 2T/(k l d)，k = 0.5h，l = L − b。")
     rows = []
     for s in d.shafts:
@@ -238,7 +316,7 @@ def _keys(doc: Doc, d: ReducerDesign):
 
 
 def _couplings(doc: Doc, d: ReducerDesign):
-    doc.h1("十一、联轴器的选择")
+    _h1(doc, "联轴器的选择")
     doc.p(f"选用 LX 型弹性柱销联轴器（GB/T 5014）。计算转矩 Tca = KA T，KA = {d.task.coupling_service_factor}。")
     doc.table(["位置", "Tca / (N·m)", "两侧轴孔直径 / mm", "轴孔长度（估） / mm"],
               [[c.location, f(c.torque, 1), f"{mm(c.bores[0],0)} / {mm(c.bores[1],0)}", mm(c.hub_length, 0)]
@@ -248,7 +326,7 @@ def _couplings(doc: Doc, d: ReducerDesign):
 
 def _housing(doc: Doc, d: ReducerDesign):
     h = d.housing
-    doc.h1("十二、箱体主要结构尺寸")
+    _h1(doc, "箱体主要结构尺寸")
     doc.table(["名称", "公式", "取值 / mm"], [
         ["箱座壁厚 δ", "0.025a + 3 ≥ 8", mm(h.delta, 1)],
         ["箱盖壁厚 δ1", "0.02a + 3 ≥ 8", mm(h.delta1, 1)],
@@ -269,14 +347,14 @@ def _housing(doc: Doc, d: ReducerDesign):
 
 def _lubrication(doc: Doc, d: ReducerDesign):
     v = max(d.high.pitch_velocity, d.low.pitch_velocity)
-    doc.h1("十三、润滑与密封")
+    _h1(doc, "润滑与密封")
     doc.p(f"齿轮最大圆周速度 {v:.2f} m/s < 12 m/s，齿轮采用浸油润滑，高速级大齿轮浸入油中约一个齿高。"
           + ("轴承利用齿轮飞溅的油润滑（v ≥ 2 m/s）。" if v >= 2 else "圆周速度小于 2 m/s，轴承采用润滑脂润滑，内侧加挡油环。")
           + "伸出轴处采用毡圈油封或唇形密封圈。")
 
 
 def _summary(doc: Doc, d: ReducerDesign):
-    doc.h1("十四、校核结果汇总")
+    _h1(doc, "校核结果汇总")
     doc.table(["项目", "结论", "说明"], [[n, "满足" if ok else "不满足", txt] for n, ok, txt in d.checks])
     if d.warnings:
         doc.h2("说明")
@@ -291,6 +369,7 @@ def _refs(doc: Doc):
         "机械设计课程设计指导书（各校通用版本）．",
         "GB/T 3480.1-2019 直齿轮和斜齿轮承载能力计算；ISO 6336-1/2/3．",
         "W. D. Pilkey. Peterson's Stress Concentration Factors（阶梯轴圆角应力集中系数拟合公式）；R. G. Budynas, J. K. Nisbett. Shigley's Mechanical Engineering Design（敏感系数、尺寸系数、表面系数）．",
+        "GB/T 13575.1-2008 普通和窄 V 带传动；GB/T 11544-2012 普通 V 带；GB/T 10412-2002 V 带轮．",
         "GB/T 276-2013、GB/T 6391-2010 滚动轴承；GB/T 1095/1096-2003 平键；JB/T 10391-2008 Y 系列电动机．",
     ]:
         doc.p(r)

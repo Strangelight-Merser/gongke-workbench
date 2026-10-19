@@ -18,7 +18,7 @@ MATERIALS = [("40Cr_QT", "40Cr 调质 280HBW"), ("45_QT", "45 钢 调质 240HBW"
 class ReducerTaskPanel:
     def __init__(self):
         self.form = QtGui.QWidget()
-        self.form.setWindowTitle("二级圆柱齿轮减速器设计")
+        self.form.setWindowTitle("带式输送机传动装置设计")
         lay = QtGui.QVBoxLayout(self.form)
 
         box = QtGui.QGroupBox("设计任务（带式输送机）")
@@ -32,6 +32,13 @@ class ReducerTaskPanel:
         self.shifts.setCurrentIndex(1)
         self.sync = QtGui.QComboBox()
         self.sync.addItems(["1500 r/min（4 极）", "1000 r/min（6 极）"])
+        self.scheme = QtGui.QComboBox()
+        self.scheme.addItems(["电动机 → 联轴器 → 减速器", "电动机 → V 带 → 减速器"])
+        self.belt_ratio = self._spin(1.5, 4, 2.5, 1, "")
+        self.belt_ratio.setEnabled(False)
+        self.scheme.currentIndexChanged.connect(lambda i: self.belt_ratio.setEnabled(i == 1))
+        fl.addRow("传动方案", self.scheme)
+        fl.addRow("V 带传动比", self.belt_ratio)
         fl.addRow("输送带拉力 F", self.pull)
         fl.addRow("输送带速度 v", self.speed)
         fl.addRow("卷筒直径 D", self.drum)
@@ -91,6 +98,7 @@ class ReducerTaskPanel:
             sync_speed_rpm=1500 if self.sync.currentIndex() == 0 else 1000,
             pinion_material=self.mat1.currentData(), gear_material=self.mat2.currentData(),
             grade=int(self.grade.currentText()),
+            scheme="vbelt" if self.scheme.currentIndex() == 1 else "coupling", belt_ratio=self.belt_ratio.value(),
         )
 
     def run(self):

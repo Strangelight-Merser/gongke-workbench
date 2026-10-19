@@ -24,6 +24,8 @@ try:
     dlg = Gui.Control.activeDialog()
     P("dialog open", dlg)
     p = ReducerTaskPanel()
+    if os.environ.get("GONGKE_E2E_SCHEME") == "vbelt":
+        p.scheme.setCurrentIndex(1)
     p.run()
     ok = p.proc.waitForFinished(600000)
     P("finished", ok, p.proc.exitCode())
@@ -35,6 +37,8 @@ try:
     n_solids = sum(1 for o in doc.Objects if hasattr(o, "Shape") and o.Shape.Solids)
     assert p.proc.exitCode() == 0 and n_solids >= 15, "装配体导入不完整"
     assert "GK-00" in p.result.toPlainText(), "工程图未生成"
+    if os.environ.get("GONGKE_E2E_SCHEME") == "vbelt":
+        assert "GK-03-01" in p.result.toPlainText(), "大带轮零件图未生成"
     v = Gui.activeDocument().activeView()
     v.viewIsometric(); Gui.SendMsgToActiveView("ViewFit")
     QtGui.QApplication.processEvents()

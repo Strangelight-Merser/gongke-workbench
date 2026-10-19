@@ -97,3 +97,12 @@ def test_gear_shaft_drawing_has_param_table(drawings):
     _, texts = _texts(f.dxf)
     assert "公法线长度" in texts
     assert "A-A" in texts or any("A" == t for t in texts)
+
+
+def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
+    vb = EXAMPLE.parent / "conveyor_vbelt.yaml"
+    d = design.run(design.ReducerTask.from_yaml(vb))
+    files = drawing.build_all(d, tmp_path, svg=False)
+    pul = next(f for f in files if f.number == "GK-03-01")
+    texts = " ".join(e.dxf.text for e in ezdxf.readfile(pul.dxf).modelspace().query("TEXT"))
+    assert "大带轮" in texts and "HT200" in texts and "槽角" in texts

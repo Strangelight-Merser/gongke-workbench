@@ -50,7 +50,13 @@ def build(design: ReducerDesign, with_housing: bool = True, z_up: bool = True, t
         for i, zc in enumerate(lay.bearing_z):
             out[f"{lay.name}轴承{brg.designation}-{'AB'[i]}"] = parts.ball_bearing(brg.d, brg.D, brg.B).moved(
                 bd.Location((x, 0, zc / MM)))
-        if lay.extension:
+        if lay.extension == "left" and design.belt is not None:
+            from gongke_core.layout.pulley import large_pulley
+
+            end = next(s for s in lay.segments if s.role == "端部")
+            # 轮毂外端面比轴端多出 2 mm（轴端用挡圈压紧）
+            out["大带轮"] = parts.v_pulley(large_pulley(design)).moved(bd.Location((x, 0, (end.z0 - 2 * MM) / MM)))
+        elif lay.extension:
             end = next(s for s in lay.segments if s.role == "端部")
             hub = parts.coupling_half(end.d, lay.coupling_hub)
             if lay.extension == "left":

@@ -30,6 +30,8 @@ class FormValues:
     gear_material: str = "45_QT"
     grade: int = 8
     title: str = "带式输送机传动装置设计"
+    scheme: str = "coupling"  # coupling / vbelt
+    belt_ratio: float = 2.5
 
 
 def task_dict(v: FormValues) -> dict:
@@ -43,6 +45,8 @@ def task_dict(v: FormValues) -> dict:
         "motor_sync_speed_rpm": v.sync_speed_rpm,
         "ratio_split": v.ratio_split,
         "gears": {"high": dict(gear), "low": dict(gear)},
+        "scheme": v.scheme,
+        "vbelt": {"ratio": v.belt_ratio},
     }
 
 

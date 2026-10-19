@@ -25,7 +25,7 @@ def material_name(code: str) -> str:
 
 
 def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile]:
-    """生成整套图纸：装配图 GK-00、各轴 GK-01-0n、各（非齿轮轴的）齿轮 GK-02-0n。
+    """生成整套图纸：装配图 GK-00、各轴 GK-01-0n、各（非齿轮轴的）齿轮 GK-02-0n，V 带方案另有大带轮 GK-03-01。
 
     文件名用 ASCII：assembly.dxf、shaft1.dxf…、gear_high2.dxf（高速级大齿轮）等。
     """
@@ -63,4 +63,10 @@ def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile
             stem = f"gear_{g.pair}{g.member}"
             sh = gear.draw(pair, g.member, g.seat_d, out / f"{stem}.dxf", title, no, mat)
             done(sh, title + "零件图", no, stem)
+    if design.belt is not None:
+        from gongke_core.drawing import pulley as pulley_dwg
+        from gongke_core.layout.pulley import large_pulley
+
+        sh = pulley_dwg.draw(large_pulley(design), out / "pulley.dxf", "大带轮", "GK-03-01")
+        done(sh, "大带轮零件图", "GK-03-01", "pulley")
     return files

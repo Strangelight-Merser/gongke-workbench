@@ -29,10 +29,17 @@ def summarize(d: ReducerDesign) -> dict:
             "bearing_life_h": min(s.bearings.life),
             "integral_pinion": any(g.integral for g in lay.gears),
         })
+    belt = None
+    if d.belt:
+        b = d.belt
+        belt = {"section": b.sec.name, "dd1": b.dd1 * 1e3, "dd2": b.dd2 * 1e3, "z": b.z, "ld": b.ld * 1e3,
+                "a": b.a * 1e3, "alpha1_deg": b.alpha1, "v": b.v, "f0": b.f0, "fp": b.fp}
     return {
         "title": d.task.title,
+        "scheme": d.task.scheme,
+        "belt": belt,
         "motor": {"model": k.motor.model, "power_kw": k.motor.power / 1e3, "speed_rpm": k.motor.speed_rpm},
-        "ratios": {"total": k.total_ratio, "high": d.high.u, "low": d.low.u, "speed_error_pct": d.output_speed_error * 100},
+        "ratios": {"total": k.total_ratio, "belt": k.i_belt, "high": d.high.u, "low": d.low.u, "speed_error_pct": d.output_speed_error * 100},
         "shaft_states": [{"name": s.name, "power_kw": s.power / 1e3, "speed_rpm": s.speed_rpm, "torque_nm": s.torque}
                          for s in k.shafts],
         "gears": gears,

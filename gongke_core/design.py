@@ -15,6 +15,7 @@ from gongke_core.calc import gear as gear_calc
 from gongke_core.calc import key as key_calc
 from gongke_core.calc import kinematics
 from gongke_core.calc import shaft as shaft_calc
+from gongke_core.calc import vbelt as vbelt_calc
 from gongke_core.layout import reducer as lay
 
 MM = 1e-3
@@ -37,6 +38,12 @@ class ReducerTask:
     coupling_service_factor: float = 1.5
     shaft_S_required: float = 1.5  # 疲劳强度许用安全系数 [S]
     shaft_fit_k: float | None = None  # 齿轮过盈配合处 kσ/εσ（教材附表查得，未给出时不校核该截面）
+    belt: dict = field(default_factory=dict)  # V 带方案的附加参数（section、dd1_mm、a0_mm、KA）
+    hours_per_day: float = 16
+
+    @property
+    def scheme(self) -> str:
+        return self.conveyor.scheme
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReducerTask":
@@ -50,7 +57,11 @@ class ReducerTask:
             life_hours=life.get("years", 10) * hours_per_year,
             sync_speed_rpm=float(d.get("motor_sync_speed_rpm", 1500)),
             ratio_split=float(d.get("ratio_split", 1.3)),
+            scheme=str(d.get("scheme", "coupling")),
+            belt_ratio=float((d.get("vbelt") or {}).get("ratio", 2.5)),
         )
+        if conveyor.scheme not in ("coupling", "vbelt"):
+            raise ValueError(f"未知的传动方案 scheme: {conveyor.scheme}（可选 coupling、vbelt）")
         gears = d.get("gears", {})
         shaft = d.get("shaft", {}) or {}
         return cls(
@@ -61,6 +72,8 @@ class ReducerTask:
             low=dict(gears.get("low", {})),
             shaft_S_required=float(shaft.get("S_required", 1.5)),
             shaft_fit_k=float(shaft["k_sigma_fit"]) if shaft.get("k_sigma_fit") else None,
+            belt=dict(d.get("vbelt") or {}),
+            hours_per_day=life.get("shifts", 2) * 8,
         )
 
     @classmethod
@@ -108,10 +121,11 @@ class ReducerDesign:
     couplings: list[Coupling]
     checks: list[tuple[str, bool, str]]  # (项目, 是否满足, 说明)
     warnings: list[str]
+    belt: vbelt_calc.BeltDrive | None = None
 
     @property
     def actual_ratio(self) -> float:
-        return self.high.u * self.low.u
+        return (self.belt.ratio if self.belt else 1.0) * self.high.u * self.low.u
 
     @property
     def output_speed_error(self) -> float:
@@ -144,21 +158,33 @@ def gear_loads(pair: gear_calc.GearPair, member: int, z: float) -> shaft_calc.Po
 # ---------------------------------------------------------------- 主流程
 
 
+def _end_failed(strength: shaft_calc.ShaftCheck, fat: fatigue_calc.FatigueCheck) -> bool:
+    """强度不足的截面在轴伸（端部或密封段）上：只加大轴承处直径没有用，需要加大轴伸直径。"""
+    if not strength.ok and strength.critical.role in ("端部", "密封"):
+        return True
+    c = fat.critical
+    return (not fat.ok) and c is not None and c.label.startswith(("端部", "密封"))
+
+
+def pulley_hub_length(d: float, rim_width: float) -> float:
+    """带轮轮毂长度 L = (1.5～2)d，且不小于轮缘宽度 B（轮缘不悬出轮毂，免得碰到轴承盖）。"""
+    return lay.ceil_to(max(1.5 * d, rim_width), MM)
+
+
 def _shaft(idx: int, task: ReducerTask, kin: kinematics.Kinematics, h: lay.Housing,
-           high: gear_calc.GearPair, low: gear_calc.GearPair, z_high: float, z_low: float) -> ShaftResult:
+           high: gear_calc.GearPair, low: gear_calc.GearPair, z_high: float, z_low: float,
+           belt: vbelt_calc.BeltDrive | None = None) -> ShaftResult:
     st = kin.shafts[idx]
     d_min = shaft_calc.min_diameter(st.power, st.speed_rpm)
     name = st.name
     ext = {1: "left", 2: None, 3: "right"}[idx]
-    if idx == 1:
-        d_end = lay.std_diameter(max(1.05 * d_min, 0.8 * kin.motor.shaft_d))
-    elif idx == 3:
-        d_end = lay.std_diameter(1.05 * d_min)
+    on_belt = idx == 1 and belt is not None
+    if idx == 1 and not on_belt:
+        d_end0 = lay.std_diameter(max(1.05 * d_min, 0.8 * kin.motor.shaft_d))
+    elif idx in (1, 3):
+        d_end0 = lay.std_diameter(1.05 * d_min)
     else:
-        d_end = None
-    d_seal = lay.std_diameter(1.14 * d_end) if d_end else None
-    d_b0 = lay.ceil_to((d_seal + 1 * MM) if d_seal else max(1.05 * d_min, 20 * MM), 5 * MM)
-    hub = lay.coupling_hub_length(d_end) if d_end else None
+        d_end0 = None
 
     gear_specs = {
         1: [(high, 1, z_high)],
@@ -167,94 +193,132 @@ def _shaft(idx: int, task: ReducerTask, kin: kinematics.Kinematics, h: lay.Housi
     }[idx]
 
     last = None
-    for step in range(8):
-        d_b = d_b0 + step * 5 * MM
-        for brg in standards.bearings_with_bore(d_b):
-            dia = lay.diameters(d_b, brg.D, d_end, d_seal)
-            gears = []
-            for pair, member, z in gear_specs:
-                width = pair.b1 if member == 1 else pair.b2
-                df = pair.df1 if member == 1 else pair.df2
-                da = pair.da1 if member == 1 else pair.da2
-                integral = member == 1 and lay.gear_shaft_needed(df, dia.seat, pair.mn)
-                mount = "left" if (len(gear_specs) == 2 and z == min(g[2] for g in gear_specs)) or (
-                    len(gear_specs) == 1 and z < h.inner_width / 2) else "right"
-                gears.append(lay.GearOnShaft("high" if pair is high else "low", member, z, width,
-                                             integral, None if integral else dia.seat, mount, df, da))
-            segs = lay.build_segments(h, brg, dia, gears, ext, hub)
-            za = -h.gap_bearing - brg.B / 2
-            zb = h.inner_width + h.gap_bearing + brg.B / 2
-            loads = [gear_loads(pair, member, z) for pair, member, z in gear_specs]
-            z_ext = lay.shaft_extension_z(segs)
-            if idx == 1:
-                tp = [(z_ext, st.torque), (z_high, -st.torque)]
-            elif idx == 2:
-                tp = [(z_high, st.torque), (z_low, -st.torque)]
-            else:
-                tp = [(z_low, st.torque), (z_ext, -st.torque)]
-            case = shaft_calc.ShaftLoadCase((za, zb), loads, tp)
+    d_end = d_end0
+    for _ in range(8):
+        d_seal = lay.std_diameter(1.14 * d_end) if d_end else None
+        d_b0 = lay.ceil_to((d_seal + 1 * MM) if d_seal else max(1.05 * d_min, 20 * MM), 5 * MM)
+        if on_belt:
+            hub = pulley_hub_length(d_end, belt.width)
+        else:
+            hub = lay.coupling_hub_length(d_end) if d_end else None
+        end_failed = False
+        for step in range(8):
+            d_b = d_b0 + step * 5 * MM
+            for brg in standards.bearings_with_bore(d_b):
+                dia = lay.diameters(d_b, brg.D, d_end, d_seal)
+                gears = []
+                for pair, member, z in gear_specs:
+                    width = pair.b1 if member == 1 else pair.b2
+                    df = pair.df1 if member == 1 else pair.df2
+                    da = pair.da1 if member == 1 else pair.da2
+                    integral = member == 1 and lay.gear_shaft_needed(df, dia.seat, pair.mn)
+                    mount = "left" if (len(gear_specs) == 2 and z == min(g[2] for g in gear_specs)) or (
+                        len(gear_specs) == 1 and z < h.inner_width / 2) else "right"
+                    gears.append(lay.GearOnShaft("high" if pair is high else "low", member, z, width,
+                                                 integral, None if integral else dia.seat, mount, df, da))
+                segs = lay.build_segments(h, brg, dia, gears, ext, hub)
+                za = -h.gap_bearing - brg.B / 2
+                zb = h.inner_width + h.gap_bearing + brg.B / 2
+                loads = [gear_loads(pair, member, z) for pair, member, z in gear_specs]
+                z_ext = lay.shaft_extension_z(segs)
+                if on_belt:
+                    # 压轴力沿两带轮中心连线指向电动机（电动机放在Ⅰ轴外侧，带近似水平）
+                    loads.append(shaft_calc.PointLoad(z_ext, fx=-belt.fp, label="带轮压轴力"))
+                if idx == 1:
+                    tp = [(z_ext, st.torque), (z_high, -st.torque)]
+                elif idx == 2:
+                    tp = [(z_high, st.torque), (z_low, -st.torque)]
+                else:
+                    tp = [(z_low, st.torque), (z_ext, -st.torque)]
+                case = shaft_calc.ShaftLoadCase((za, zb), loads, tp)
 
-            # 键
-            keys = []
-            for g in gears:
-                if not g.integral:
-                    seg = next(s for s in segs if s.role == "齿轮" and s.z0 <= g.z <= s.z1)
-                    kc = key_calc.select(f"{name}齿轮处", st.torque, g.seat_d, g.width, task.key_sigma_allow)
+                # 键
+                keys = []
+                for g in gears:
+                    if not g.integral:
+                        seg = next(s for s in segs if s.role == "齿轮" and s.z0 <= g.z <= s.z1)
+                        kc = key_calc.select(f"{name}齿轮处", st.torque, g.seat_d, g.width, task.key_sigma_allow)
+                        seg.keyway = (kc.size.b, kc.size.t1, kc.length)
+                        keys.append(kc)
+                if d_end:
+                    seg = next(s for s in segs if s.role == "端部")
+                    where = "带轮处" if on_belt else "联轴器处"
+                    kc = key_calc.select(f"{name}{where}", st.torque, d_end, hub, task.key_sigma_allow)
                     seg.keyway = (kc.size.b, kc.size.t1, kc.length)
                     keys.append(kc)
-            if d_end:
-                seg = next(s for s in segs if s.role == "端部")
-                kc = key_calc.select(f"{name}联轴器处", st.torque, d_end, hub, task.key_sigma_allow)
-                seg.keyway = (kc.size.b, kc.size.t1, kc.length)
-                keys.append(kc)
 
-            strength = shaft_calc.check(segs, case, task.shaft_sigma_allow)
-            r = strength.reactions
-            bc = bearing_calc.check_pair(brg, r.radial_a, r.radial_b, r.axial, st.speed_rpm,
-                                         task.bearing_life_hours, task.load_factor_bearing)
-            sl = lay.ShaftLayout(idx, name, [0.0, high.a, high.a + low.a][idx - 1], d_min, brg, (za, zb),
-                                 gears, segs, ext, hub,
-                                 {"端部": d_end, "密封": d_seal, "轴承": d_b, "齿轮": dia.seat,
-                                  "轴环": dia.collar, "轴肩": dia.shoulder})
-            integral = any(g.integral for g in gears)
-            mat_key = (high.inp.material1 if idx == 1 else low.inp.material1).split("_")[0] if integral else "45"
-            fat = fatigue_calc.check(segs, case, fatigue_calc.MATERIALS.get(mat_key, fatigue_calc.MATERIALS["45"]),
-                                     task.shaft_S_required, task.shaft_fit_k)
-            last = ShaftResult(sl, case, strength, bc, keys, fat, st.power, st.speed_rpm, st.torque)
-            if strength.ok and bc.ok and fat.ok:
-                return last
-            if not strength.ok or not fat.ok:
-                break  # 轴的强度不够，直接加大轴径
+                strength = shaft_calc.check(segs, case, task.shaft_sigma_allow)
+                r = strength.reactions
+                bc = bearing_calc.check_pair(brg, r.radial_a, r.radial_b, r.axial, st.speed_rpm,
+                                             task.bearing_life_hours, task.load_factor_bearing)
+                sl = lay.ShaftLayout(idx, name, [0.0, high.a, high.a + low.a][idx - 1], d_min, brg, (za, zb),
+                                     gears, segs, ext, hub,
+                                     {"端部": d_end, "密封": d_seal, "轴承": d_b, "齿轮": dia.seat,
+                                      "轴环": dia.collar, "轴肩": dia.shoulder})
+                integral = any(g.integral for g in gears)
+                mat_key = (high.inp.material1 if idx == 1 else low.inp.material1).split("_")[0] if integral else "45"
+                fat = fatigue_calc.check(segs, case, fatigue_calc.MATERIALS.get(mat_key, fatigue_calc.MATERIALS["45"]),
+                                         task.shaft_S_required, task.shaft_fit_k)
+                last = ShaftResult(sl, case, strength, bc, keys, fat, st.power, st.speed_rpm, st.torque)
+                if strength.ok and bc.ok and fat.ok:
+                    return last
+                if d_end and _end_failed(strength, fat):
+                    end_failed = True
+                    break
+                if not strength.ok or not fat.ok:
+                    break  # 轴的强度不够，直接加大轴径
+            if end_failed:
+                break
+        if not end_failed:
+            break
+        d_end = lay.std_diameter(d_end + 1 * MM)
     if last is None:
         raise standards.SelectionError(f"{name}：轴承内径 {d_b0 / MM:.0f} mm 以上没有可选的深沟球轴承（超出本程序的数据范围）")
     return last
 
 
+def _belt(task: ReducerTask, kin: kinematics.Kinematics) -> vbelt_calc.BeltDrive:
+    b = task.belt
+    ka = float(b.get("KA") or vbelt_calc.service_factor(task.hours_per_day))
+    return vbelt_calc.design(vbelt_calc.BeltInput(
+        kin.required_power, kin.motor.speed_rpm, task.conveyor.belt_ratio, ka, kin.motor.shaft_d,
+        b.get("section"), b["dd1_mm"] * MM if b.get("dd1_mm") else None, b["a0_mm"] * MM if b.get("a0_mm") else None))
+
+
 def run(task: ReducerTask) -> ReducerDesign:
     kin = kinematics.solve(task.conveyor)
     t = task.conveyor
+    belt = None
+    if task.scheme == "vbelt":
+        belt = _belt(task, kin)
+        kin = kinematics.solve(task.conveyor, belt.ratio)  # 按圆整后带轮直径的实际传动比重新分配
     high = gear_calc.design(gear_calc.GearPairInput(
         "高速级", kin.shafts[1].torque, kin.shafts[1].speed_rpm, kin.i_high, t.life_hours, **task.high))
     # 低速级齿数比按总传动比修正，抵消高速级齿数圆整的误差
-    u_low = kin.total_ratio / high.u
+    u_low = kin.reducer_ratio / high.u
     low = gear_calc.design(gear_calc.GearPairInput(
         "低速级", kin.shafts[2].torque, kin.shafts[2].speed_rpm, u_low, t.life_hours, **task.low))
     h = lay.housing(high, low)
     z_low = h.gap_axial + low.b1 / 2
     z_high = h.gap_axial + low.b1 + h.gap_gears + high.b1 / 2
-    shafts = [_shaft(i, task, kin, h, high, low, z_high, z_low) for i in (1, 2, 3)]
+    shafts = [_shaft(i, task, kin, h, high, low, z_high, z_low, belt) for i in (1, 2, 3)]
 
-    couplings = [
+    couplings = [] if belt else [
         Coupling("电动机—Ⅰ轴", task.coupling_service_factor * kin.shafts[1].torque,
-                 (kin.motor.shaft_d, shafts[0].layout.diameters["端部"]), shafts[0].layout.coupling_hub),
+                 (kin.motor.shaft_d, shafts[0].layout.diameters["端部"]), shafts[0].layout.coupling_hub)]
+    couplings += [
         Coupling("Ⅲ轴—卷筒轴", task.coupling_service_factor * kin.shafts[3].torque,
                  (shafts[2].layout.diameters["端部"], shafts[2].layout.diameters["端部"]), shafts[2].layout.coupling_hub),
     ]
 
     checks: list[tuple[str, bool, str]] = []
     warnings: list[str] = []
-    err = (kin.motor.speed_rpm / (high.u * low.u) - kin.drum_speed_rpm) / kin.drum_speed_rpm
+    err = (kin.motor.speed_rpm / (kin.i_belt * high.u * low.u) - kin.drum_speed_rpm) / kin.drum_speed_rpm
     checks.append(("输送带速度误差", abs(err) <= 0.05, f"{err*100:+.2f}%，允许 ±5%"))
+    if belt:
+        checks.append(("V 带带速", 5 <= belt.v <= 25, f"v = {belt.v:.2f} m/s，应在 5～25 m/s"))
+        checks.append(("小带轮包角", belt.alpha1 >= 120, f"α1 = {belt.alpha1:.1f}° ≥ 120°"))
+        checks.append(("V 带根数", belt.z <= 5, f"z = {belt.z} ≤ 5"))
     for p in (high, low):
         c = p.check
         checks.append((f"{p.inp.name}齿面接触疲劳强度", c.sigma_h <= c.sigma_h_allow,
@@ -294,5 +358,13 @@ def run(task: ReducerTask) -> ReducerDesign:
         if p.check.k_v and any(k in p.inp.overrides for k in ("k_v", "k_hn1", "k_fn1")):
             warnings.append(f"{p.inp.name}使用了手工覆盖的系数：{p.inp.overrides}")
     warnings.append("Kv、KHN、KFN 采用解析近似代替教材查图，正式提交前可在任务书 overrides 中填入教材查得的值。")
+    if belt:
+        warnings.append("V 带的 P0、KL 数据待人工核对；带型按 z ≤ 4 自动试选，也可在任务书 vbelt 中指定 section、dd1_mm。")
     warnings.append("联轴器只给出计算转矩和轴孔直径，型号请按 GB/T 5014（LX 型弹性柱销联轴器）核对。")
-    return ReducerDesign(task, kin, high, low, h, shafts, couplings, checks, warnings)
+    d = ReducerDesign(task, kin, high, low, h, shafts, couplings, checks, warnings, belt)
+    if belt:
+        from gongke_core.layout import housing_detail
+        H = -housing_detail.detail(d).y_bottom
+        checks.append(("大带轮尺寸", belt.dd2 / 2 < H,
+                       f"大带轮半径 {belt.dd2 / 2 / MM:.0f} mm < 减速器中心高 H = {H / MM:.0f} mm（否则会碰到地基）"))
+    return d

@@ -18,7 +18,7 @@ class ReducerDesignCommand:
     def GetResources(self):
         return {
             "Pixmap": os.path.join(ICONPATH, "gongke.svg"),
-            "MenuText": "二级圆柱齿轮减速器设计",
+            "MenuText": "带式输送机传动装置设计",
             "ToolTip": "输入带式输送机参数，完成设计计算，生成三维装配体和计算说明书",
         }
 

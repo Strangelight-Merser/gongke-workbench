@@ -188,6 +188,21 @@ def coupling_half(bore: float, hub_length: float) -> bd.Solid:
     return hub.fuse(flange).cut(bd.Solid.make_cylinder(db / 2, L + 2, bd.Plane((0, 0, -1))))
 
 
+def v_pulley(p) -> bd.Solid:
+    """V 带轮（`layout.pulley.PulleyBlank`）：半剖面回转成实体，再开减重孔和键槽。轮毂左端面在 z=0。"""
+    pts = [bd.Vector(_mm(r), 0, _mm(z)) for r, z in p.profile()]
+    body = bd.Solid.revolve(bd.Face(bd.Wire.make_polygon(pts, close=True)), 360, bd.Axis.Z)
+    L = _mm(p.hub_length)
+    for k in range(p.holes):
+        a = 2 * math.pi * k / p.holes + math.pi / p.holes
+        r = _mm(p.hole_pcd) / 2
+        body = body.cut(bd.Solid.make_cylinder(_mm(p.hole_d) / 2, L + 2, bd.Plane((r * math.cos(a), r * math.sin(a), -1))))
+    kb, kt = _mm(p.key_b), _mm(p.key_t2)
+    rd = _mm(p.bore) / 2
+    key = bd.Solid.make_box(kb, rd + kt, L + 2).moved(bd.Location((-kb / 2, 0, -1)))
+    return body.cut(key).clean()
+
+
 def housing_base(h: Housing, shaft_x: list[float], bearing_D: list[float]) -> bd.Solid:
     """箱座（剖分面以下）简化模型：壁、上凸缘、底座、轴承座和轴承孔。剖分面为 y = 0。"""
     d = _mm(h.delta)

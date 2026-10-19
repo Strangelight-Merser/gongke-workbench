@@ -58,3 +58,25 @@ def test_bearing_fits_dimensions():
     bb = b.bounding_box()
     assert bb.size.X == pytest.approx(80, abs=0.01)
     assert bb.size.Z == pytest.approx(18, abs=0.01)
+
+
+def test_v_pulley_volume_matches_pappus():
+    # 无孔腹板式带轮：实体体积 = 截面积 × 2π × 形心半径 − 键槽体积
+    import math
+
+    from gongke_core.calc import vbelt
+    from gongke_core.layout import pulley
+
+    p = pulley.blank(vbelt.section("A"), 180e-3, 3, 30e-3, 50e-3)
+    assert p.kind == "腹板式"
+    pts = [(r * 1e3, z * 1e3) for r, z in p.profile()]
+    a = cx = 0.0
+    for (r0, z0), (r1, z1) in zip(pts, pts[1:] + pts[:1]):
+        c = r0 * z1 - r1 * z0
+        a += c
+        cx += (r0 + r1) * c
+    a /= 2
+    vol = a * 2 * math.pi * cx / (6 * a)
+    solid = parts.v_pulley(p)
+    assert solid.is_valid
+    assert solid.volume == pytest.approx(vol, rel=0.03)
