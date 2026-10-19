@@ -123,6 +123,12 @@ def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str,
         mv.line((-b / 2 - 3 / s, rp), (b / 2 + 3 / s, rp), "点画线")
     mv.centerline((-b / 2, 0), (b / 2, 0), 5)
     if g.web:
+        # 剖切面后方可见的减重孔孔壁（腹板两侧面在孔处的轮廓线）
+        c = g.web_thickness * 1e3 / 2
+        h0, h1 = (g.hole_pcd - g.hole_d) * 1e3 / 2, (g.hole_pcd + g.hole_d) * 1e3 / 2
+        for sgn in (1, -1):
+            for x in (-c, c):
+                mv.line((x, sgn * h0), (x, sgn * h1))
         mv.centerline((-g.web_thickness * 1e3 / 2 - 2, g.hole_pcd * 1e3 / 2), (g.web_thickness * 1e3 / 2 + 2, g.hole_pcd * 1e3 / 2), 2)
         mv.centerline((-g.web_thickness * 1e3 / 2 - 2, -g.hole_pcd * 1e3 / 2), (g.web_thickness * 1e3 / 2 + 2, -g.hole_pcd * 1e3 / 2), 2)
 
