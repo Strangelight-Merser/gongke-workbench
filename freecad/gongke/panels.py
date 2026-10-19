@@ -77,6 +77,10 @@ class ReducerTaskPanel:
         self.run_btn = QtGui.QPushButton("开始设计")
         self.run_btn.clicked.connect(self.run)
         lay.addWidget(self.run_btn)
+        self.install_btn = QtGui.QPushButton("安装所需 Python 包（首次使用，需联网，安装后约 1 GB）")
+        self.install_btn.clicked.connect(self.install)
+        self.install_btn.setVisible(False)
+        lay.addWidget(self.install_btn)
 
         self.result = QtGui.QTextBrowser()
         self.result.setOpenExternalLinks(True)
@@ -109,9 +113,63 @@ class ReducerTaskPanel:
             scheme=runner.SCHEMES[self.scheme.currentIndex()], belt_ratio=self.belt_ratio.value(),
         )
 
+    @staticmethod
+    def _freecad_python() -> str:
+        try:
+            from freecad.utils import get_python_exe
+
+            return get_python_exe()
+        except ImportError:
+            home = Path(App.getHomePath()) / "bin"
+            return next((str(home / n) for n in ("python3", "python", "python.exe") if (home / n).exists()), "")
+
+    def _python(self) -> str:
+        return runner.find_python(params().GetString("PythonExe", ""), self._freecad_python())
+
+    def _env(self, python: str) -> "QtCore.QProcessEnvironment":
+        env = QtCore.QProcessEnvironment.systemEnvironment()
+        for k, v in runner.environment(self._ccx(), runner.package_dir(App.getUserAppDataDir(), python)).items():
+            env.insert(k, v)
+        return env
+
+    def install(self):
+        """用所选 Python 的 pip 把依赖包装到工作台自己的目录。"""
+        try:
+            python = self._python()
+        except FileNotFoundError as e:
+            self.result.setPlainText(str(e))
+            return
+        target = runner.package_dir(App.getUserAppDataDir(), python)
+        target.mkdir(parents=True, exist_ok=True)
+        prog, args = runner.pip_command(python, target)
+        self.proc = QtCore.QProcess()
+        self.proc.setProcessEnvironment(self._env(python))
+        self.proc.setProcessChannelMode(QtCore.QProcess.MergedChannels)
+        self.proc.readyReadStandardOutput.connect(self._install_output)
+        self.proc.finished.connect(self._install_done)
+        self.run_btn.setEnabled(False)
+        self.install_btn.setEnabled(False)
+        self.result.setPlainText(f"正在安装到 {target}（使用 {python}）…\n")
+        self.proc.start(prog, args)
+
+    def _install_output(self):
+        text = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "replace")
+        self.result.moveCursor(QtGui.QTextCursor.End)
+        self.result.insertPlainText(text)
+        self.result.moveCursor(QtGui.QTextCursor.End)
+
+    def _install_done(self, code, _status=None):
+        self.run_btn.setEnabled(True)
+        self.install_btn.setEnabled(True)
+        if code == 0:
+            self.install_btn.setVisible(False)
+            self.result.append("\n安装完成，可以点“开始设计”了。")
+        else:
+            self.result.append(f"\n安装失败（退出码 {code}），请检查网络，或在设置中改用已装好依赖的 Python。")
+
     def run(self):
         try:
-            python = runner.find_python(params().GetString("PythonExe", ""))
+            python = self._python()
         except FileNotFoundError as e:
             self.result.setPlainText(str(e))
             return
@@ -122,10 +180,7 @@ class ReducerTaskPanel:
                                          full_teeth=self.full_teeth.isChecked(), drawings=self.with_drawings.isChecked(),
                                          fem=self.with_fem.isChecked())
         self.proc = QtCore.QProcess()
-        env = QtCore.QProcessEnvironment.systemEnvironment()
-        for k, v in runner.environment(self._ccx()).items():
-            env.insert(k, v)
-        self.proc.setProcessEnvironment(env)
+        self.proc.setProcessEnvironment(self._env(python))
         self.proc.setWorkingDirectory(cwd)
         self.proc.finished.connect(self.done)
         self.run_btn.setEnabled(False)
@@ -146,7 +201,13 @@ class ReducerTaskPanel:
         try:
             out = runner.read_outputs(self.out_dir)
         except FileNotFoundError:
-            self.result.setPlainText(f"运行失败（退出码 {code}）：\n{err or log}")
+            mod = runner.missing_module(err)
+            if mod:
+                self.install_btn.setVisible(True)
+                self.result.setPlainText(f"缺少 Python 包 {mod}。请点下面的按钮安装所需的包（只需一次），"
+                                         "或在“设置 Python 解释器”中改用已装好依赖的 Python。")
+            else:
+                self.result.setPlainText(f"运行失败（退出码 {code}）：\n{err or log}")
             return
         s = out["summary"]
         rows = "".join(

@@ -21,12 +21,11 @@
 
 1. 安装 FreeCAD 1.0 或更新版本。
 2. 把本仓库放到 FreeCAD 的插件目录，命名为 `gongke-workbench`（FreeCAD 1.0：Linux 为 `~/.local/share/FreeCAD/Mod/`，Windows 为 `%APPDATA%\FreeCAD\Mod\`；1.1 起多一层版本目录，如 `v1-1/Mod/`）。
-3. 给 FreeCAD 自带的 Python 装上依赖（也可以用任意一个装好依赖的 Python 3.10+）：
-   ```
-   <FreeCAD 安装目录>/bin/python -m pip install build123d python-docx pyyaml ezdxf
-   ```
-4. 启动 FreeCAD，切换到“工科工作台”，菜单 **工科 → 设置 Python 解释器…** 选中上一步的 Python。
-5. 点工具栏图标打开“带式输送机传动装置设计”，选传动方案、填参数，点“开始设计”。约 1 分钟后装配体导入当前文档，面板里列出校核结果，以及说明书和各张工程图的链接。
+3. 启动 FreeCAD，切换到“工科工作台”，点工具栏图标打开“带式输送机传动装置设计”，选传动方案、填参数，点“开始设计”。
+   第一次使用时面板会提示缺少 Python 包，点“安装所需 Python 包”即可（需联网，安装后约 1 GB，只需一次）。
+   这些包用 FreeCAD 自带的 Python 装到工作台自己的目录（FreeCAD 用户数据目录下的 `GongKe/`），只给计算进程使用，不影响 FreeCAD 本身。
+   想用自己装好依赖的 Python 3.10+，可在菜单 **工科 → 设置 Python 解释器…** 中指定。
+4. 约 1 分钟后装配体导入当前文档，面板里列出校核结果，以及说明书、整套图纸 PDF 和各张工程图的链接。
 
 ### 方式二：命令行
 

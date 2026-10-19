@@ -6,6 +6,7 @@ FreeCAD 内置的 OCCT 与 build123d 依赖的 OCP 可能冲突，所以几何�
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -13,6 +14,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# gongke_core 运行所需的第三方包。由工作台用所选 Python 的 pip 安装到单独的目录（见 package_dir），
+# 只加进子进程的 PYTHONPATH：不装进 FreeCAD 的 AdditionalPythonPackages，以免 numpy 等包的其他版本
+# 进入 FreeCAD 自身进程。
+REQUIREMENTS = ["pyyaml>=6", "python-docx>=1.1", "pillow>=10.1", "ezdxf>=1.3", "build123d>=0.9"]
+CHECK_IMPORTS = "import yaml, docx, PIL, ezdxf, build123d"
 
 
 @dataclass
@@ -50,15 +57,40 @@ def task_dict(v: FormValues) -> dict:
     }
 
 
-def find_python(preferred: str = "") -> str:
-    """优先使用设置中指定的解释器，其次 PATH 中的 python3 / python。"""
-    if preferred and Path(preferred).exists():
-        return preferred
+def find_python(preferred: str = "", freecad_python: str = "") -> str:
+    """优先使用设置中指定的解释器，其次 FreeCAD 自带的 Python，再次 PATH 中的 python3 / python。"""
+    for p in (preferred, freecad_python):
+        if p and Path(p).exists():
+            return p
     for name in ("python3", "python"):
         p = shutil.which(name)
         if p:
             return p
-    raise FileNotFoundError("找不到 Python 解释器，请在工科工作台设置中指定（需安装 build123d、pyyaml、python-docx）")
+    raise FileNotFoundError("找不到 Python 解释器，请在工科工作台设置中指定")
+
+
+def package_dir(user_data_dir: str, python: str) -> Path:
+    """为某个 Python 解释器安装依赖包的目录（不同解释器分开，避免二进制包版本不匹配）。"""
+    tag = hashlib.sha1(str(Path(python).resolve()).encode()).hexdigest()[:8]
+    return Path(user_data_dir) / "GongKe" / f"pylibs-{tag}"
+
+
+def pip_command(python: str, target: Path) -> tuple[str, list[str]]:
+    """安装依赖包的命令（pip install --target）。"""
+    return python, ["-m", "pip", "install", "--upgrade", "--target", str(target), *REQUIREMENTS]
+
+
+def check_command(python: str) -> tuple[str, list[str]]:
+    """检查依赖包是否都能导入的命令。"""
+    return python, ["-c", CHECK_IMPORTS]
+
+
+def missing_module(stderr: str) -> str:
+    """从子进程的错误输出中找出缺少的模块名，没有则返回空串。"""
+    for line in stderr.splitlines():
+        if "No module named" in line:
+            return line.split("No module named", 1)[1].strip().strip("'\"")
+    return ""
 
 
 def write_task(v: FormValues, out_dir: Path) -> Path:
@@ -94,11 +126,12 @@ def freecad_ccx(home: str, user_path: str = "", use_standard: bool = True) -> st
     return ""
 
 
-def environment(ccx: str = "") -> dict:
+def environment(ccx: str = "", packages: Path | None = None) -> dict:
     env = dict(os.environ)
     if ccx:
         env["GONGKE_CCX"] = ccx
-    env["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    paths = [str(REPO_ROOT)] + ([str(packages)] if packages and packages.is_dir() else [])
+    env["PYTHONPATH"] = os.pathsep.join(paths + [env.get("PYTHONPATH", "")])
     env["PYTHONIOENCODING"] = "utf-8"
     return env
 

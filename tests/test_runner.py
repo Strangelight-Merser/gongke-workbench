@@ -1,6 +1,7 @@
 """FreeCAD 工作台的进程调用部分（不需要 FreeCAD）。"""
 
 import json
+import os
 import subprocess
 import sys
 
@@ -81,3 +82,24 @@ def test_fem_option_and_freecad_ccx(tmp_path):
     user.write_text("")
     assert runner.freecad_ccx(str(tmp_path), str(user), use_standard=False) == str(user)
     assert runner.environment("/x/ccx")["GONGKE_CCX"] == "/x/ccx"
+
+
+def test_dependency_install_helpers(tmp_path):
+    py = tmp_path / "python3"
+    py.write_text("")
+    # 设置中的解释器优先，其次 FreeCAD 自带的
+    assert runner.find_python("", str(py)) == str(py)
+    assert runner.find_python(str(py), "/nonexistent") == str(py)
+    d1 = runner.package_dir(str(tmp_path), str(py))
+    assert d1.parent == tmp_path / "GongKe" and d1 == runner.package_dir(str(tmp_path), str(py))
+    assert d1 != runner.package_dir(str(tmp_path), "/usr/bin/python3")
+    prog, args = runner.pip_command(str(py), d1)
+    assert prog == str(py) and args[:5] == ["-m", "pip", "install", "--upgrade", "--target"]
+    assert any(a.startswith("build123d") for a in args)
+    # 依赖目录存在时才加入子进程的 PYTHONPATH，排在仓库目录之后
+    assert str(d1) not in runner.environment(packages=d1)["PYTHONPATH"]
+    d1.mkdir(parents=True)
+    parts = runner.environment(packages=d1)["PYTHONPATH"].split(os.pathsep)
+    assert parts[:2] == [str(runner.REPO_ROOT), str(d1)]
+    assert runner.missing_module("Traceback ...\nModuleNotFoundError: No module named 'build123d'\n") == "build123d"
+    assert runner.missing_module("ok") == ""
