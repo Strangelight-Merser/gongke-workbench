@@ -34,10 +34,10 @@ class ReducerTaskPanel:
         self.sync.addItems(["1500 r/min（4 极）", "1000 r/min（6 极）"])
         self.scheme = QtGui.QComboBox()
         self.scheme.addItems(["电动机 → 联轴器 → 展开式二级圆柱齿轮减速器", "电动机 → V 带 → 展开式二级圆柱齿轮减速器",
-                              "电动机 → 联轴器 → 圆锥-圆柱齿轮减速器（暂无模型和图纸）"])
+                              "电动机 → 联轴器 → 圆锥-圆柱齿轮减速器", "电动机 → 联轴器 → 单级蜗杆减速器"])
         self.belt_ratio = self._spin(1.5, 4, 2.5, 1, "")
         self.belt_ratio.setEnabled(False)
-        self.scheme.currentIndexChanged.connect(lambda i: self.belt_ratio.setEnabled(i == 1))
+        self.scheme.currentIndexChanged.connect(self._scheme_changed)
         fl.addRow("传动方案", self.scheme)
         fl.addRow("V 带传动比", self.belt_ratio)
         fl.addRow("输送带拉力 F", self.pull)
@@ -63,6 +63,7 @@ class ReducerTaskPanel:
         fl2.addRow("大齿轮材料", self.mat2)
         fl2.addRow("精度等级", self.grade)
         lay.addWidget(box2)
+        self.gear_box = box2
 
         self.with_model = QtGui.QCheckBox("生成三维装配体并导入当前文档")
         self.with_model.setChecked(True)
@@ -83,6 +84,11 @@ class ReducerTaskPanel:
         self.proc = None
         self.out_dir = None
 
+    def _scheme_changed(self, i):
+        self.belt_ratio.setEnabled(i == 1)
+        # 蜗杆传动的材料按默认（45 钢淬火蜗杆、铸锡青铜蜗轮），齿轮材料选项不适用
+        self.gear_box.setEnabled(runner.SCHEMES[i] != "worm")
+
     @staticmethod
     def _spin(lo, hi, val, dec, suffix):
         s = QtGui.QDoubleSpinBox()
@@ -99,7 +105,7 @@ class ReducerTaskPanel:
             sync_speed_rpm=1500 if self.sync.currentIndex() == 0 else 1000,
             pinion_material=self.mat1.currentData(), gear_material=self.mat2.currentData(),
             grade=int(self.grade.currentText()),
-            scheme=("coupling", "vbelt", "bevel")[self.scheme.currentIndex()], belt_ratio=self.belt_ratio.value(),
+            scheme=runner.SCHEMES[self.scheme.currentIndex()], belt_ratio=self.belt_ratio.value(),
         )
 
     def run(self):
@@ -141,7 +147,7 @@ class ReducerTaskPanel:
         g = s["gears"]
         html = (
             f"<p><b>电动机</b> {s['motor']['model']}（{s['motor']['power_kw']} kW，{s['motor']['speed_rpm']:.0f} r/min）</p>"
-            f"<p><b>高速级</b> {runner.gear_line(g['high'])}；<b>低速级</b> {runner.gear_line(g['low'])}</p>"
+            f"<p>{runner.gears_html(g)}</p>"
             f"<table border='1' cellspacing='0' cellpadding='2'>{rows}</table>"
         )
         labels = {"reducer_assembly.step": "三维装配体（STEP）", "report.docx": "计算说明书（Word）",

@@ -1,0 +1,18 @@
+# 带式输送机传动装置设计任务书（示例四：单级蜗杆减速器，蜗杆下置）
+title: 带式输送机传动装置设计
+scheme: worm               # 电动机 → 联轴器 → 蜗杆减速器 → 联轴器 → 卷筒
+conveyor:
+  belt_pull_N: 2300        # 输送带工作拉力 F
+  belt_speed_m_s: 0.9      # 输送带速度 v
+  drum_diameter_mm: 320    # 卷筒直径 D
+life:
+  years: 10
+  days_per_year: 300
+  shifts: 2                # 每班 8 小时
+bearing_life_years: 3      # 轴承按检修期 3 年计
+motor_sync_speed_rpm: 1500
+gears:
+  worm:                    # 蜗杆传动：45 钢蜗杆表面淬火，蜗轮齿圈用铸锡磷青铜（金属模）
+    wheel_material: ZCuSn10P1_metal
+    worm_hardened: true
+    grade: 8

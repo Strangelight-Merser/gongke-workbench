@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from gongke_core.design import ReducerDesign, ShaftResult
+from gongke_core.calc import kinematics
 from gongke_core.calc.gear import GearPair
 from gongke_core.report import Doc
 from gongke_core.report import diagrams
@@ -43,11 +44,14 @@ def build(d: ReducerDesign, with_diagrams: bool = True) -> Doc:
     _ratios(doc, d)
     if d.belt:
         _belt(doc, d)
-    for p in (d.high, d.low):
-        if _is_bevel(p):
-            _bevel(doc, p)
-        else:
-            _gear(doc, p)
+    if _worm_scheme(d):
+        _worm(doc, d)
+    else:
+        for p in (d.high, d.low):
+            if _is_bevel(p):
+                _bevel(doc, p)
+            else:
+                _gear(doc, p)
     for s in d.shafts:
         _shaft(doc, s, with_diagrams)
     _bearings(doc, d)
@@ -65,14 +69,19 @@ def _is_bevel(p) -> bool:
 
 
 def _bevel_scheme(d) -> bool:
-    return _is_bevel(d.high)
+    return d.task.scheme == "bevel"
+
+
+def _worm_scheme(d) -> bool:
+    return d.task.scheme == "worm"
 
 
 def _task(doc: Doc, d: ReducerDesign):
     t = d.task.conveyor
     _h1(doc, "设计任务")
     first = "普通 V 带传动" if d.belt else "弹性联轴器"
-    red = "圆锥-圆柱齿轮减速器" if _bevel_scheme(d) else "展开式二级斜齿圆柱齿轮减速器"
+    red = ("圆锥-圆柱齿轮减速器" if _bevel_scheme(d) else "单级蜗杆减速器（蜗杆下置）" if _worm_scheme(d)
+           else "展开式二级斜齿圆柱齿轮减速器")
     doc.p(f"设计带式输送机的传动装置。传动方案为：电动机 → {first} → {red} → "
           "弹性联轴器 → 卷筒。原始数据如下：")
     doc.table(["参数", "数值"], [
@@ -89,6 +98,11 @@ def _task(doc: Doc, d: ReducerDesign):
         doc.p("高速级用直齿锥齿轮改变传动方向，使电动机轴线与卷筒轴线垂直、布置紧凑。锥齿轮放在高速级，"
               "转矩小、尺寸小，便于加工。小锥齿轮悬臂支承在一对反装的圆锥滚子轴承上。")
         return
+    if _worm_scheme(d):
+        doc.p("蜗杆传动用一级实现较大的传动比，结构紧凑、传动平稳、噪声小，电动机轴与卷筒轴垂直交错。"
+              "缺点是齿面滑动大、效率低、发热多，需要进行热平衡计算。蜗杆圆周速度不大（vs ≤ 4～5 m/s），"
+              "采用蜗杆下置，蜗杆浸在油中，啮合处润滑和冷却条件好。")
+        return
     inp = "带轮" if d.belt else "输入联轴器"
     doc.p(f"展开式布置中，高速级齿轮布置在远离{inp}的一侧，低速级齿轮布置在远离输出联轴器的一侧，"
           "使轴的扭转变形部分抵消弯曲变形引起的载荷沿齿宽分布不均。")
@@ -103,6 +117,11 @@ def _motor(doc: Doc, d: ReducerDesign):
     if d.belt:
         doc.eq(f"传动装置总效率 η = η带 · η联 · η轴承³ · η齿轮² · η卷筒 = {e.belt} × {e.coupling} × {e.bearing_pair}³ × "
                f"{e.gear_pair}² × {e.drum} = {k.eta_total:.4f}")
+    elif _worm_scheme(d):
+        doc.eq(f"传动装置总效率 η = η联² · η轴承² · η蜗杆 · η卷筒 = {e.coupling}² × {e.bearing_pair}² × "
+               f"{d.worm.eta:.3f} × {e.drum} = {k.eta_total:.4f}")
+        doc.p(f"蜗杆传动效率先按头数初估（z1 = {d.worm.z1} 时取 {kinematics.worm_starts_estimate_eta(k.total_ratio):.2f}），"
+              "设计出蜗杆传动后按实际导程角和当量摩擦角重新计算，上式已代入实际值。")
     elif _bevel_scheme(d):
         doc.eq(f"传动装置总效率 η = η联² · η轴承³ · η锥齿轮 · η齿轮 · η卷筒 = {e.coupling}² × {e.bearing_pair}³ × "
                f"{e.bevel_pair} × {e.gear_pair} × {e.drum} = {k.eta_total:.4f}")
@@ -121,6 +140,14 @@ def _ratios(doc: Doc, d: ReducerDesign):
     _h1(doc, "传动比分配与各轴运动、动力参数")
     doc.eq(f"卷筒转速 nw = 60v / (πD) = 60 × {t.belt_speed:.2f} / (π × {t.drum_diameter:.3f}) = {k.drum_speed_rpm:.2f} r/min")
     doc.eq(f"总传动比 i = nm / nw = {k.motor.speed_rpm:.0f} / {k.drum_speed_rpm:.2f} = {k.total_ratio:.3f}")
+    if _worm_scheme(d):
+        w = d.worm
+        doc.p(f"单级蜗杆减速器，全部传动比由蜗杆传动承担。蜗杆头数 z1 = {w.z1}，蜗轮齿数 z2 = {w.z2}，"
+              f"实际传动比 i' = z2/z1 = {w.u:.3f}，输送带速度误差 {d.output_speed_error*100:+.2f}%（允许 ±5%）。")
+        doc.p("各轴功率按电动机所需功率 Pd 逐级乘以效率计算，转矩 T = 9550 P / n。")
+        doc.table(["轴", "功率 P / kW", "转速 n / (r/min)", "转矩 T / (N·m)"],
+                  [[s.name, f(s.power / 1e3, 3), f(s.speed_rpm, 2), f(s.torque, 2)] for s in k.shafts])
+        return
     if d.belt:
         b = d.belt
         doc.p(f"V 带传动比初取 i带 = {t.belt_ratio:g}（推荐 2～4，宜小于齿轮传动比）。带轮直径圆整后实际传动比 "
@@ -291,6 +318,80 @@ def _bevel(doc: Doc, p):
            f"{p.radial_force1:.1f} N，Fa1 = Ft tan α sin δ1 = Fr2 = {p.axial_force1:.1f} N")
 
 
+def _worm(doc: Doc, d):
+    from gongke_core.calc import worm as wc
+    w = d.worm
+    i = w.inp
+    c = w.check
+    mat = w.material
+    _h1(doc, "蜗杆传动设计")
+    doc.h2("1. 选择传动类型、材料和精度")
+    doc.p(f"采用阿基米德圆柱蜗杆（ZA 型）。蜗杆材料 {i.worm_material}；蜗轮齿圈材料 {mat.name}（{mat.casting}），"
+          f"轮芯用灰铸铁。精度等级 {i.grade} 级（GB/T 10089）。按传动比 i = {i.ratio:.2f} 取蜗杆头数 z1 = {w.z1}。")
+    doc.h2("2. 按齿面接触疲劳强度设计")
+    doc.eq("a ≥ ∛{ K T2 (ZE Zρ / [σH])² }，ZE = 160 √MPa（钢蜗杆配青铜蜗轮）")
+    kh = wc.life_factor_contact(w.cycles)
+    doc.eq(f"蜗轮应力循环次数 N = 60 j n2 Lh = 60 × 1 × {w.speed2_rpm:.2f} × {i.life_hours:.0f} = {w.cycles:.3e}")
+    if mat.tin:
+        doc.eq(f"KHN = (10⁷/N)^(1/8) = {kh:.3f}；[σH] = KHN [σH]′ = {kh:.3f} × "
+               f"{mpa(mat.sigma_h0[1 if i.worm_hardened else 0], 0)} = {mpa(c.sigma_h_allow)} MPa")
+    else:
+        doc.p(f"无锡青铜蜗轮的主要失效形式是胶合，[σH] 按滑动速度 vs 查取：[σH] = {mpa(c.sigma_h_allow)} MPa。")
+    doc.eq(f"初估 Zρ = 2.9（d1/a ≈ 0.35）、K = {i.k_a:g} × {i.k_beta:g} × 1.05，按头数估取效率，"
+           f"求得 a ≥ {mm(w.a_required, 1)} mm")
+    doc.p(f"按 GB/T 10085 取标准中心距 a = {mm(w.a, 0)} mm，并按传动比误差小、变位系数小、直径系数 q 适中"
+          f"选模数和分度圆直径：m = {mm(w.m, 3).rstrip('0').rstrip('.')} mm，d1 = {mm(w.d1, 0)} mm（q = {w.q:.2f}），"
+          f"z2 = {w.z2}，蜗轮变位系数 x2 = (2a − d1 − m z2)/(2m) = {w.x2:+.3f}。")
+    doc.h2("3. 几何尺寸")
+    doc.table(["名称", "蜗杆", "蜗轮"], [
+        ["头数 / 齿数", str(w.z1), str(w.z2)],
+        ["模数 m / mm", mm(w.m), mm(w.m)],
+        ["分度圆直径 d / mm", mm(w.d1), mm(w.d2)],
+        ["齿顶圆直径 da / mm", mm(w.da1), mm(w.da2)],
+        ["齿根圆直径 df / mm", mm(w.df1), mm(w.df2)],
+        ["蜗轮外径 de2 / mm", "", mm(w.de2, 0)],
+        ["蜗轮齿顶圆弧半径 rg2 / mm", "", mm(w.throat_radius)],
+        ["导程角 γ", _dms(w.gamma), ""],
+        ["蜗杆螺纹长度 b1 / 蜗轮齿宽 b2 / mm", mm(w.b1, 0), mm(w.b2, 0)],
+        ["中心距 a / mm", mm(w.a, 0), ""],
+    ])
+    doc.h2("4. 效率")
+    phi = wc.friction_angle(w.sliding_velocity, mat.tin)
+    doc.eq(f"滑动速度 vs = π d1 n1 / (60 cos γ) = {w.sliding_velocity:.3f} m/s，"
+           f"当量摩擦角 φv = {_dms(phi)}（fv = {math.tan(phi):.4f}）")
+    doc.eq(f"η = (0.95～0.97) tan γ / tan(γ + φv) = 0.96 × {w.eta_mesh:.4f} = {w.eta:.4f}")
+    doc.h2("5. 强度校核")
+    doc.eq(f"蜗轮圆周速度 v2 = {w.wheel_velocity:.3f} m/s，动载系数 Kv = {c.k_v:g}；"
+           f"K = KA Kβ Kv = {i.k_a:g} × {i.k_beta:g} × {c.k_v:g} = {c.k:.3f}")
+    doc.eq(f"T2 = T1 i η = {i.torque1:.2f} × {w.u:.2f} × {w.eta:.4f} = {w.torque2:.1f} N·m；"
+           f"d1/a = {w.d1 / w.a:.3f}，Zρ = {c.z_rho:.3f}")
+    doc.eq(f"σH = ZE Zρ √(K T2 / a³) = {mpa(c.sigma_h)} MPa ≤ [σH] = {mpa(c.sigma_h_allow)} MPa，"
+           + ("满足" if c.sigma_h <= c.sigma_h_allow else "不满足"))
+    kf = wc.life_factor_bending(w.cycles)
+    doc.eq(f"当量齿数 zv2 = z2 / cos³γ = {c.zv2:.1f}，YFa2 = {c.y_fa2:.3f}，螺旋角系数 Yβ = 1 − γ/140° = {c.y_beta:.4f}")
+    doc.eq(f"KFN = (10⁶/N)^(1/9) = {kf:.3f}，[σF] = KFN [σF]′ = {kf:.3f} × "
+           f"{mpa(mat.sigma_f0[1 if i.two_sided else 0], 0)} = {mpa(c.sigma_f_allow)} MPa")
+    doc.eq(f"σF = 1.53 K T2 YFa2 Yβ / (d1 d2 m cos γ) = {mpa(c.sigma_f)} MPa ≤ [σF] = {mpa(c.sigma_f_allow)} MPa，"
+           + ("满足" if c.sigma_f <= c.sigma_f_allow else "不满足"))
+    doc.eq(f"啮合力：Ft1 = Fa2 = 2T1/d1 = {w.tangential_force1:.1f} N，Ft2 = Fa1 = 2T2/d2 = {w.tangential_force2:.1f} N，"
+           f"Fr = Ft2 tan α = {w.radial_force:.1f} N")
+    doc.h2("6. 蜗杆刚度校核")
+    st = d.stiffness
+    doc.p("把蜗杆螺纹部分看作以齿根圆直径为直径的简支梁，支点取两轴承压力中心。")
+    doc.eq(f"y = √(Ft1² + Fr²) L³ / (48 E I)，I = π df1⁴/64，L = {mm(st.span, 1)} mm，E = 206 GPa："
+           f"y = {st.deflection * 1e3:.4f} mm ≤ [y] = d1/1000 = {st.allowable * 1e3:.3f} mm，"
+           + ("满足" if st.ok else "不满足"))
+    doc.p(f"为缩短跨距，蜗杆轴承座做成伸入箱内的凸台，凸台端面离蜗杆中点 {mm(d.worm_shaft.seat_inner, 0)} mm，"
+          "以凸台外圆不碰蜗轮外圆为限。")
+    doc.h2("7. 热平衡计算")
+    th = d.thermal
+    doc.eq(f"t0 = ta + 1000 P1 (1 − η) / (αd S)，ta = {wc.AMBIENT:g} ℃，P1 = {th.power_in / 1e3:.3f} kW，"
+           f"η = η蜗杆 η轴承² = {th.eta:.4f}")
+    doc.eq(f"散热面积按经验式 S ≈ 9×10⁻⁵ a^1.88 = {th.area:.3f} m²，αd = {th.alpha_d:g} W/(m²·℃)（通风一般）")
+    doc.eq(f"t0 = {th.t_oil:.1f} ℃ " + ("≤" if th.ok else ">") + f" {wc.OIL_LIMIT:.0f} ℃，"
+           + ("满足" if th.ok else "不满足，需加散热片或风扇"))
+
+
 def _dms(rad: float) -> str:
     deg = math.degrees(rad)
     d = int(deg)
@@ -315,6 +416,11 @@ def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
     for g in lay.gears:
         if g.pair == "bevel":
             nm = "小锥齿轮" if g.member == 1 else "大锥齿轮"
+        elif g.pair == "worm":
+            if g.member == 1:
+                gear_note.append("蜗杆螺纹直接车制在轴上，做成蜗杆轴；螺纹两侧轴段直径不大于齿根圆，便于车削退刀")
+                continue
+            nm = "蜗轮"
         else:
             nm = f"{'高速级' if g.pair == 'high' else '低速级'}{'小' if g.member == 1 else '大'}齿轮"
         if g.integral:
@@ -325,7 +431,11 @@ def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
         else:
             gear_note.append(f"{nm}从{'左' if g.mount == 'left' else '右'}端装入，一侧靠轴环、另一侧用套筒定位")
     brg = lay.bearing
-    if pinion_shaft:
+    worm_shaft = any(g.pair == "worm" and g.member == 1 for g in lay.gears)
+    if worm_shaft:
+        brg_note = (f"两端各用一个圆锥滚子轴承 {brg.designation}，正装，装在伸入箱内的轴承座凸台中，两端单向固定，"
+                    "轴承内侧装挡油盘。各轴段尺寸如下（z 沿蜗杆轴线，自蜗杆螺纹中点量起）：")
+    elif pinion_shaft:
         brg_note = (f"一对圆锥滚子轴承 {brg.designation} 反装（背对背）在套杯中，小锥齿轮悬臂支承。"
                     "各轴段尺寸如下（z 自锥顶沿Ⅰ轴轴线向外量起）：")
     elif hasattr(brg, "Y"):
@@ -341,7 +451,8 @@ def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
     doc.p(f"轴承中心位置 zA = {mm(lay.bearing_z[0],1)} mm，zB = {mm(lay.bearing_z[1],1)} mm，支承跨距 "
           f"{mm(lay.bearing_z[1]-lay.bearing_z[0],1)} mm"
           + ("（圆锥滚子轴承取压力中心）" if hasattr(brg, "Y") else "")
-          + ("。x 沿Ⅱ轴轴线方向（水平面），y 为铅垂方向。" if pinion_shaft else "。x 为中心连线方向（水平面），y 为铅垂方向。"))
+          + ("。x 沿Ⅱ轴轴线方向（水平面），y 为铅垂方向。" if pinion_shaft or worm_shaft
+             else "。x 为中心连线方向（水平面），y 为铅垂方向。"))
     doc.table(["载荷", "z / mm", "Fx / N", "Fy / N", "Fz / N", "力偶 Fa·d/2 / (N·m)"],
               [[p.label, mm(p.z, 1), f(p.fx, 1), f(p.fy, 1), f(p.fz, 1), f(round(p.couple_xz, 2) + 0.0, 2)] for p in s.load_case.loads])
     r = s.strength.reactions
@@ -421,10 +532,11 @@ def _couplings(doc: Doc, d: ReducerDesign):
 
 def _housing(doc: Doc, d: ReducerDesign):
     h = d.housing
+    worm = _worm_scheme(d)
     _h1(doc, "箱体主要结构尺寸")
     doc.table(["名称", "公式", "取值 / mm"], [
-        ["箱座壁厚 δ", "0.025a + 3 ≥ 8", mm(h.delta, 1)],
-        ["箱盖壁厚 δ1", "0.02a + 3 ≥ 8", mm(h.delta1, 1)],
+        ["箱座壁厚 δ", "0.04a + 3 ≥ 8" if worm else "0.025a + 3 ≥ 8", mm(h.delta, 1)],
+        ["箱盖壁厚 δ1", "0.85δ ≥ 8" if worm else "0.02a + 3 ≥ 8", mm(h.delta1, 1)],
         ["箱座凸缘厚度 b", "1.5δ", mm(h.flange_base, 1)],
         ["箱盖凸缘厚度 b1", "1.5δ1", mm(h.flange_cover, 1)],
         ["箱座底凸缘厚度 b2", "2.5δ", mm(h.flange_foot, 1)],
@@ -435,13 +547,25 @@ def _housing(doc: Doc, d: ReducerDesign):
         ["齿轮端面与内壁距离 Δ2", "≥ δ", mm(h.gap_axial, 0)],
         ["大齿轮齿顶圆与内壁距离 Δ1", "≥ 1.2δ", mm(h.gap_radial, 0)],
         ["轴承端面与内壁距离 Δ3", "油润滑 3–5，脂润滑 8–12", mm(h.gap_bearing, 0)],
-        ["箱体内壁宽度", "2Δ2 + L大锥齿轮 + c + b低速小" if _bevel_scheme(d) else "2Δ2 + b低速小 + c + b高速小",
+        ["箱体内壁宽度", "2Δ2 + L大锥齿轮 + c + b低速小" if _bevel_scheme(d)
+         else "max(L蜗轮毂 + 2Δ2, da1 + 2Δ1)" if worm else "2Δ2 + b低速小 + c + b高速小",
          mm(h.inner_width, 1)],
     ])
-    doc.p(f"表中 a 取低速级中心距 {mm(d.low.a,0)} mm。")
+    if worm:
+        doc.p(f"表中 a 为蜗杆传动中心距 {mm(d.worm.a,0)} mm。蜗杆下置，蜗杆齿顶到箱底的油池深度取 40 mm。")
+    else:
+        doc.p(f"表中 a 取低速级中心距 {mm(d.low.a,0)} mm。")
 
 
 def _lubrication(doc: Doc, d: ReducerDesign):
+    if _worm_scheme(d):
+        w = d.worm
+        _h1(doc, "润滑与密封")
+        doc.p(f"滑动速度 vs = {w.sliding_velocity:.2f} m/s，采用浸油润滑。蜗杆下置，油面高度到蜗杆齿高的全部，"
+              "但不超过蜗杆轴承最低滚动体的中心。蜗轮蜗杆选用蜗轮蜗杆油（L-CKE，黏度按 vs 选取）。"
+              "蜗杆轴承靠蜗杆搅起的油润滑，内侧装挡油盘防止过多的油冲入轴承；蜗轮轴轴承转速低，用润滑脂润滑，"
+              "内侧加挡油环。伸出轴处采用唇形密封圈。")
+        return
     v = max(d.high.pitch_velocity, d.low.pitch_velocity)
     _h1(doc, "润滑与密封")
     dip = "大锥齿轮整个齿宽浸入油中" if _bevel_scheme(d) else "高速级大齿轮浸入油中约一个齿高"
@@ -467,6 +591,7 @@ def _refs(doc: Doc):
         "GB/T 3480.1-2019 直齿轮和斜齿轮承载能力计算；ISO 6336-1/2/3．",
         "W. D. Pilkey. Peterson's Stress Concentration Factors（阶梯轴圆角应力集中系数拟合公式）；R. G. Budynas, J. K. Nisbett. Shigley's Mechanical Engineering Design（敏感系数、尺寸系数、表面系数）．",
         "GB/T 13575.1-2008 普通和窄 V 带传动；GB/T 11544-2012 普通 V 带；GB/T 10412-2002 V 带轮．",
-        "GB/T 276-2013、GB/T 6391-2010 滚动轴承；GB/T 1095/1096-2003 平键；JB/T 10391-2008 Y 系列电动机．",
+        "GB/T 12368-1990 锥齿轮模数；GB/T 10085-2018 圆柱蜗杆传动基本参数；GB/T 10089-2018 圆柱蜗杆、蜗轮精度．",
+        "GB/T 276-2013、GB/T 297-2015、GB/T 6391-2010 滚动轴承；GB/T 1095/1096-2003 平键；JB/T 10391-2008 Y 系列电动机．",
     ]:
         doc.p(r)

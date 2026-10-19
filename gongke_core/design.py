@@ -60,15 +60,15 @@ class ReducerTask:
             scheme=str(d.get("scheme", "coupling")),
             belt_ratio=float((d.get("vbelt") or {}).get("ratio", 2.5)),
         )
-        if conveyor.scheme not in ("coupling", "vbelt", "bevel"):
-            raise ValueError(f"未知的传动方案 scheme: {conveyor.scheme}（可选 coupling、vbelt、bevel）")
+        if conveyor.scheme not in ("coupling", "vbelt", "bevel", "worm"):
+            raise ValueError(f"未知的传动方案 scheme: {conveyor.scheme}（可选 coupling、vbelt、bevel、worm）")
         gears = d.get("gears", {})
         shaft = d.get("shaft", {}) or {}
         return cls(
             title=d.get("title", "带式输送机传动装置设计"),
             conveyor=conveyor,
             bearing_life_hours=d.get("bearing_life_years", 3) * hours_per_year,
-            high=dict(gears.get("high", {})),
+            high=dict(gears.get("worm", {}) if conveyor.scheme == "worm" else gears.get("high", {})),
             low=dict(gears.get("low", {})),
             shaft_S_required=float(shaft.get("S_required", 1.5)),
             shaft_fit_k=float(shaft["k_sigma_fit"]) if shaft.get("k_sigma_fit") else None,
@@ -286,6 +286,10 @@ def _belt(task: ReducerTask, kin: kinematics.Kinematics) -> vbelt_calc.BeltDrive
 
 
 def run(task: ReducerTask) -> ReducerDesign:
+    if task.scheme == "worm":
+        from gongke_core import worm_design
+
+        return worm_design.run(task)
     if task.scheme == "bevel":
         from gongke_core import bevel_design
 

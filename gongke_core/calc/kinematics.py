@@ -2,8 +2,10 @@
 
 方案一（coupling）：电动机 → 联轴器 → 展开式二级圆柱齿轮减速器 → 联轴器 → 卷筒；
 方案二（vbelt）：电动机 → V 带传动 → 展开式二级圆柱齿轮减速器 → 联轴器 → 卷筒；
-方案三（bevel）：电动机 → 联轴器 → 圆锥-圆柱齿轮减速器 → 联轴器 → 卷筒。
-轴编号：0 电动机轴，1 高速轴，2 中间轴，3 低速轴，4 卷筒轴。
+方案三（bevel）：电动机 → 联轴器 → 圆锥-圆柱齿轮减速器 → 联轴器 → 卷筒；
+方案四（worm）：电动机 → 联轴器 → 单级蜗杆减速器（蜗杆下置）→ 联轴器 → 卷筒。
+轴编号：0 电动机轴，1 高速轴，2 中间轴，3 低速轴，4 卷筒轴；蜗杆减速器只有两根轴：
+0 电动机轴，1 蜗杆轴，2 蜗轮轴，3 卷筒轴。
 """
 
 from __future__ import annotations
@@ -24,8 +26,11 @@ class Efficiencies:
     drum: float = 0.96  # 卷筒（含卷筒轴承）
     belt: float = 0.96  # V 带传动
     bevel_pair: float = 0.96  # 8 级精度闭式直齿锥齿轮
+    worm_pair: float = 0.80  # 蜗杆传动（含搅油损失）的初估值，双头蜗杆 0.75～0.82；设计后按实际值重算
 
     def total(self, scheme: str = "coupling") -> float:
+        if scheme == "worm":  # 联轴器 ×2，轴承 ×2 对，蜗杆传动 ×1，卷筒 ×1
+            return self.coupling**2 * self.bearing_pair**2 * self.worm_pair * self.drum
         # 联轴器 ×2（V 带方案为 V 带 ×1、联轴器 ×1），轴承 ×3 对（减速器三根轴），齿轮 ×2，卷筒 ×1
         first = self.belt if scheme == "vbelt" else self.coupling
         gears = self.bevel_pair * self.gear_pair if scheme == "bevel" else self.gear_pair**2
@@ -43,7 +48,7 @@ class ConveyorTask:
     sync_speed_rpm: float = 1500
     efficiencies: Efficiencies = field(default_factory=Efficiencies)
     ratio_split: float = 1.3  # i1 = sqrt(ratio_split · i)
-    scheme: str = "coupling"  # coupling：电动机直连；vbelt：电动机经 V 带传动；bevel：圆锥-圆柱齿轮减速器
+    scheme: str = "coupling"  # coupling：电动机直连；vbelt：电动机经 V 带传动；bevel：圆锥-圆柱齿轮减速器；worm：蜗杆减速器
     belt_ratio: float = 2.5  # V 带传动比（推荐 2～4，宜小于齿轮传动比）
 
 
@@ -100,6 +105,8 @@ def solve(task: ConveyorTask, i_belt: float | None = None, i_high: float | None 
     """i_belt 为 V 带的实际传动比（带轮直径圆整后），不给出时取任务书的预定值；
     i_high 指定高速级传动比（不给出时按经验分配）。"""
     eff = task.efficiencies
+    if task.scheme == "worm":
+        return _solve_worm(task)
     vbelt = task.scheme == "vbelt"
     i_b = (i_belt or task.belt_ratio) if vbelt else 1.0
     pw = task.belt_pull * task.belt_speed
@@ -130,3 +137,29 @@ def solve(task: ConveyorTask, i_belt: float | None = None, i_high: float | None 
         for nm, p, n in zip(names, [p0, p1, p2, p3, p4], speeds)
     ]
     return Kinematics(task, pw, eta, pd, motor, nw, i, i1, i2, shafts, i_b)
+
+
+def worm_starts_estimate_eta(i: float) -> float:
+    """按传动比对应的蜗杆头数初估蜗杆传动效率（含搅油损失）。课程设计指导书的常用估计值：
+    z1 = 1 取 0.70～0.75，z1 = 2 取 0.75～0.82，z1 = 4 取 0.87～0.92。"""
+    return 0.75 if i > 30 else 0.80 if i > 13.5 else 0.87
+
+
+def _solve_worm(task: ConveyorTask) -> Kinematics:
+    """蜗杆减速器：总传动比全部由蜗杆传动承担。task.efficiencies.worm_pair 为蜗杆传动效率（初估或实际值）。"""
+    eff = task.efficiencies
+    pw = task.belt_pull * task.belt_speed
+    eta = eff.total("worm")
+    pd = pw / eta
+    motor = standards.select_motor(pd, task.sync_speed_rpm)
+    nw = drum_speed(task.belt_speed, task.drum_diameter)
+    i = motor.speed_rpm / nw
+    p0 = pd
+    p1 = p0 * eff.coupling
+    p2 = p1 * eff.bearing_pair * eff.worm_pair
+    p3 = p2 * eff.bearing_pair * eff.coupling
+    n0 = motor.speed_rpm
+    speeds = [n0, n0, n0 / i, n0 / i]
+    names = ["电动机轴", "Ⅰ轴（蜗杆轴）", "Ⅱ轴（蜗轮轴）", "卷筒轴"]
+    shafts = [ShaftState(nm, p, n, torque_from_power(p, n)) for nm, p, n in zip(names, [p0, p1, p2, p3], speeds)]
+    return Kinematics(task, pw, eta, pd, motor, nw, i, i, 1.0, shafts, 1.0)

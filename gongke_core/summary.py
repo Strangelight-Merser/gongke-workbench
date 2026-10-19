@@ -10,7 +10,18 @@ from gongke_core.design import ReducerDesign
 def summarize(d: ReducerDesign) -> dict:
     k = d.kin
     gears = {}
-    for key, p in (("high", d.high), ("low", d.low)):
+    if d.task.scheme == "worm":
+        w = d.worm
+        gears["worm"] = {
+            "name": w.inp.name, "type": "worm", "m": w.m * 1e3, "z1": w.z1, "z2": w.z2, "a": w.a * 1e3,
+            "d1": w.d1 * 1e3, "d2": w.d2 * 1e3, "x2": w.x2, "gamma_deg": math.degrees(w.gamma),
+            "eta": w.eta, "sliding_velocity": w.sliding_velocity, "wheel_material": w.material.name,
+            "sigma_h": w.check.sigma_h / 1e6, "sigma_h_allow": w.check.sigma_h_allow / 1e6,
+            "sigma_f": [w.check.sigma_f / 1e6], "sigma_f_allow": [w.check.sigma_f_allow / 1e6],
+            "oil_temp": d.thermal.t_oil, "deflection_mm": d.stiffness.deflection * 1e3,
+        }
+    pairs = () if d.task.scheme == "worm" else (("high", d.high), ("low", d.low))
+    for key, p in pairs:
         if not hasattr(p, "mn"):  # 直齿锥齿轮
             gears[key] = {
                 "name": p.inp.name, "type": "bevel", "m": p.m * 1e3, "z1": p.z1, "z2": p.z2,
@@ -48,7 +59,7 @@ def summarize(d: ReducerDesign) -> dict:
         "scheme": d.task.scheme,
         "belt": belt,
         "motor": {"model": k.motor.model, "power_kw": k.motor.power / 1e3, "speed_rpm": k.motor.speed_rpm},
-        "ratios": {"total": k.total_ratio, "belt": k.i_belt, "high": d.high.u, "low": d.low.u, "speed_error_pct": d.output_speed_error * 100},
+        "ratios": {"total": k.total_ratio, "belt": k.i_belt, "high": d.high.u, "low": d.low.u if hasattr(d, "low") else None, "speed_error_pct": d.output_speed_error * 100},
         "shaft_states": [{"name": s.name, "power_kw": s.power / 1e3, "speed_rpm": s.speed_rpm, "torque_nm": s.torque}
                          for s in k.shafts],
         "gears": gears,

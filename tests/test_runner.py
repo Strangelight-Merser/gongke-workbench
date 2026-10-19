@@ -54,3 +54,16 @@ def test_cli_bevel_scheme(tmp_path):
     assert runner.gear_line(g["high"]).startswith("直齿锥齿轮")
     assert runner.gear_line(g["low"]).startswith("mn=")
     assert "直齿锥齿轮传动设计" in (tmp_path / "report.md").read_text(encoding="utf-8")
+
+
+def test_cli_worm_scheme(tmp_path):
+    # 蜗杆方案：说明书有蜗杆传动、热平衡章节；面板显示蜗杆参数
+    path = runner.write_task(runner.FormValues(scheme="worm", belt_pull_N=2300, belt_speed_m_s=0.9,
+                                               drum_diameter_mm=320), tmp_path)
+    prog, args, cwd = runner.command(sys.executable, path, tmp_path, step=False, drawings=False)
+    p = subprocess.run([prog] + args, cwd=cwd, env=runner.environment(), capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    out = runner.read_outputs(tmp_path)
+    assert runner.gears_html(out["summary"]["gears"]).startswith("<b>蜗杆传动</b> m=")
+    text = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "蜗杆传动设计" in text and "热平衡计算" in text and "蜗杆刚度校核" in text

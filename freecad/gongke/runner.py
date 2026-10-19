@@ -30,7 +30,7 @@ class FormValues:
     gear_material: str = "45_QT"
     grade: int = 8
     title: str = "带式输送机传动装置设计"
-    scheme: str = "coupling"  # coupling / vbelt
+    scheme: str = "coupling"  # SCHEMES 之一
     belt_ratio: float = 2.5
 
 
@@ -90,9 +90,22 @@ def environment() -> dict:
 
 def gear_line(g: dict) -> str:
     """面板上一级齿轮的简要参数。"""
+    if g.get("type") == "worm":
+        return (f"m={g['m']:.2f} z={g['z1']}/{g['z2']} a={g['a']:.0f} mm，η={g['eta']:.2f}，"
+                f"油温 {g['oil_temp']:.0f} ℃")
     if g.get("type") == "bevel":
         return f"直齿锥齿轮 m={g['m']:.2f} z={g['z1']}/{g['z2']} R={g['R']:.0f} mm"
     return f"mn={g['mn']:.2f} z={g['z1']}/{g['z2']} a={g['a']:.0f} mm"
+
+
+def gears_html(gears: dict) -> str:
+    """面板上的传动件一行。"""
+    if "worm" in gears:
+        return f"<b>蜗杆传动</b> {gear_line(gears['worm'])}"
+    return f"<b>高速级</b> {gear_line(gears['high'])}；<b>低速级</b> {gear_line(gears['low'])}"
+
+
+SCHEMES = ("coupling", "vbelt", "bevel", "worm")
 
 
 def read_outputs(out_dir: Path) -> dict:

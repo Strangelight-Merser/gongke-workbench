@@ -164,6 +164,19 @@ def bevel_modules() -> list[float]:
     return [v * 1e-3 for v in load("standards/GB-T_12368-1990_bevel_modules.yaml")["modules"]]
 
 
+def worm_module_d1() -> list[tuple[float, float]]:
+    """蜗杆 (m, d1) 的标准搭配（GB/T 10085-2018），单位 m。"""
+    rows = load("standards/GB-T_10085-2018_worm_parameters.yaml")["module_d1"]
+    return [(m * 1e-3, d1 * 1e-3) for m, d1s in rows for d1 in d1s]
+
+
+def worm_center_distances(include_series_2: bool = False) -> list[float]:
+    """蜗杆传动中心距推荐值（GB/T 10085-2018），单位 m。"""
+    data = load("standards/GB-T_10085-2018_worm_parameters.yaml")
+    vals = data["center_distance_series_1"] + (data["center_distance_series_2"] if include_series_2 else [])
+    return sorted(v * 1e-3 for v in vals)
+
+
 # ---------------------------------------------------------------- 齿形系数、材料
 
 def form_factors(zv: float) -> tuple[float, float]:
