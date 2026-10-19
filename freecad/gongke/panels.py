@@ -33,7 +33,8 @@ class ReducerTaskPanel:
         self.sync = QtGui.QComboBox()
         self.sync.addItems(["1500 r/min（4 极）", "1000 r/min（6 极）"])
         self.scheme = QtGui.QComboBox()
-        self.scheme.addItems(["电动机 → 联轴器 → 减速器", "电动机 → V 带 → 减速器"])
+        self.scheme.addItems(["电动机 → 联轴器 → 展开式二级圆柱齿轮减速器", "电动机 → V 带 → 展开式二级圆柱齿轮减速器",
+                              "电动机 → 联轴器 → 圆锥-圆柱齿轮减速器（暂无模型和图纸）"])
         self.belt_ratio = self._spin(1.5, 4, 2.5, 1, "")
         self.belt_ratio.setEnabled(False)
         self.scheme.currentIndexChanged.connect(lambda i: self.belt_ratio.setEnabled(i == 1))
@@ -98,7 +99,7 @@ class ReducerTaskPanel:
             sync_speed_rpm=1500 if self.sync.currentIndex() == 0 else 1000,
             pinion_material=self.mat1.currentData(), gear_material=self.mat2.currentData(),
             grade=int(self.grade.currentText()),
-            scheme="vbelt" if self.scheme.currentIndex() == 1 else "coupling", belt_ratio=self.belt_ratio.value(),
+            scheme=("coupling", "vbelt", "bevel")[self.scheme.currentIndex()], belt_ratio=self.belt_ratio.value(),
         )
 
     def run(self):
@@ -140,8 +141,7 @@ class ReducerTaskPanel:
         g = s["gears"]
         html = (
             f"<p><b>电动机</b> {s['motor']['model']}（{s['motor']['power_kw']} kW，{s['motor']['speed_rpm']:.0f} r/min）</p>"
-            f"<p><b>高速级</b> mn={g['high']['mn']:.2f} z={g['high']['z1']}/{g['high']['z2']} a={g['high']['a']:.0f} mm；"
-            f"<b>低速级</b> mn={g['low']['mn']:.2f} z={g['low']['z1']}/{g['low']['z2']} a={g['low']['a']:.0f} mm</p>"
+            f"<p><b>高速级</b> {runner.gear_line(g['high'])}；<b>低速级</b> {runner.gear_line(g['low'])}</p>"
             f"<table border='1' cellspacing='0' cellpadding='2'>{rows}</table>"
         )
         labels = {"reducer_assembly.step": "三维装配体（STEP）", "report.docx": "计算说明书（Word）",

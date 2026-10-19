@@ -88,6 +88,36 @@ def bearings_with_bore(d: float) -> list[Bearing]:
     return sorted((b for b in deep_groove_ball_bearings() if abs(b.d - d) < 1e-6), key=lambda b: b.Cr)
 
 
+@dataclass(frozen=True)
+class TaperedBearing(Bearing):
+    """圆锥滚子轴承。B 取装配宽度 T（布置时占用的轴向长度），内、外圈宽另记。"""
+
+    b_inner: float
+    c_outer: float
+    e: float
+    Y: float
+    Y0: float
+
+    @property
+    def T(self) -> float:
+        return self.B
+
+    @property
+    def a(self) -> float:
+        """压力中心到外圈宽端面（背面）的距离的近似 a ≈ T/2 + (d + D) e / 6。"""
+        return self.B / 2 + (self.d + self.D) * self.e / 6
+
+
+def tapered_roller_bearings() -> list[TaperedBearing]:
+    rows = load("standards/GB-T_297-2015_tapered_roller_bearings.yaml")["bearings"]
+    return [TaperedBearing(str(r[0]), r[1] * 1e-3, r[2] * 1e-3, r[3] * 1e-3, r[6] * 1e3, r[7] * 1e3,
+                           r[4] * 1e-3, r[5] * 1e-3, r[8], r[9], r[10]) for r in rows]
+
+
+def tapered_with_bore(d: float) -> list[TaperedBearing]:
+    return sorted((b for b in tapered_roller_bearings() if abs(b.d - d) < 1e-6), key=lambda b: b.Cr)
+
+
 def radial_load_factors(fa_c0r: float) -> tuple[float, float, float]:
     """深沟球轴承：按 Fa/C0r 插值得到 (e, X, Y)，其中 X、Y 用于 Fa/Fr > e 的情况。"""
     tab = load("standards/GB-T_6391-2010_radial_ball_load_factors.yaml")
@@ -127,6 +157,11 @@ def key_lengths() -> list[float]:
 def standard_modules(series: int = 1) -> list[float]:
     tab = load("standards/GB-T_1357-2008_modules.yaml")
     return [v * 1e-3 for v in tab["series_1" if series == 1 else "series_2"]]
+
+
+def bevel_modules() -> list[float]:
+    """锥齿轮大端模数（GB/T 12368-1990）。"""
+    return [v * 1e-3 for v in load("standards/GB-T_12368-1990_bevel_modules.yaml")["modules"]]
 
 
 # ---------------------------------------------------------------- 齿形系数、材料

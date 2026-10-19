@@ -88,6 +88,13 @@ def environment() -> dict:
     return env
 
 
+def gear_line(g: dict) -> str:
+    """面板上一级齿轮的简要参数。"""
+    if g.get("type") == "bevel":
+        return f"直齿锥齿轮 m={g['m']:.2f} z={g['z1']}/{g['z2']} R={g['R']:.0f} mm"
+    return f"mn={g['mn']:.2f} z={g['z1']}/{g['z2']} a={g['a']:.0f} mm"
+
+
 def read_outputs(out_dir: Path) -> dict:
     out_dir = Path(out_dir)
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))

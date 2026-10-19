@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="gongke_core", description="工科工作台：二级圆柱齿轮减速器设计")
+    ap = argparse.ArgumentParser(prog="gongke_core", description="工科工作台：带式输送机传动装置（二级减速器）设计")
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("design", help="按任务书完成设计计算，生成说明书和三维模型")
     d.add_argument("task", help="任务书 YAML 文件")
@@ -46,7 +46,10 @@ def main(argv: list[str] | None = None) -> int:
         except ImportError:
             print("未安装 python-docx，跳过 Word 说明书", file=sys.stderr)
     print(f"计算完成（{time.time()-t0:.1f} s）：{'全部校核通过' if res.ok else '有校核项不满足，见 summary.json'}")
-    if not args.no_drawings:
+    no_geometry = res.task.scheme == "bevel"
+    if no_geometry:
+        print("圆锥-圆柱齿轮减速器方案暂不生成三维模型和工程图（后续版本提供）", file=sys.stderr)
+    if not args.no_drawings and not no_geometry:
         try:
             from gongke_core import drawing
             from gongke_core.drawing import render  # noqa: F401  需要 ezdxf
@@ -59,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
                       "svg": f.svg.name if f.svg else None} for f in files]
             (out / "drawings" / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
             print(f"工程图已生成（{time.time()-t1:.1f} s）：{len(files)} 张，见 {out / 'drawings'}")
-    if not args.no_step:
+    if not args.no_step and not no_geometry:
         from gongke_core.geometry import assembly
         t1 = time.time()
         assembly.export(res, out / "reducer_assembly.step", with_housing=not args.no_housing, teeth=args.full_teeth)

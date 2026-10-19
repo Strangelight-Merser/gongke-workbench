@@ -1,7 +1,8 @@
 """传动装置的总体设计：工作机功率、电动机选择、传动比分配、各轴运动和动力参数。
 
 方案一（coupling）：电动机 → 联轴器 → 展开式二级圆柱齿轮减速器 → 联轴器 → 卷筒；
-方案二（vbelt）：电动机 → V 带传动 → 展开式二级圆柱齿轮减速器 → 联轴器 → 卷筒。
+方案二（vbelt）：电动机 → V 带传动 → 展开式二级圆柱齿轮减速器 → 联轴器 → 卷筒；
+方案三（bevel）：电动机 → 联轴器 → 圆锥-圆柱齿轮减速器 → 联轴器 → 卷筒。
 轴编号：0 电动机轴，1 高速轴，2 中间轴，3 低速轴，4 卷筒轴。
 """
 
@@ -22,11 +23,13 @@ class Efficiencies:
     gear_pair: float = 0.97  # 8 级精度闭式圆柱齿轮
     drum: float = 0.96  # 卷筒（含卷筒轴承）
     belt: float = 0.96  # V 带传动
+    bevel_pair: float = 0.96  # 8 级精度闭式直齿锥齿轮
 
     def total(self, scheme: str = "coupling") -> float:
         # 联轴器 ×2（V 带方案为 V 带 ×1、联轴器 ×1），轴承 ×3 对（减速器三根轴），齿轮 ×2，卷筒 ×1
         first = self.belt if scheme == "vbelt" else self.coupling
-        return first * self.coupling * self.bearing_pair**3 * self.gear_pair**2 * self.drum
+        gears = self.bevel_pair * self.gear_pair if scheme == "bevel" else self.gear_pair**2
+        return first * self.coupling * self.bearing_pair**3 * gears * self.drum
 
 
 @dataclass
@@ -40,7 +43,7 @@ class ConveyorTask:
     sync_speed_rpm: float = 1500
     efficiencies: Efficiencies = field(default_factory=Efficiencies)
     ratio_split: float = 1.3  # i1 = sqrt(ratio_split · i)
-    scheme: str = "coupling"  # coupling：电动机直连；vbelt：电动机经 V 带传动
+    scheme: str = "coupling"  # coupling：电动机直连；vbelt：电动机经 V 带传动；bevel：圆锥-圆柱齿轮减速器
     belt_ratio: float = 2.5  # V 带传动比（推荐 2～4，宜小于齿轮传动比）
 
 
@@ -81,14 +84,21 @@ def drum_speed(belt_speed: float, drum_diameter: float) -> float:
     return 60 * belt_speed / (math.pi * drum_diameter)
 
 
+def split_ratio_bevel(i_total: float) -> tuple[float, float]:
+    """圆锥-圆柱齿轮减速器：锥齿轮传动比 i1 ≈ 0.25 i，且不大于 3（避免大锥齿轮过大），i2 = i / i1。"""
+    i1 = min(0.25 * i_total, 3.0)
+    return i1, i_total / i1
+
+
 def split_ratio(i_total: float, k: float = 1.3) -> tuple[float, float]:
     """展开式二级减速器传动比分配：i1 = √(k·i)，i2 = i / i1，k 取 1.3–1.5。"""
     i1 = math.sqrt(k * i_total)
     return i1, i_total / i1
 
 
-def solve(task: ConveyorTask, i_belt: float | None = None) -> Kinematics:
-    """i_belt 为 V 带的实际传动比（带轮直径圆整后），不给出时取任务书的预定值。"""
+def solve(task: ConveyorTask, i_belt: float | None = None, i_high: float | None = None) -> Kinematics:
+    """i_belt 为 V 带的实际传动比（带轮直径圆整后），不给出时取任务书的预定值；
+    i_high 指定高速级传动比（不给出时按经验分配）。"""
     eff = task.efficiencies
     vbelt = task.scheme == "vbelt"
     i_b = (i_belt or task.belt_ratio) if vbelt else 1.0
@@ -98,12 +108,17 @@ def solve(task: ConveyorTask, i_belt: float | None = None) -> Kinematics:
     motor = standards.select_motor(pd, task.sync_speed_rpm)
     nw = drum_speed(task.belt_speed, task.drum_diameter)
     i = motor.speed_rpm / nw
-    i1, i2 = split_ratio(i / i_b, task.ratio_split)
+    if i_high:
+        i1, i2 = i_high, i / i_b / i_high
+    elif task.scheme == "bevel":
+        i1, i2 = split_ratio_bevel(i / i_b)
+    else:
+        i1, i2 = split_ratio(i / i_b, task.ratio_split)
 
     # 按电动机所需功率 Pd（而不是额定功率）计算各轴功率，这是课程设计的通常做法
     p0 = pd
     p1 = p0 * (eff.belt if vbelt else eff.coupling)
-    p2 = p1 * eff.bearing_pair * eff.gear_pair
+    p2 = p1 * eff.bearing_pair * (eff.bevel_pair if task.scheme == "bevel" else eff.gear_pair)
     p3 = p2 * eff.bearing_pair * eff.gear_pair
     p4 = p3 * eff.bearing_pair * eff.coupling
     n0 = motor.speed_rpm

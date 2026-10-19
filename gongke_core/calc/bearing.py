@@ -1,4 +1,4 @@
-"""深沟球轴承的当量动载荷与寿命计算。"""
+"""滚动轴承（深沟球轴承、圆锥滚子轴承）的当量动载荷与寿命计算。"""
 
 from __future__ import annotations
 
@@ -55,3 +55,34 @@ def check_pair(bearing: standards.Bearing, fr_a: float, fr_b: float, axial: floa
         tuple(r[0] for r in res), tuple(r[1] for r in res),
         tuple(r[2] for r in res), tuple(r[3] for r in res), lives, required_hours,
     )
+
+
+def check_tapered_pair(bearing: standards.TaperedBearing, fr_a: float, fr_b: float, axial: float,
+                       speed_rpm: float, required_hours: float, f_p: float = 1.1,
+                       arrangement: str = "正装") -> BearingCheck:
+    """一对圆锥滚子轴承（A 在 z 较小一侧）。axial 为外加轴向合力（沿 +z 为正）。
+
+    派生轴向力 Fd = Fr / (2Y)（濮良贵《机械设计》表 13-7）。正装（面对面）时 A 端轴承限制轴向 −z 移动、
+    B 端限制 +z 移动；反装（背对背）相反。被"压紧"的轴承 Fa = 外力 + 对方的 Fd，被"放松"的轴承 Fa = 自身 Fd。
+    当量动载荷：Fa/Fr ≤ e 时 X = 1、Y = 0，否则 X = 0.4、Y 查表；寿命指数 ε = 10/3。
+    """
+    fd = (fr_a / (2 * bearing.Y), fr_b / (2 * bearing.Y))
+    # 承受 +z 方向轴向推力的轴承（P）和承受 −z 方向推力的轴承（N）
+    p_idx, n_idx = (1, 0) if arrangement == "正装" else (0, 1)
+    fa = [0.0, 0.0]
+    if axial + fd[n_idx] >= fd[p_idx]:
+        fa[p_idx], fa[n_idx] = axial + fd[n_idx], fd[n_idx]
+    else:
+        fa[n_idx], fa[p_idx] = fd[p_idx] - axial, fd[p_idx]
+    ps, xs, ys = [], [], []
+    for fr, f in zip((fr_a, fr_b), fa):
+        if fr > 0 and f / fr <= bearing.e:
+            x, y = 1.0, 0.0
+        else:
+            x, y = 0.4, bearing.Y
+        ps.append(f_p * (x * fr + y * f))
+        xs.append(x)
+        ys.append(y)
+    lives = tuple(life_hours(bearing.Cr, p, speed_rpm, 10 / 3) for p in ps)
+    return BearingCheck(bearing, (fr_a, fr_b), tuple(fa), tuple(ps), (bearing.e, bearing.e), tuple(xs), tuple(ys),
+                        lives, required_hours)

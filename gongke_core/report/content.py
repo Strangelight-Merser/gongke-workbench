@@ -44,7 +44,10 @@ def build(d: ReducerDesign, with_diagrams: bool = True) -> Doc:
     if d.belt:
         _belt(doc, d)
     for p in (d.high, d.low):
-        _gear(doc, p)
+        if _is_bevel(p):
+            _bevel(doc, p)
+        else:
+            _gear(doc, p)
     for s in d.shafts:
         _shaft(doc, s, with_diagrams)
     _bearings(doc, d)
@@ -57,11 +60,20 @@ def build(d: ReducerDesign, with_diagrams: bool = True) -> Doc:
     return doc
 
 
+def _is_bevel(p) -> bool:
+    return not hasattr(p, "mn")
+
+
+def _bevel_scheme(d) -> bool:
+    return _is_bevel(d.high)
+
+
 def _task(doc: Doc, d: ReducerDesign):
     t = d.task.conveyor
     _h1(doc, "设计任务")
     first = "普通 V 带传动" if d.belt else "弹性联轴器"
-    doc.p(f"设计带式输送机的传动装置。传动方案为：电动机 → {first} → 展开式二级斜齿圆柱齿轮减速器 → "
+    red = "圆锥-圆柱齿轮减速器" if _bevel_scheme(d) else "展开式二级斜齿圆柱齿轮减速器"
+    doc.p(f"设计带式输送机的传动装置。传动方案为：电动机 → {first} → {red} → "
           "弹性联轴器 → 卷筒。原始数据如下：")
     doc.table(["参数", "数值"], [
         ["输送带工作拉力 F", f"{t.belt_pull:.0f} N"],
@@ -73,6 +85,10 @@ def _task(doc: Doc, d: ReducerDesign):
     if d.belt:
         doc.p("V 带传动布置在高速级：带传动平稳、能缓冲吸振，过载时打滑起保护作用，放在转速高、转矩小的一级"
               "可以减小带传动的尺寸。")
+    if _bevel_scheme(d):
+        doc.p("高速级用直齿锥齿轮改变传动方向，使电动机轴线与卷筒轴线垂直、布置紧凑。锥齿轮放在高速级，"
+              "转矩小、尺寸小，便于加工。小锥齿轮悬臂支承在一对反装的圆锥滚子轴承上。")
+        return
     inp = "带轮" if d.belt else "输入联轴器"
     doc.p(f"展开式布置中，高速级齿轮布置在远离{inp}的一侧，低速级齿轮布置在远离输出联轴器的一侧，"
           "使轴的扭转变形部分抵消弯曲变形引起的载荷沿齿宽分布不均。")
@@ -87,6 +103,9 @@ def _motor(doc: Doc, d: ReducerDesign):
     if d.belt:
         doc.eq(f"传动装置总效率 η = η带 · η联 · η轴承³ · η齿轮² · η卷筒 = {e.belt} × {e.coupling} × {e.bearing_pair}³ × "
                f"{e.gear_pair}² × {e.drum} = {k.eta_total:.4f}")
+    elif _bevel_scheme(d):
+        doc.eq(f"传动装置总效率 η = η联² · η轴承³ · η锥齿轮 · η齿轮 · η卷筒 = {e.coupling}² × {e.bearing_pair}³ × "
+               f"{e.bevel_pair} × {e.gear_pair} × {e.drum} = {k.eta_total:.4f}")
     else:
         doc.eq(f"传动装置总效率 η = η联² · η轴承³ · η齿轮² · η卷筒 = {e.coupling}² × {e.bearing_pair}³ × "
                f"{e.gear_pair}² × {e.drum} = {k.eta_total:.4f}")
@@ -109,6 +128,12 @@ def _ratios(doc: Doc, d: ReducerDesign):
         doc.eq(f"减速器传动比 i减 = i / i带 = {k.total_ratio:.3f} / {b.ratio:.3f} = {k.reducer_ratio:.3f}")
         doc.eq(f"高速级 i1 = √({t.ratio_split} i减) = {k.i_high:.3f}，低速级 i2 = i减 / i1 = {k.i_low:.3f}")
         tot = f"i带 i1' i2' = {d.actual_ratio:.3f}"
+    elif _bevel_scheme(d):
+        doc.eq(f"锥齿轮传动比 i1 ≈ 0.25 i，且直齿锥齿轮一般不大于 3；取 i1 = {k.i_high:.3f}，圆柱齿轮 i2 = i / i1 = {k.i_low:.3f}")
+        if k.i_high > 3 + 1e-9:
+            doc.p("按经验分配时低速级大齿轮比大锥齿轮大得多，大锥齿轮浸油时低速级大齿轮浸得过深，"
+                  "因此适当加大了锥齿轮传动比。")
+        tot = f"{d.actual_ratio:.3f}"
     else:
         doc.eq(f"高速级 i1 = √({t.ratio_split} i) = {k.i_high:.3f}，低速级 i2 = i / i1 = {k.i_low:.3f}")
         tot = f"{d.actual_ratio:.3f}"
@@ -216,6 +241,56 @@ def _belt(doc: Doc, d: ReducerDesign):
     doc.note("P0、KL 数据和带型选择为程序按表试算的结果，提交前请对照教材表 8-4、8-2 和图 8-11 核对。")
 
 
+def _bevel(doc: Doc, p):
+    from gongke_core import standards
+    i = p.inp
+    c = p.check
+    m1, m2 = standards.gear_material(i.material1), standards.gear_material(i.material2)
+    phi = i.phi_r
+    _h1(doc, f"{i.name}直齿锥齿轮传动设计")
+    doc.h2("1. 选择材料、精度和齿数")
+    doc.p(f"小锥齿轮 {m1.name}，{m1.hardness_hb:.0f} HBW；大锥齿轮 {m2.name}，{m2.hardness_hb:.0f} HBW；软齿面闭式传动，"
+          f"轴交角 Σ = 90°。精度等级 {i.grade} 级（GB/T 11365）。初选 z1 = {i.z1}，齿宽系数 φR = b/R = {phi:g}。")
+    doc.h2("2. 许用应力")
+    doc.eq(f"应力循环次数 N1 = 60 n1 j Lh = {p.cycles[0]:.3e}，N2 = N1 / u = {p.cycles[1]:.3e}")
+    doc.eq(f"KHN1 = {p.k_hn[0]:.3f}，KHN2 = {p.k_hn[1]:.3f}；KFN1 = {p.k_fn[0]:.3f}，KFN2 = {p.k_fn[1]:.3f}")
+    doc.eq(f"[σH] = {mpa(p.sigma_h_allow)} MPa；[σF]1 = {mpa(p.sigma_f_allow[0])} MPa，[σF]2 = {mpa(p.sigma_f_allow[1])} MPa")
+    doc.h2("3. 按齿面接触疲劳强度设计")
+    doc.eq(f"d1t ≥ ∛{{ 4 KHt T1 / [φR (1 − 0.5φR)² u] · (ZH ZE / [σH])² }}，KHt = 1.3，ZH = 2.5，ZE = 189.8 √MPa，"
+           f"T1 = {i.torque1*1e3:.0f} N·mm")
+    doc.eq(f"试算 d1t = {mm(p.d1_trial)} mm；KHβ = 1.5 KHβbe = 1.5 × {i.k_hbeta_be:g}（小锥齿轮悬臂），"
+           f"Kv 按平均分度圆速度、精度降低一级取；修正后 d1 = {mm(p.d1_design)} mm")
+    doc.h2("4. 按齿根弯曲疲劳强度设计")
+    doc.eq("m ≥ ∛{ 4 KFt T1 / [φR (1 − 0.5φR)² z1² √(u² + 1)] · YFa YSa / [σF] }，YFa、YSa 按当量齿数 zv = z / cos δ 查取")
+    doc.eq(f"试算 mt = {mm(p.m_trial, 3)} mm；修正后 m = {mm(p.m_design, 3)} mm")
+    doc.h2("5. 几何尺寸")
+    doc.p(f"取大端模数 m = {mm(p.m, 3).rstrip('0').rstrip('.')} mm（GB/T 12368），按接触强度所需 d1 取 z1 = {p.z1}，"
+          f"z2 = {p.z2}，u = {p.u:.3f}。")
+    doc.table(["名称", "小锥齿轮", "大锥齿轮"], [
+        ["齿数 z", str(p.z1), str(p.z2)],
+        ["大端模数 m / mm", mm(p.m), mm(p.m)],
+        ["分锥角 δ", _dms(p.delta1), _dms(p.delta2)],
+        ["分度圆直径 d / mm", mm(p.d1, 3), mm(p.d2, 3)],
+        ["齿顶圆直径 da / mm", mm(p.da1, 3), mm(p.da2, 3)],
+        ["齿根圆直径 df / mm", mm(p.df1, 3), mm(p.df2, 3)],
+        ["锥距 R / mm", mm(p.cone_distance, 3), ""],
+        ["齿宽 b / mm", mm(p.b, 0), mm(p.b, 0)],
+        ["平均分度圆直径 dm / mm", mm(p.dm1, 3), mm(p.dm2, 3)],
+    ])
+    doc.h2("6. 强度校核")
+    doc.eq(f"平均分度圆圆周速度 vm = {p.pitch_velocity:.3f} m/s；K = KA Kv KHα KHβ = {i.k_a:g} × {c.k_v:.3f} × "
+           f"{c.k_alpha:.2f} × {c.k_hbeta:.3f} = {c.k_h:.3f}")
+    doc.eq(f"σH = ZH ZE √{{4 K T1 / [φR (1 − 0.5φR)² d1³ u]}} = {mpa(c.sigma_h)} MPa ≤ [σH] = {mpa(c.sigma_h_allow)} MPa，"
+           + ("满足" if c.sigma_h <= c.sigma_h_allow else "不满足"))
+    doc.eq(f"当量齿数 zv1 = {c.zv[0]:.1f}，zv2 = {c.zv[1]:.1f}；YFa = {c.y_fa[0]:.3f} / {c.y_fa[1]:.3f}，"
+           f"YSa = {c.y_sa[0]:.3f} / {c.y_sa[1]:.3f}")
+    for k, nm in enumerate(("小", "大")):
+        doc.eq(f"σF{k+1} = K Ft YFa YSa / [b m (1 − 0.5φR)] = {mpa(c.sigma_f[k])} MPa ≤ [σF]{k+1} = {mpa(c.sigma_f_allow[k])} MPa，"
+               + ("满足" if c.sigma_f[k] <= c.sigma_f_allow[k] else "不满足"))
+    doc.eq(f"啮合力（平均分度圆处）：Ft = 2T1/dm1 = {p.tangential_force:.1f} N，Fr1 = Ft tan α cos δ1 = Fa2 = "
+           f"{p.radial_force1:.1f} N，Fa1 = Ft tan α sin δ1 = Fr2 = {p.axial_force1:.1f} N")
+
+
 def _dms(rad: float) -> str:
     deg = math.degrees(rad)
     d = int(deg)
@@ -236,20 +311,37 @@ def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
         doc.p(f"轴端有键槽，直径加大 5%，并考虑与{what}孔径相配，取轴端直径 {mm(lay.diameters['端部'],0)} mm。")
     doc.h2("2. 结构设计")
     gear_note = []
+    pinion_shaft = any(g.pair == "bevel" and g.member == 1 for g in lay.gears)
     for g in lay.gears:
-        nm = f"{'高速级' if g.pair == 'high' else '低速级'}{'小' if g.member == 1 else '大'}齿轮"
+        if g.pair == "bevel":
+            nm = "小锥齿轮" if g.member == 1 else "大锥齿轮"
+        else:
+            nm = f"{'高速级' if g.pair == 'high' else '低速级'}{'小' if g.member == 1 else '大'}齿轮"
         if g.integral:
-            gear_note.append(f"{nm}齿根圆到键槽底部的距离小于 2.5mn，做成齿轮轴")
+            rule = "小端齿根圆到键槽底部的距离小于 1.6m" if g.pair == "bevel" else "齿根圆到键槽底部的距离小于 2.5mn"
+            gear_note.append(f"{nm}{rule}，做成齿轮轴")
+        elif pinion_shaft:
+            gear_note.append(f"{nm}装在轴的内端，靠轴肩定位，轴端用挡圈压紧")
         else:
             gear_note.append(f"{nm}从{'左' if g.mount == 'left' else '右'}端装入，一侧靠轴环、另一侧用套筒定位")
-    doc.p("；".join(gear_note) + f"。两端各用一个深沟球轴承 {lay.bearing.designation}，两端固定支承。各轴段尺寸如下（z 自左侧箱体内壁量起）：")
+    brg = lay.bearing
+    if pinion_shaft:
+        brg_note = (f"一对圆锥滚子轴承 {brg.designation} 反装（背对背）在套杯中，小锥齿轮悬臂支承。"
+                    "各轴段尺寸如下（z 自锥顶沿Ⅰ轴轴线向外量起）：")
+    elif hasattr(brg, "Y"):
+        brg_note = f"两端各用一个圆锥滚子轴承 {brg.designation}，正装，两端单向固定。各轴段尺寸如下（z 自左侧箱体内壁量起）："
+    else:
+        brg_note = f"两端各用一个深沟球轴承 {brg.designation}，两端固定支承。各轴段尺寸如下（z 自左侧箱体内壁量起）："
+    doc.p("；".join(gear_note) + "。" + brg_note)
     doc.table(["轴段", "起点 z / mm", "长度 / mm", "直径 / mm", "键槽 b×t1×L / mm"],
               [[seg.role, mm(seg.z0, 1), mm(seg.length, 1), mm(seg.root_d or seg.d, 1),
                 "" if not seg.keyway else f"{mm(seg.keyway[0],0)}×{mm(seg.keyway[1],1)}×{mm(seg.keyway[2],0)}"]
                for seg in lay.segments])
     doc.h2("3. 受力分析")
     doc.p(f"轴承中心位置 zA = {mm(lay.bearing_z[0],1)} mm，zB = {mm(lay.bearing_z[1],1)} mm，支承跨距 "
-          f"{mm(lay.bearing_z[1]-lay.bearing_z[0],1)} mm。x 为中心连线方向（水平面），y 为铅垂方向。")
+          f"{mm(lay.bearing_z[1]-lay.bearing_z[0],1)} mm"
+          + ("（圆锥滚子轴承取压力中心）" if hasattr(brg, "Y") else "")
+          + ("。x 沿Ⅱ轴轴线方向（水平面），y 为铅垂方向。" if pinion_shaft else "。x 为中心连线方向（水平面），y 为铅垂方向。"))
     doc.table(["载荷", "z / mm", "Fx / N", "Fy / N", "Fz / N", "力偶 Fa·d/2 / (N·m)"],
               [[p.label, mm(p.z, 1), f(p.fx, 1), f(p.fy, 1), f(p.fz, 1), f(round(p.couple_xz, 2) + 0.0, 2)] for p in s.load_case.loads])
     r = s.strength.reactions
@@ -291,8 +383,11 @@ def _fatigue(doc: Doc, s: ShaftResult):
 
 def _bearings(doc: Doc, d: ReducerDesign):
     _h1(doc, "滚动轴承寿命计算")
-    doc.p(f"深沟球轴承，两端固定。当量动载荷 P = fp (X Fr + Y Fa)，fp = {d.task.load_factor_bearing}；"
-          f"寿命 L10h = 10⁶/(60n) (C/P)³。预期寿命 {d.task.bearing_life_hours:.0f} h。")
+    doc.p(f"当量动载荷 P = fp (X Fr + Y Fa)，fp = {d.task.load_factor_bearing}；寿命 L10h = 10⁶/(60n) (C/P)^ε，"
+          f"球轴承 ε = 3。预期寿命 {d.task.bearing_life_hours:.0f} h。")
+    if any(hasattr(s.layout.bearing, "Y") for s in d.shafts):
+        doc.p("圆锥滚子轴承 ε = 10/3：派生轴向力 Fd = Fr/(2Y)，被压紧一端的轴承 Fa = 外加轴向力 + 另一端的 Fd，"
+              "被放松一端的 Fa = 自身的 Fd；Fa/Fr ≤ e 时 X = 1、Y = 0，否则 X = 0.4、Y 查表。")
     rows = []
     for s in d.shafts:
         b = s.bearings
@@ -340,7 +435,8 @@ def _housing(doc: Doc, d: ReducerDesign):
         ["齿轮端面与内壁距离 Δ2", "≥ δ", mm(h.gap_axial, 0)],
         ["大齿轮齿顶圆与内壁距离 Δ1", "≥ 1.2δ", mm(h.gap_radial, 0)],
         ["轴承端面与内壁距离 Δ3", "油润滑 3–5，脂润滑 8–12", mm(h.gap_bearing, 0)],
-        ["箱体内壁宽度", "2Δ2 + b低速小 + c + b高速小", mm(h.inner_width, 1)],
+        ["箱体内壁宽度", "2Δ2 + L大锥齿轮 + c + b低速小" if _bevel_scheme(d) else "2Δ2 + b低速小 + c + b高速小",
+         mm(h.inner_width, 1)],
     ])
     doc.p(f"表中 a 取低速级中心距 {mm(d.low.a,0)} mm。")
 
@@ -348,7 +444,8 @@ def _housing(doc: Doc, d: ReducerDesign):
 def _lubrication(doc: Doc, d: ReducerDesign):
     v = max(d.high.pitch_velocity, d.low.pitch_velocity)
     _h1(doc, "润滑与密封")
-    doc.p(f"齿轮最大圆周速度 {v:.2f} m/s < 12 m/s，齿轮采用浸油润滑，高速级大齿轮浸入油中约一个齿高。"
+    dip = "大锥齿轮整个齿宽浸入油中" if _bevel_scheme(d) else "高速级大齿轮浸入油中约一个齿高"
+    doc.p(f"齿轮最大圆周速度 {v:.2f} m/s < 12 m/s，齿轮采用浸油润滑，{dip}。"
           + ("轴承利用齿轮飞溅的油润滑（v ≥ 2 m/s）。" if v >= 2 else "圆周速度小于 2 m/s，轴承采用润滑脂润滑，内侧加挡油环。")
           + "伸出轴处采用毡圈油封或唇形密封圈。")
 

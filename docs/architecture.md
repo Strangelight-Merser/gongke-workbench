@@ -85,6 +85,6 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 ## 6. 后续路线
 
 1. 箱体零件图（轴的安全系数法校核已完成）。
-2. 圆锥-圆柱减速器、蜗杆减速器方案（V 带传动已完成）。
+2. 圆锥-圆柱减速器的三维模型和工程图（计算和说明书已完成，`calc/bevel.py`、`layout/bevel_reducer.py`、`bevel_design.py`）；蜗杆减速器方案。
 3. 轴和齿轮的 CalculiX 校核向导，与解析解对照。
 4. 一键安装包。

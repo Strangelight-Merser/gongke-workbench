@@ -60,8 +60,8 @@ class ReducerTask:
             scheme=str(d.get("scheme", "coupling")),
             belt_ratio=float((d.get("vbelt") or {}).get("ratio", 2.5)),
         )
-        if conveyor.scheme not in ("coupling", "vbelt"):
-            raise ValueError(f"未知的传动方案 scheme: {conveyor.scheme}（可选 coupling、vbelt）")
+        if conveyor.scheme not in ("coupling", "vbelt", "bevel"):
+            raise ValueError(f"未知的传动方案 scheme: {conveyor.scheme}（可选 coupling、vbelt、bevel）")
         gears = d.get("gears", {})
         shaft = d.get("shaft", {}) or {}
         return cls(
@@ -286,6 +286,10 @@ def _belt(task: ReducerTask, kin: kinematics.Kinematics) -> vbelt_calc.BeltDrive
 
 
 def run(task: ReducerTask) -> ReducerDesign:
+    if task.scheme == "bevel":
+        from gongke_core import bevel_design
+
+        return bevel_design.run(task)
     kin = kinematics.solve(task.conveyor)
     t = task.conveyor
     belt = None

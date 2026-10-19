@@ -37,3 +37,18 @@ def test_cli_drawings_index(tmp_path):
     out = runner.read_outputs(tmp_path)
     assert out["drawings"][0]["number"] == "GK-00"
     assert all(d["dxf"].exists() for d in out["drawings"])
+
+
+def test_cli_bevel_scheme(tmp_path):
+    # 圆锥-圆柱方案：只有计算和说明书，面板能显示锥齿轮参数
+    path = runner.write_task(runner.FormValues(scheme="bevel", belt_pull_N=2200, belt_speed_m_s=1.5,
+                                               drum_diameter_mm=300), tmp_path)
+    prog, args, cwd = runner.command(sys.executable, path, tmp_path, step=True, drawings=True)
+    p = subprocess.run([prog] + args, cwd=cwd, env=runner.environment(), capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    out = runner.read_outputs(tmp_path)
+    assert "reducer_assembly.step" not in out["files"] and not out["drawings"]
+    g = out["summary"]["gears"]
+    assert runner.gear_line(g["high"]).startswith("直齿锥齿轮")
+    assert runner.gear_line(g["low"]).startswith("mn=")
+    assert "直齿锥齿轮传动设计" in (tmp_path / "report.md").read_text(encoding="utf-8")

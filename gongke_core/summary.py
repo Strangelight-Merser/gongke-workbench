@@ -11,6 +11,15 @@ def summarize(d: ReducerDesign) -> dict:
     k = d.kin
     gears = {}
     for key, p in (("high", d.high), ("low", d.low)):
+        if not hasattr(p, "mn"):  # 直齿锥齿轮
+            gears[key] = {
+                "name": p.inp.name, "type": "bevel", "m": p.m * 1e3, "z1": p.z1, "z2": p.z2,
+                "delta1_deg": math.degrees(p.delta1), "R": p.cone_distance * 1e3, "b": p.b * 1e3,
+                "d1": p.d1 * 1e3, "d2": p.d2 * 1e3,
+                "sigma_h": p.check.sigma_h / 1e6, "sigma_h_allow": p.check.sigma_h_allow / 1e6,
+                "sigma_f": [s / 1e6 for s in p.check.sigma_f], "sigma_f_allow": [s / 1e6 for s in p.check.sigma_f_allow],
+            }
+            continue
         gears[key] = {
             "name": p.inp.name, "mn": p.mn * 1e3, "z1": p.z1, "z2": p.z2, "beta_deg": math.degrees(p.beta),
             "a": p.a * 1e3, "d1": p.d1 * 1e3, "d2": p.d2 * 1e3, "b1": p.b1 * 1e3, "b2": p.b2 * 1e3,

@@ -1,0 +1,26 @@
+# 带式输送机传动装置设计任务书（示例三：圆锥-圆柱齿轮减速器）
+title: 带式输送机传动装置设计
+scheme: bevel              # 电动机 → 联轴器 → 圆锥-圆柱齿轮减速器 → 联轴器 → 卷筒
+conveyor:
+  belt_pull_N: 2200        # 输送带工作拉力 F
+  belt_speed_m_s: 1.5      # 输送带速度 v
+  drum_diameter_mm: 300    # 卷筒直径 D
+life:
+  years: 10
+  days_per_year: 300
+  shifts: 2                # 每班 8 小时
+bearing_life_years: 3      # 轴承按检修期 3 年计
+motor_sync_speed_rpm: 1500 # 锥齿轮传动比 i1 ≈ 0.25i 且不大于 3
+gears:
+  high:                    # 高速级：直齿锥齿轮
+    material1: 40Cr_QT
+    material2: 45_QT
+    grade: 8
+    z1: 24
+    phi_r: 0.3             # 齿宽系数 φR = b/R
+  low:                     # 低速级：斜齿圆柱齿轮
+    material1: 40Cr_QT
+    material2: 45_QT
+    grade: 8
+    z1: 24
+    beta_deg: 14
