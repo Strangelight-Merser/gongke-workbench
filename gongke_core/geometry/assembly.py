@@ -18,9 +18,10 @@ def _phase_for_mesh(z: int) -> float:
     return math.pi / z if z % 2 == 0 else 0.0
 
 
-def build(design: ReducerDesign, with_housing: bool = True, z_up: bool = True) -> dict[str, bd.Shape]:
+def build(design: ReducerDesign, with_housing: bool = True, z_up: bool = True, teeth: bool = False) -> dict[str, bd.Shape]:
     """返回 {零件名: 已定位的实体}，单位 mm。
 
+    teeth=False 时齿轮用齿顶圆柱体简化表示（STEP 约 1 MB，打开快）；True 时建出完整渐开线斜齿（约 30 MB）。
     布置计算的坐标系是 y 向上、z 沿轴线；z_up=True 时绕 x 轴转 90°，使竖直方向为 +Z（FreeCAD 等 CAD 的习惯）。
     """
     out: dict[str, bd.Shape] = {}
@@ -33,7 +34,7 @@ def build(design: ReducerDesign, with_housing: bool = True, z_up: bool = True) -
             pair = pairs[g.pair]
             if g.integral:
                 integral.append((pair, g.z, 0.0))
-        shaft = parts.stepped_shaft(lay.segments, integral)
+        shaft = parts.stepped_shaft(lay.segments, integral, teeth)
         out[f"{lay.name}"] = shaft.moved(bd.Location((x, 0, 0)))
         for g in lay.gears:
             if g.integral:
@@ -42,7 +43,7 @@ def build(design: ReducerDesign, with_housing: bool = True, z_up: bool = True) -
             seat = next(s for s in lay.segments if s.role == "齿轮" and s.z0 <= g.z <= s.z1)
             z = pair.z1 if g.member == 1 else pair.z2
             rot = _phase_for_mesh(z) if g.member == 2 else 0.0
-            blank = parts.gear_blank(pair, g.member, g.seat_d, seat.keyway, rot)
+            blank = parts.gear_blank(pair, g.member, g.seat_d, seat.keyway, rot, teeth)
             label = f"{pair.inp.name}{'小' if g.member == 1 else '大'}齿轮"
             out[label] = blank.moved(bd.Location((x, 0, g.z / MM)))
         brg = lay.bearing
@@ -68,8 +69,8 @@ def build(design: ReducerDesign, with_housing: bool = True, z_up: bool = True) -
     return out
 
 
-def export(design: ReducerDesign, path: str | Path, with_housing: bool = True) -> dict[str, bd.Shape]:
-    shapes = build(design, with_housing)
+def export(design: ReducerDesign, path: str | Path, with_housing: bool = True, teeth: bool = False) -> dict[str, bd.Shape]:
+    shapes = build(design, with_housing, teeth=teeth)
     children = []
     for name, shp in shapes.items():
         shp.label = name

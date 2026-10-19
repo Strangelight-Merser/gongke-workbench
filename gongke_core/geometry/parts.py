@@ -72,8 +72,16 @@ def gear_face(z: int, mn: float, beta: float, rotation: float = 0.0, hole_r: flo
 
 
 def helical_gear(z: int, mn: float, beta: float, width: float, hand: int = 1, rotation: float = 0.0,
-                 hole_r: float | None = None) -> bd.Solid:
+                 hole_r: float | None = None, teeth: bool = True) -> bd.Solid:
     """斜齿轮齿圈实体，轴线为 z，齿宽中面在 z=0。hand=+1 右旋、−1 左旋。hole_r 为内孔半径（mm）。"""
+    if not teeth:
+        # 简化表示：齿顶圆柱体（文件小、打开快，适合装配和出图）
+        ra = _mm(z * mn / math.cos(beta) / 2 + mn)
+        b = _mm(width)
+        solid = bd.Solid.make_cylinder(ra, b, bd.Plane((0, 0, -b / 2)))
+        if hole_r:
+            solid = solid.cut(bd.Solid.make_cylinder(hole_r, b, bd.Plane((0, 0, -b / 2))))
+        return solid
     r = _mm(z * mn / math.cos(beta) / 2)
     b = _mm(width)
     twist = math.degrees(b * math.tan(beta) / r) * hand
@@ -95,53 +103,43 @@ def _keyway_cutter(width: float, depth_from_axis: float, length: float, radius: 
 
 
 def gear_blank(pair: GearPair, member: int, bore: float | None, key: tuple[float, float, float] | None,
-               rotation: float = 0.0) -> bd.Solid:
-    """完整齿轮：齿圈 + 轮毂孔 + 键槽；齿顶圆大于 160 mm 时做成腹板式并开减重孔。
+               rotation: float = 0.0, teeth: bool = True) -> bd.Solid:
+    """完整齿轮：齿圈 + 轮毂孔 + 键槽，腹板式齿轮开减重孔（结构尺寸见 layout.gear_blank）。
 
     为加快布尔运算，齿圈（带螺旋扭转）与轮体（普通回转体）分别建模后合并。
     """
-    z = pair.z1 if member == 1 else pair.z2
-    width = pair.b1 if member == 1 else pair.b2
+    from gongke_core.layout.gear_blank import blank
+
+    g = blank(pair, member, bore)
     hand = 1 if member == 1 else -1
     if bore is None:
-        return helical_gear(z, pair.mn, pair.beta, width, hand, rotation)
-    b = _mm(width)
-    db = _mm(bore)
-    da = _mm(pair.da1 if member == 1 else pair.da2)
-    df = _mm(pair.df1 if member == 1 else pair.df2)
-    rim = max(3 * _mm(pair.mn), 10)
-    r_in = df / 2 - rim  # 齿圈内半径
+        return helical_gear(g.z, pair.mn, pair.beta, g.b, hand, rotation, teeth=teeth)
+    b = _mm(g.b)
+    db = _mm(g.bore)
+    r_in = _mm(g.rim_inner_d) / 2 if g.web else _mm(g.df) / 2 - max(3 * _mm(pair.mn), 10)
     # 先做实心斜齿轮再挖去内部，比直接拉伸带孔截面快得多
-    ring = helical_gear(z, pair.mn, pair.beta, width, hand, rotation)
+    ring = helical_gear(g.z, pair.mn, pair.beta, g.b, hand, rotation, teeth=teeth)
     ring = ring.cut(bd.Solid.make_cylinder(r_in, b + 2, bd.Plane((0, 0, -b / 2 - 1))))
-    pl = bd.Plane((0, 0, -b / 2))
-    body = bd.Solid.make_cylinder(r_in, b, pl)
-    if da > 160:
-        d1 = 1.6 * db  # 轮毂外径
-        d2 = 2 * r_in  # 轮缘内径
-        web = max(0.3 * b, 10)
-        recess = (b - web) / 2
-        if d2 > d1 + 10 and recess > 1:
-            for z0 in (-b / 2 - 1, b / 2 - recess):
-                ring_cut = bd.Solid.make_cylinder(d2 / 2, recess + 1, bd.Plane((0, 0, z0)))
-                ring_cut = ring_cut.cut(bd.Solid.make_cylinder(d1 / 2, recess + 1, bd.Plane((0, 0, z0))))
-                body = body.cut(ring_cut)
-            d0 = 0.25 * (d2 - d1)
-            pcd = (d1 + d2) / 2
-            for k in range(6):
-                a = 2 * math.pi * k / 6
-                hole = bd.Solid.make_cylinder(d0 / 2, b + 2, bd.Plane((pcd / 2 * math.cos(a), pcd / 2 * math.sin(a), -b / 2 - 1)))
-                body = body.cut(hole)
+    body = bd.Solid.make_cylinder(r_in, b, bd.Plane((0, 0, -b / 2)))
+    if g.web:
+        recess = (b - _mm(g.web_thickness)) / 2
+        for z0 in (-b / 2 - 1, b / 2 - recess):
+            ring_cut = bd.Solid.make_cylinder(r_in, recess + 1, bd.Plane((0, 0, z0)))
+            ring_cut = ring_cut.cut(bd.Solid.make_cylinder(_mm(g.hub_d) / 2, recess + 1, bd.Plane((0, 0, z0))))
+            body = body.cut(ring_cut)
+        for k in range(g.holes):
+            a = 2 * math.pi * k / g.holes
+            c = _mm(g.hole_pcd) / 2
+            hole = bd.Solid.make_cylinder(_mm(g.hole_d) / 2, b + 2, bd.Plane((c * math.cos(a), c * math.sin(a), -b / 2 - 1)))
+            body = body.cut(hole)
     body = body.cut(bd.Solid.make_cylinder(db / 2, b + 2, bd.Plane((0, 0, -b / 2 - 1))))
     if key:
-        from gongke_core import standards
-        kb = _mm(key[0])
-        t2 = _mm(standards.key_size(bore).t2)
+        kb, t2 = _mm(g.key_b), _mm(g.key_t2)
         body = body.cut(bd.Solid.make_box(kb, db / 2 + t2, b + 4).moved(bd.Location((-kb / 2, 0, -b / 2 - 2))))
     return ring.fuse(body).clean()
 
 
-def stepped_shaft(segments: list[Segment], integral: list[tuple[GearPair, float, float]] = ()) -> bd.Solid:
+def stepped_shaft(segments: list[Segment], integral: list[tuple[GearPair, float, float]] = (), teeth: bool = True) -> bd.Solid:
     """阶梯轴：各段圆柱合并，切出键槽；integral 为齿轮轴的 (齿轮副, 齿宽中点 z, 转角)。"""
     solid = None
     for s in segments:
@@ -150,7 +148,7 @@ def stepped_shaft(segments: list[Segment], integral: list[tuple[GearPair, float,
         cyl = bd.Solid.make_cylinder(_mm(s.d) / 2, _mm(s.length), bd.Plane((0, 0, _mm(s.z0))))
         solid = cyl if solid is None else solid.fuse(cyl)
     for pair, zc, rot in integral:
-        gear = helical_gear(pair.z1, pair.mn, pair.beta, pair.b1, 1, rot).moved(bd.Location((0, 0, _mm(zc))))
+        gear = helical_gear(pair.z1, pair.mn, pair.beta, pair.b1, 1, rot, teeth=teeth).moved(bd.Location((0, 0, _mm(zc))))
         solid = solid.fuse(gear)
     for s in segments:
         if s.keyway:

@@ -59,6 +59,11 @@ class ReducerTaskPanel:
         self.with_model = QtGui.QCheckBox("生成三维装配体并导入当前文档")
         self.with_model.setChecked(True)
         lay.addWidget(self.with_model)
+        self.full_teeth = QtGui.QCheckBox("齿轮建出完整齿形（模型大、生成慢）")
+        lay.addWidget(self.full_teeth)
+        self.with_drawings = QtGui.QCheckBox("生成二维工程图（装配图和零件图，DXF）")
+        self.with_drawings.setChecked(True)
+        lay.addWidget(self.with_drawings)
         self.run_btn = QtGui.QPushButton("开始设计")
         self.run_btn.clicked.connect(self.run)
         lay.addWidget(self.run_btn)
@@ -97,7 +102,8 @@ class ReducerTaskPanel:
         doc_dir = Path(App.ActiveDocument.FileName).parent if App.ActiveDocument and App.ActiveDocument.FileName else None
         self.out_dir = (doc_dir or Path(tempfile.mkdtemp(prefix="gongke_"))) / "gongke_reducer"
         task = runner.write_task(self.values(), self.out_dir)
-        prog, args, cwd = runner.command(python, task, self.out_dir, step=self.with_model.isChecked())
+        prog, args, cwd = runner.command(python, task, self.out_dir, step=self.with_model.isChecked(),
+                                         full_teeth=self.full_teeth.isChecked(), drawings=self.with_drawings.isChecked())
         self.proc = QtCore.QProcess()
         env = QtCore.QProcessEnvironment.systemEnvironment()
         for k, v in runner.environment().items():
@@ -106,7 +112,8 @@ class ReducerTaskPanel:
         self.proc.setWorkingDirectory(cwd)
         self.proc.finished.connect(self.done)
         self.run_btn.setEnabled(False)
-        self.result.setPlainText("正在计算" + ("并生成三维模型，约需 1 分钟…" if self.with_model.isChecked() else "…"))
+        extra = [t for t, on in (("三维模型", self.with_model.isChecked()), ("工程图", self.with_drawings.isChecked())) if on]
+        self.result.setPlainText("正在计算" + (f"并生成{'和'.join(extra)}…" if extra else "…"))
         self.proc.start(prog, args)
 
     def done(self, code, _status=None):
@@ -133,6 +140,13 @@ class ReducerTaskPanel:
                   "report.md": "计算说明书（Markdown）"}
         for name, path in out["files"].items():
             html += f"<p><a href='{QtCore.QUrl.fromLocalFile(str(path)).toString()}'>{labels.get(name, name)}</a></p>"
+        if out["drawings"]:
+            url = lambda p: QtCore.QUrl.fromLocalFile(str(p)).toString()
+            html += "<p><b>工程图</b>（DXF 可用 FreeCAD、AutoCAD、中望 CAD 等打开编辑；SVG 可直接在浏览器预览）</p><ul>"
+            for d in out["drawings"]:
+                svg = f"，<a href='{url(d['svg'])}'>预览</a>" if d.get("svg") else ""
+                html += f"<li>{d['number']} {d['name']}（{d['size']}）：<a href='{url(d['dxf'])}'>DXF</a>{svg}</li>"
+            html += "</ul>"
         self.result.setHtml(html)
         step = out["files"].get("reducer_assembly.step")
         if step and self.with_model.isChecked():

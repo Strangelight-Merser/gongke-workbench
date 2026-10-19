@@ -64,11 +64,16 @@ def write_task(v: FormValues, out_dir: Path) -> Path:
     return path
 
 
-def command(python: str, task: Path, out_dir: Path, step: bool = True) -> tuple[str, list[str], str]:
+def command(python: str, task: Path, out_dir: Path, step: bool = True, full_teeth: bool = False,
+            drawings: bool = True) -> tuple[str, list[str], str]:
     """返回 (程序, 参数, 工作目录)，供 QProcess 或 subprocess 使用。"""
     args = ["-m", "gongke_core", "design", str(task), "-o", str(out_dir)]
     if not step:
         args.append("--no-step")
+    if full_teeth:
+        args.append("--full-teeth")
+    if not drawings:
+        args.append("--no-drawings")
     return python, args, str(REPO_ROOT)
 
 
@@ -83,4 +88,11 @@ def read_outputs(out_dir: Path) -> dict:
     out_dir = Path(out_dir)
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
     files = {name: out_dir / name for name in ("reducer_assembly.step", "report.docx", "report.md")}
-    return {"summary": summary, "files": {k: v for k, v in files.items() if v.exists()}}
+    index = out_dir / "drawings" / "index.json"
+    drawings = []
+    if index.exists():
+        for d in json.loads(index.read_text(encoding="utf-8")):
+            d["dxf"] = out_dir / "drawings" / d["dxf"]
+            d["svg"] = out_dir / "drawings" / d["svg"] if d.get("svg") else None
+            drawings.append(d)
+    return {"summary": summary, "files": {k: v for k, v in files.items() if v.exists()}, "drawings": drawings}

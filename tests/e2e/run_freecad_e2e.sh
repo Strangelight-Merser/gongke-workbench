@@ -11,7 +11,7 @@ if [ ! -x "$WORK/squashfs-root/usr/bin/freecad" ]; then
   (cd "$WORK" && ./fc.AppImage --appimage-extract >/dev/null)
 fi
 FC="$WORK/squashfs-root/usr/bin"
-"$FC/python" -m pip install --quiet build123d python-docx pyyaml
+"$FC/python" -m pip install --quiet build123d python-docx pyyaml ezdxf
 mkdir -p "$HOME/.local/share/FreeCAD/Mod"
 ln -sfn "$REPO" "$HOME/.local/share/FreeCAD/Mod/gongke-workbench"
 export GONGKE_PYTHON="$FC/python" GONGKE_E2E_OUT="${GONGKE_E2E_OUT:-/tmp/gongke_e2e}"

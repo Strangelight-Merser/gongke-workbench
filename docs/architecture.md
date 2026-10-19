@@ -32,6 +32,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
   └─ calc.key          平键选型与挤压校核
         │  （全部结果是普通 dataclass，可序列化为 JSON）
         ├──────────────► report     计算说明书 DOCX / Markdown
+        ├──────────────► drawing    ezdxf 按 GB 规定画法绘制装配图、零件图 → DXF（+ SVG 预览）
         └──────────────► geometry   build123d/OCCT 生成齿轮、轴、轴承、箱体 → STEP
                                     │
                                     ▼
@@ -42,7 +43,8 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 
 1. **计算与界面分离**：`gongke_core` 不依赖 FreeCAD，可以在任何 Python 3.10+ 上用 `pytest` 测试，也可以单独作为命令行工具使用（`python -m gongke_core design 任务书.yaml`）。
 2. **几何由核心生成，FreeCAD 只负责导入**：FreeCAD 自带的 OCCT 与 pip 上的 OCP 不能保证在同一进程共存，所以工作台通过**独立进程**调用核心生成 STEP，再用 `Import.insert` 导入。这与 CalculiX、LibreDWG 的调用方式一致，也让几何生成可以在 CI 里无头测试。
-3. **布置（layout）单独成层**：轴的受力校核依赖齿轮在轴上的位置，位置又依赖齿宽、轴承宽度和箱体壁厚。把"尺寸怎么定"集中在 `layout`，计算模块只接受确定的几何输入，便于单独测试。
+3. **工程图不从三维模型投影**：GB 规定画法（齿轮只画齿顶线、分度线、齿根线；轴不剖；轴承用通用画法；键槽用移出断面）本来就是"按参数画"，从三维投影反而要去掉齿形、隐藏线和螺旋线。所以 `drawing` 直接读设计结果绘制，尺寸与计算完全一致。输出 DXF 是因为学生最终都要在 AutoCAD / 中望 CAD 里修改和打印；齿轮腹板等结构尺寸由 `layout.gear_blank` 统一给出，三维和二维共用。
+4. **布置（layout）单独成层**：轴的受力校核依赖齿轮在轴上的位置，位置又依赖齿宽、轴承宽度和箱体壁厚。把"尺寸怎么定"集中在 `layout`，计算模块只接受确定的几何输入，便于单独测试。
 
 ## 3. 第一版功能范围
 
@@ -57,6 +59,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 - 箱体主要尺寸（壁厚、凸缘、地脚螺栓等经验公式）。
 - 三维：渐开线斜齿轮、阶梯轴（含键槽）、轴承、简化箱体，组成装配体导出 STEP。
 - 计算说明书 DOCX，带公式、取值依据和校核结论。
+- 二维工程图：装配图（A1，含明细栏、技术特性表）和轴、齿轮零件图，DXF 格式。
 
 **不做（第一版）：**
 
@@ -81,7 +84,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 
 ## 6. 后续路线
 
-1. TechDraw 自动出装配图、零件图（GB 图框和标题栏模板）。
+1. 工程图补全：装配图主视图和左视图、箱盖及附件；箱体零件图。
 2. V 带传动、圆锥-圆柱减速器、蜗杆减速器方案。
 3. 轴和齿轮的 CalculiX 校核向导，与解析解对照。
 4. 一键安装包。

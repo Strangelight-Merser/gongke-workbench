@@ -27,3 +27,13 @@ def test_cli_without_geometry(tmp_path):
     assert out["summary"]["ok"]
     assert "report.md" in out["files"]
     json.dumps(out["summary"])
+
+
+def test_cli_drawings_index(tmp_path):
+    path = runner.write_task(runner.FormValues(), tmp_path)
+    prog, args, cwd = runner.command(sys.executable, path, tmp_path, step=False, drawings=True)
+    p = subprocess.run([prog] + args, cwd=cwd, env=runner.environment(), capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    out = runner.read_outputs(tmp_path)
+    assert out["drawings"][0]["number"] == "GK-00"
+    assert all(d["dxf"].exists() for d in out["drawings"])

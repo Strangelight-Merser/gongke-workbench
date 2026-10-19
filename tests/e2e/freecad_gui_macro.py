@@ -34,6 +34,7 @@ try:
     P("result text", p.result.toPlainText()[:600])
     n_solids = sum(1 for o in doc.Objects if hasattr(o, "Shape") and o.Shape.Solids)
     assert p.proc.exitCode() == 0 and n_solids >= 15, "装配体导入不完整"
+    assert "GK-00" in p.result.toPlainText(), "工程图未生成"
     v = Gui.activeDocument().activeView()
     v.viewIsometric(); Gui.SendMsgToActiveView("ViewFit")
     QtGui.QApplication.processEvents()

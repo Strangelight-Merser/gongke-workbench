@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pyyaml pytest python-docx pillow build123d
+      - run: pip install pyyaml pytest python-docx pillow build123d ezdxf
       - run: pytest -q
 
   freecad-e2e:
