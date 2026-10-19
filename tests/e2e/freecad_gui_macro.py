@@ -40,6 +40,8 @@ try:
     assert p.proc.exitCode() == 0 and n_solids >= 15, "装配体导入不完整"
     assert "GK-00" in p.result.toPlainText(), "工程图未生成"
     assert "有限元复核" in p.result.toPlainText(), "未找到 FreeCAD 自带的 ccx 或有限元复核失败"
+    if scheme != "worm":
+        assert list((p.out_dir / "fem").glob("tooth_zv*.inp")), "未找到 FreeCAD 自带的 gmsh，齿根应力未复核"
     if os.environ.get("GONGKE_E2E_SCHEME") == "vbelt":
         assert "GK-03-01" in p.result.toPlainText(), "大带轮零件图未生成"
     if os.environ.get("GONGKE_E2E_SCHEME") == "bevel":

@@ -82,6 +82,8 @@ def summarize(d: ReducerDesign, fem=None) -> dict:
             "solver": fem.solver, "max_diff": fem.max_diff, "ok": fem.ok,
             "rows": [{"shaft": r.shaft, "item": r.label, "bending": r.bending, "timoshenko": r.timoshenko,
                       "fem": r.fem, "unit": "m" if r.kind == "y" else "rad"} for r in fem.rows],
+            "gears": [{"name": g.name, "zv": g.zv, "yfs_table": g.yfs_table, "yfs_fem": g.yfs_fem,
+                       "sigma_f": g.sigma_f / 1e6, "sigma_f_fem": g.sigma_f_fem / 1e6} for g in fem.gears],
         },
         "ok": d.ok,
     }

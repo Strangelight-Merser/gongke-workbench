@@ -102,3 +102,59 @@ def deflection_diagram(shaft_result, fem=None, curve=None, width: int = 900, row
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue()
+
+
+def tooth_stress_image(tooth, width: int = 900, height: int = 620) -> bytes:
+    """齿根应力云图：三齿扇形网格按节点主应力着色（取绝对值较大的主应力，带符号；三角形取角点平均值）。"""
+    nodes, tris, sp = tooth.nodes, tooth.triangles, tooth.principal
+    ys = [p[1] for p in nodes.values()]
+    y_top = max(ys)
+    y_bot = min(ys)
+    xs = [p[0] for p in nodes.values()]
+    x0, x1 = min(xs), max(xs)
+    pad = 30
+    scale = min((width - 2 * pad - 120) / (x1 - x0), (height - 2 * pad) / (y_top - y_bot))
+    img = Image.new("RGB", (width, height), "white")
+    dr = ImageDraw.Draw(img)
+    font = ImageFont.load_default(size=14)
+    vmax = tooth.yfs_fem
+    vmin = -vmax
+
+    def P(p):
+        return (pad + (p[0] - x0) * scale, height - pad - (p[1] - y_bot) * scale)
+
+    def color(v):
+        t = max(0.0, min(1.0, (v - vmin) / (vmax - vmin)))
+        # 蓝（压）→ 白 → 红（拉）
+        if t < 0.5:
+            k = t / 0.5
+            return (int(40 + 215 * k), int(80 + 175 * k), 255)
+        k = (t - 0.5) / 0.5
+        return (255, int(255 - 200 * k), int(255 - 215 * k))
+
+    edges: dict[tuple[int, int], int] = {}
+    for a, b, c in tris:
+        v = (sp.get(a, 0.0) + sp.get(b, 0.0) + sp.get(c, 0.0)) / 3
+        dr.polygon([P(nodes[a]), P(nodes[b]), P(nodes[c])], fill=color(v))
+        for e in ((a, b), (b, c), (c, a)):
+            k = (min(e), max(e))
+            edges[k] = edges.get(k, 0) + 1
+    for (a, b), n in edges.items():  # 只出现一次的边是轮廓
+        if n == 1:
+            dr.line([P(nodes[a]), P(nodes[b])], fill=(60, 60, 60), width=1)
+    px, py = P(tooth.point)
+    dr.ellipse([px - 5, py - 5, px + 5, py + 5], outline="black", width=2)
+    dr.text((px + 8, py - 8), f"max {vmax:.2f}", fill="black", font=font)
+    # 色标
+    bx = width - pad - 60
+    for k in range(200):
+        v = vmax - (vmax - vmin) * k / 199
+        y = pad + k * (height - 2 * pad) / 200
+        dr.rectangle([bx, y, bx + 20, y + (height - 2 * pad) / 200 + 1], fill=color(v))
+    dr.text((bx + 24, pad - 6), f"{vmax:.2f}", fill="black", font=font)
+    dr.text((bx + 24, height / 2 - 6), "0", fill="black", font=font)
+    dr.text((bx + 24, height - pad - 8), f"{vmin:.2f}", fill="black", font=font)
+    dr.text((pad, 6), f"zv = {tooth.z:.1f}, principal stress (MPa) for Ft = 1 N, b = m = 1 mm", fill="black", font=font)
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()

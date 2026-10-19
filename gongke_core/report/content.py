@@ -621,6 +621,24 @@ def _fem(doc: Doc, d: ReducerDesign, rep, with_diagrams: bool):
         for sf in rep.shafts:
             s = next(x for x in d.shafts if x.layout.name == sf.name)
             doc.img(diagrams.deflection_diagram(s, sf.fem, sf.timoshenko), f"{sf.name}挠度和偏转角：解析（计剪切）与有限元")
+    if rep.gears:
+        doc.h2("齿根弯曲应力")
+        doc.p("按齿条刀具（GB/T 1356 基本齿廓，齿根圆角半径 0.38m）展成当量直齿轮的齿廓，包括齿根过渡曲线；"
+              "取三个齿的扇形建立平面应力模型，用 Gmsh 划分二次三角形网格（过渡曲线处单元约 0.02m），"
+              "内圆和两侧剖切边固定，中间齿的齿顶沿齿廓法线加载 Fn = Ft/cos α。"
+              "取 m = 1 mm、Ft = 1 N、b = 1 mm，齿根最大拉应力（MPa）在数值上即为 YFa·YSa，与查表值对照；"
+              "其余系数不变，按比例换算出有限元的齿根应力。")
+        doc.table(["齿轮", "z", "zv", "YFa·YSa 查表", "YFa·YSa 有限元", "偏差", "σF 公式/MPa", "σF 有限元/MPa", "[σF]/MPa"],
+                  [[g.name, str(g.z), f"{g.zv:.1f}", f"{g.yfs_table:.3f}", f"{g.yfs_fem:.3f}", f"{g.diff * 100:+.1f}%",
+                    mpa(g.sigma_f), mpa(g.sigma_f_fem), mpa(g.sigma_f_allow, 0)] for g in rep.gears])
+        lo, hi = min(g.diff for g in rep.gears), max(g.diff for g in rep.gears)
+        doc.p(f"有限元的 YFa·YSa 比查表值{'低' if hi < 0 else '高' if lo > 0 else '相差'} "
+              f"{min(abs(lo), abs(hi)) * 100:.1f}%～{max(abs(lo), abs(hi)) * 100:.1f}%"
+              "（教材的应力修正系数 YSa 按经验公式取值，略偏保守），"
+              f"按有限元结果齿根应力{'也都' if all(g.sigma_f_fem <= g.sigma_f_allow for g in rep.gears) else '有的不'}满足许用值。")
+        g = min((g for g in rep.gears if g.tooth is not None), key=lambda g: g.zv, default=None)
+        if with_diagrams and g is not None:
+            doc.img(diagrams.tooth_stress_image(g.tooth), f"{g.name}（zv = {g.zv:.1f}）齿根应力云图（最大主应力，红色受拉、蓝色受压）")
 
 
 def _summary(doc: Doc, d: ReducerDesign):

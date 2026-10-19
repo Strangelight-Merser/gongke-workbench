@@ -66,7 +66,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 - 大规模国标数据录入。只录入计算链路**必须**用到的少量数值（电机、轴承、平键、齿形系数），每条注明来源并标记"待人工核对"。
 - 只为证明"能跑通"的空壳演示。
 - 锥齿轮、蜗杆等其他方案（数据结构留好扩展点，后续加）。
-- 实体有限元（齿轮轮齿、箱体）。轴的刚度已用 CalculiX 梁单元复核，见 §7。
+- 箱体等实体有限元。轴的刚度、齿根应力已用 CalculiX 复核，见 §7。
 
 ## 4. 计算方法的取舍
 
@@ -86,7 +86,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 
 1. 请老师或学生评审图纸（四种方案的箱座、箱盖零件图已完成，含轴承旁凸台和加强肋：`drawing/housing_base.py`、`drawing/housing_cover.py`）。
 2. 其他方案已完成：蜗杆减速器（`calc/worm.py`、`layout/worm_reducer.py`、`layout/worm_blank.py`、`worm_design.py`、`geometry/worm.py`、`drawing/worm_wheel.py`、`drawing/worm_assembly.py`）；圆锥-圆柱减速器（`calc/bevel.py`、`layout/bevel_blank.py`、`layout/bevel_reducer.py`、`bevel_design.py`、`geometry/bevel.py`、`drawing/bevel_gear.py`）。
-3. 齿轮轮齿的 CalculiX 实体模型校核，与 ISO 6336 齿根应力对照。
+3. STEP/DWG 互通。
 4. 一键安装包。
 
 ## 7. 有限元复核（`gongke_core/fem/`）
@@ -95,3 +95,4 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 - 轴用 **U1 梁单元**（两节点 Timoshenko 梁，按梁理论求解，节点输出转角），不用 B31/B32：ccx 会把 B3x 展开成三维实体单元，在支点和集中力处出现局部变形，实测细长等截面梁挠度偏小约 27%，不适合做复核。
 - 模型与解析法一一对应（同样的轴段直径、支点、载荷和力偶），所以两者的差别只来自数值方法，四个示例最大相差 0.15%。教材刚度校核不计剪切变形，而这些轴短粗，剪切使挠度大 5%～30%，因此说明书同时列出“只计弯曲”“计入剪切”和有限元三列，校核仍按教材方法（第一列）。
 - 输出：`fem/shaft*.inp`（可在 FreeCAD FEM 或 ccx 中复算）、`.dat`、`.frd`，`fem/comparison.md` 对照表，说明书加一章、`summary.json` 加 `fem` 字段。
+- 齿根应力（`fem/gear_tooth.py`、`fem/gear_check.py`）：`calc/tooth_profile.py` 按 GB/T 1356 基本齿条（ρf = 0.38m）展成当量直齿轮齿廓（渐开线按方程精确计算，过渡曲线由刀尖圆角按啮合基本定律求包络）；Gmsh（GPL，独立进程，FreeCAD 自带，在 ccx 同目录查找，或 `GONGKE_GMSH`）划分三齿扇形的二次三角形网格，过渡曲线处 0.02m；CalculiX CPS6 平面应力求解，齿顶加载。取 m = 1、Ft = 1 N、b = 1 时齿根最大拉应力即 YFa·YSa。z = 17～400 比教材查表值低 3%～6%，网格加密一倍变化 < 0.1%。蜗轮不做。

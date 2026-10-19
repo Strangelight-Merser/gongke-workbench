@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--no-docx", action="store_true", help="不生成 Word 说明书（仍生成 Markdown）")
     d.add_argument("--no-housing", action="store_true", help="装配体中不含箱座")
     d.add_argument("--no-drawings", action="store_true", help="不生成二维工程图")
-    d.add_argument("--fem", action="store_true", help="用 CalculiX 梁单元模型复核轴的刚度（需要 ccx，FreeCAD 自带）")
+    d.add_argument("--fem", action="store_true", help="用 CalculiX 复核轴的刚度和齿根应力（需要 ccx 和 gmsh，FreeCAD 自带）")
     d.add_argument("--full-teeth", action="store_true", help="建出完整渐开线齿形（文件约 30 MB，生成较慢）")
     args = ap.parse_args(argv)
 
@@ -46,7 +46,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"跳过有限元复核：{e}", file=sys.stderr)
         else:
             (out / "fem" / "comparison.md").write_text(shaft_check.to_markdown(fem), encoding="utf-8")
-            print(f"有限元复核完成：{len(fem.shafts)} 根轴，与解析结果最大相差 {fem.max_diff * 100:.2f}%")
+            gears = f"，{len(fem.gears)} 个齿轮的齿根应力" if fem.gears else ""
+            print(f"有限元复核完成：{len(fem.shafts)} 根轴（与解析结果最大相差 {fem.max_diff * 100:.2f}%）{gears}")
+            if fem.gear_note:
+                print(f"跳过齿根应力复核：{fem.gear_note}", file=sys.stderr)
     (out / "summary.json").write_text(json.dumps(summary.summarize(res, fem), ensure_ascii=False, indent=2), encoding="utf-8")
     doc = content.build(res, fem=fem)
     markdown_writer.write(doc, out / "report.md")

@@ -87,7 +87,7 @@ def test_design_fem_check(tmp_path: Path):
 
     root = Path(__file__).resolve().parents[2]
     res = design.run(design.ReducerTask.from_yaml(root / "examples" / "conveyor_bevel.yaml"))
-    rep = shaft_check.run(res, tmp_path)
+    rep = shaft_check.run(res, tmp_path, gears=False)
     assert len(rep.shafts) == 3 and rep.ok
     assert rep.max_diff < 0.01
     assert "有限元" in shaft_check.to_markdown(rep)

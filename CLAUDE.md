@@ -25,7 +25,7 @@
 
 - `pytest tests/calc tests/standards`：纯 Python，不需要 FreeCAD。
 - `pytest tests/drawing`：工程图（需要 ezdxf），改图后用 `drawing.render.to_svg` 渲染 SVG 目视检查重叠。
-- `pytest tests/fem`：CalculiX 梁单元复核（需要 ccx ≥ 2.21，可用 `GONGKE_CCX` 指定路径；没有时自动跳过）。
+- `pytest tests/fem`：CalculiX 有限元复核（需要 ccx ≥ 2.21 和 gmsh，可用 `GONGKE_CCX`、`GONGKE_GMSH` 指定路径；没有时自动跳过）。
 - `pytest tests/geometry`：需要 build123d（约 2 分钟）。
 - `tests/e2e/run_freecad_e2e.sh`：下载 FreeCAD AppImage，在 Xvfb 下跑界面端到端测试，CI 中运行。
 - 提交前至少跑纯 Python 测试。
