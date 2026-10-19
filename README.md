@@ -50,7 +50,7 @@ python -m gongke_core design examples/conveyor_basic.yaml -o out
 
 - 支持“电动机 → 联轴器（或 V 带传动）→ 展开式二级斜齿圆柱齿轮减速器 → 联轴器 → 卷筒”两种方案（任务书 `scheme: coupling / vbelt`，示例见 [examples/conveyor_vbelt.yaml](examples/conveyor_vbelt.yaml)）。
 - 圆锥-圆柱齿轮减速器（`scheme: bevel`，示例 [examples/conveyor_bevel.yaml](examples/conveyor_bevel.yaml)）包括直齿锥齿轮、三根轴（小锥齿轮悬臂、圆锥滚子轴承反装在套杯中）、轴承、键的计算和说明书，三维模型（锥齿轮按齿顶圆锥简化）和整套工程图（装配图、锥齿轮零件图、锥齿轮轴等）。
-- 单级蜗杆减速器（`scheme: worm`，蜗杆下置，示例 [examples/conveyor_worm.yaml](examples/conveyor_worm.yaml)）按 GB/T 10085 选标准中心距、模数和蜗杆分度圆直径，计算蜗轮接触和弯曲强度、效率、热平衡、蜗杆刚度（刚度不够时自动加大蜗杆直径、并把蜗杆轴承座做成内凸台缩短跨距），电动机按实际蜗杆效率选择。目前有计算和说明书，三维模型和工程图在做。
+- 单级蜗杆减速器（`scheme: worm`，蜗杆下置，示例 [examples/conveyor_worm.yaml](examples/conveyor_worm.yaml)）按 GB/T 10085 选标准中心距、模数和蜗杆分度圆直径，计算蜗轮接触和弯曲强度、效率、热平衡、蜗杆刚度（刚度不够时自动加大蜗杆直径、并把蜗杆轴承座做成内凸台缩短跨距），电动机按实际蜗杆效率选择。有计算、说明书和三维模型（蜗轮为齿圈压配式，--full-teeth 时建出阿基米德蜗杆螺纹），工程图在做。
 - V 带只录入了 A、B 型的数据，带型按“带的根数不超过 4～5 根时带轮最小”自动试选，代替教材的选型图；P0、KL 数值待人工核对。V 带的压轴力按水平指向电动机计入Ⅰ轴受力。
 - 轴的疲劳校核（安全系数法）中，应力集中、尺寸、表面系数用公开的解析拟合代替查图，说明书注明“近似”；齿轮过盈配合处默认不校核，可在任务书 `shaft: k_sigma_fit` 中填入查表值。
 - 箱体是简化模型：轴承座为圆柱凸台，没有加强肋；附件按常用尺寸示意，型号需按手册核对。

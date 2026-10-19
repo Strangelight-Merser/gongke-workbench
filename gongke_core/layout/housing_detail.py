@@ -210,6 +210,19 @@ class SideBore:
 
 
 @dataclass
+class WormBore:
+    """蜗杆轴穿过左右端壁的轴承座孔，轴线沿 x、在 (y, z) 处。座孔从内凸台端面 |x| = x_inner 通到外端面 x_face。"""
+
+    y: float
+    z: float
+    D: float
+    boss_r: float
+    x_inner: float
+    x_face: float
+    cap: BearingCap
+
+
+@dataclass
 class HousingDetail:
     h: Housing
     shaft_x: list[float]
@@ -239,6 +252,8 @@ class HousingDetail:
     drain_d: float
     hooks: list[float] = field(default_factory=list)  # 吊钩所在端壁 x
     side_bore: SideBore | None = None
+    worm_bore: WormBore | None = None
+    accessory_wall: str = "x"  # 油标和放油螺塞所在的壁："x" 为右端壁，"z" 为前侧壁（z = W + δ）
 
     @property
     def z_range(self) -> tuple[float, float]:
@@ -267,8 +282,9 @@ def detail(d) -> HousingDetail:
     """由设计结果（`design.ReducerDesign`）确定箱体细部。"""
     h = d.housing
     bevel = getattr(d, "bevel", None)
-    # 轴线沿 z 的各轴（圆锥-圆柱减速器的Ⅰ轴沿 x，单独处理）
-    zs = d.shafts[1:] if bevel else d.shafts
+    ws = getattr(d, "worm_shaft", None)
+    # 轴线沿 z 的各轴（圆锥-圆柱减速器的Ⅰ轴、蜗杆轴沿 x，单独处理）
+    zs = d.shafts[1:] if bevel or ws else d.shafts
     xs = [s.layout.x for s in zs]
     Ds = [s.layout.bearing.D for s in zs]
     caps = [BearingCap(D, *cap_screw(D)) for D in Ds]
@@ -277,9 +293,20 @@ def detail(d) -> HousingDetail:
     # 各轴上最大的齿轮齿顶圆
     if bevel:
         tips = [max(bevel.da2, d.low.da1) / 2, d.low.da2 / 2]
+    elif ws:
+        tips = [d.worm.de2 / 2]
     else:
         tips = [d.high.da1 / 2, max(d.high.da2, d.low.da1) / 2, d.low.da2 / 2]
     cover_r = [max(t + h.gap_radial + h.delta, b) for t, b in zip(tips, boss)]
+    worm_bore = None
+    if ws:
+        # 蜗杆减速器的箱盖是一个半圆拱，两端落在箱座端壁外表面上
+        cover_r = [max(cover_r[0], xo[1])]
+        from gongke_core.layout.worm_reducer import boss_radius as worm_boss
+
+        D = ws.bearing.D
+        worm_bore = WormBore(-d.worm.a, h.inner_width / 2, D, worm_boss(D), ws.seat_inner, ws.seat_outer,
+                             BearingCap(D, *cap_screw(D)))
     side = None
     wall_o = wall_i = None
     if bevel:
@@ -340,7 +367,7 @@ def detail(d) -> HousingDetail:
     foot_bolts = [(x, z) for x in (xo[0] + 0.15 * (xo[1] - xo[0]), xo[1] - 0.1 * (xo[1] - xo[0])) for z in zfoot]
 
     # 视孔盖：放在低速级啮合区上方那段公切线上（没有公切线时放在最高圆顶部）
-    x_mesh = xs[-2] + d.low.d1 / 2
+    x_mesh = 0.0 if ws else xs[-2] + d.low.d1 / 2
     seg = None
     for e in outer:
         if isinstance(e, Seg) and e.p[0] - 1e-9 <= x_mesh <= e.q[0] + 1e-9:
@@ -365,21 +392,38 @@ def detail(d) -> HousingDetail:
     if bevel:
         eye_d = 10 * MM if d.low.a + bevel.d2 / 2 <= 350 * MM else 12 * MM
         eyebolts = [(xo[0] + xs[0]) / 2, xs[-1]]
+    elif ws:
+        eye_d = 10 * MM if d.worm.a <= 200 * MM else 12 * MM
+        eyebolts = [-0.6 * cover_r[0], 0.6 * cover_r[0]]
     else:
         eye_d = 10 * MM if d.high.a + d.low.a <= 350 * MM else 12 * MM
         eyebolts = [xs[0] + 0.3 * (xs[1] - xs[0]), xs[2]]
-    # 油面：低速级大齿轮浸油 1～2 个齿高且不小于 10 mm
-    immerse = max(10 * MM, 2 * 2.25 * d.low.mn)
+    if ws:
+        # 蜗杆下置：油面到蜗杆最低滚动体中心，且蜗杆至少浸入一个模数
+        w = d.worm
+        brg = ws.bearing
+        oil = max(-w.a - (brg.d + brg.D) / 4, -w.a - w.da1 / 2 + w.m)
+    else:
+        # 油面：低速级大齿轮浸油 1～2 个齿高且不小于 10 mm
+        immerse = max(10 * MM, 2 * 2.25 * d.low.mn)
     # 同时保证高速级大齿轮浸到约一个齿高（与 design 中的浸油深度校核一致）
-    if bevel:  # 大锥齿轮浸入 0.7 倍齿宽（与 bevel_design 的浸油校核一致）
+    if ws:
+        pass
+    elif bevel:  # 大锥齿轮浸入 0.7 倍齿宽（与 bevel_design 的浸油校核一致）
         oil = max(-d.low.da2 / 2 + immerse, -bevel.da2 / 2 + 0.7 * bevel.b * math.sin(bevel.delta2))
     else:
         oil = max(-d.low.da2 / 2 + immerse, -d.high.da2 / 2 + 2.25 * d.high.mn)
     dip = ((xo[1], oil + 20 * MM), 45.0)  # 油标座在油面以上，油标杆斜插入油池
     drain = (xo[1], y_bottom + h.flange_foot + 0.9 * 16 * MM + 3 * MM)  # 紧贴底座凸缘上方，尽量低
+    wall = "x"
+    if ws:  # 端壁被蜗杆轴承座占满，油标和放油螺塞装在前侧壁上，避开中间的蜗杆
+        wall = "z"
+        xa = 0.5 * (xo[1] + max(w.b1 / 2, 0.0))
+        dip = ((xa, oil + 20 * MM), 45.0)
+        drain = (xa, drain[1])
     return HousingDetail(
         h, xs, caps, boss, cover_r, outer, inner, xo, fw, y_bottom, foot_w,
         merged, fb, bolt_length(h, h.bolt_bearing), bolt_length(h, h.bolt_flange),
         pins, max(0.75 * h.bolt_flange, 6 * MM), jack, foot_bolts, insp, eyebolts, eye_d, oil, dip, drain,
-        16 * MM, [xo[1]] if side else [xo[0], xo[1]], side,
+        16 * MM, [xo[1]] if side else [xo[0], xo[1]], side, worm_bore, wall,
     )

@@ -24,8 +24,14 @@ MM = 1e-3
 OIL_BELOW_WORM = 40 * MM  # 蜗杆齿顶到箱底的距离（油池深度），指导书推荐 30～50 mm
 
 
+WORM_SEAT_PROTRUSION = 8 * MM  # 蜗杆轴承座端面伸出箱壁外表面的长度
+
+
 def boss_radius(D: float) -> float:
-    return D / 2 + max(0.25 * D, 12 * MM)
+    """蜗杆轴承座外圆半径：不小于轴承盖凸缘半径 (D + 5d3)/2。"""
+    from gongke_core.layout.housing_detail import cap_screw
+
+    return max(D / 2 + max(0.25 * D, 12 * MM), (D + 5 * cap_screw(D)[0]) / 2)
 
 
 def wheel_hub(worm: WormPair, seat_d: float) -> float:
@@ -66,6 +72,7 @@ class WormShaft:
     bearing_x: tuple[float, float]  # 两轴承压力中心（A 在 −x 一侧）
     bodies: tuple[float, float]  # 两轴承中面
     seat_inner: float  # 轴承座内凸台端面的 |x|
+    seat_outer: float  # 轴承座外端面（轴承盖凸缘贴合面）的 |x|
     hub: float
     diameters: dict[str, float]
 
@@ -92,7 +99,8 @@ def worm_shaft(h: Housing, worm: WormPair, brg: standards.TaperedBearing, d_end:
     x_b = min(ceil_to(x_b, MM), x_in)
     ca, cb = -x_b - h.gap_bearing - T / 2, x_b + h.gap_bearing + T / 2
     off = brg.a - T / 2  # 正装：压力中心在两轴承内侧
-    outer = h.bearing_seat_length + h.cap_thickness + h.coupling_gap
+    seat_outer = x_in + h.delta + WORM_SEAT_PROTRUSION
+    outer = seat_outer - x_in + h.cap_thickness + h.coupling_gap
     segs: list[S] = []
 
     def add(x0, x1, d, role, **kw):
@@ -106,5 +114,5 @@ def worm_shaft(h: Housing, worm: WormPair, brg: standards.TaperedBearing, d_end:
     add(-b1 / 2, b1 / 2, worm.da1, "齿轮轴", root_d=worm.df1)
     add(b1 / 2, cb - T / 2, mid, "轴肩")
     add(cb - T / 2, cb + T / 2, d_b, "轴承")
-    return WormShaft(segs, brg, (ca + off, cb - off), (ca, cb), x_b, hub,
+    return WormShaft(segs, brg, (ca + off, cb - off), (ca, cb), x_b, seat_outer, hub,
                      {"端部": d_end, "密封": d_seal, "轴承": d_b, "轴肩": mid})

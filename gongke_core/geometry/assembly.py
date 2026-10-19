@@ -24,10 +24,13 @@ def build(design: ReducerDesign, with_housing: bool = True, z_up: bool = True, t
     teeth=False 时齿轮用齿顶圆柱体简化表示（STEP 约 1 MB，打开快）；True 时建出完整渐开线斜齿（约 30 MB）。
     布置计算的坐标系是 y 向上、z 沿轴线；z_up=True 时绕 x 轴转 90°，使竖直方向为 +Z（FreeCAD 等 CAD 的习惯）。
     """
+    special = None
     if getattr(design, "bevel", None) is not None:
-        from gongke_core.geometry import bevel
-
-        out = bevel.build(design, with_housing, teeth)
+        from gongke_core.geometry import bevel as special
+    elif getattr(design, "worm_shaft", None) is not None:
+        from gongke_core.geometry import worm as special
+    if special is not None:
+        out = special.build(design, with_housing, teeth)
         if z_up:
             rot = bd.Location((0, 0, 0), (1, 0, 0), 90)
             out = {k: rot * v for k, v in out.items()}
@@ -97,7 +100,8 @@ def export(design: ReducerDesign, path: str | Path, with_housing: bool = True, t
     for name, shp in shapes.items():
         shp.label = name
         children.append(shp)
-    label = "圆锥-圆柱齿轮减速器" if getattr(design, "bevel", None) is not None else "二级圆柱齿轮减速器"
+    label = ("圆锥-圆柱齿轮减速器" if getattr(design, "bevel", None) is not None
+             else "蜗杆减速器" if getattr(design, "worm_shaft", None) is not None else "二级圆柱齿轮减速器")
     asm = bd.Compound(children=children, label=label)
     bd.export_step(asm, str(path))
     return shapes

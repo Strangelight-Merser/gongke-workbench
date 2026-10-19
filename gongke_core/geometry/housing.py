@@ -122,16 +122,26 @@ def accessories(t: HousingDetail) -> dict[str, bd.Solid]:
     for s in bolts[1:]:
         comp = comp.fuse(s)
     out["连接螺栓"] = comp
-    # 油标（杆式，45° 斜插在右端壁）与放油螺塞
+    # 油标（杆式，45° 斜插在右端壁或前侧壁）与放油螺塞
     (ox, oy), ang = t.dipstick
     a = math.radians(ang)
-    dirv = (math.cos(a), math.sin(a), 0)
-    out["油标"] = bd.Solid.make_cylinder(8, 45, bd.Plane((_mm(ox) - 15 * math.cos(a), _mm(oy) - 15 * math.sin(a), W / 2), z_dir=dirv)).fuse(
-        bd.Solid.make_cylinder(11, 8, bd.Plane((_mm(ox) + 30 * math.cos(a), _mm(oy) + 30 * math.sin(a), W / 2), z_dir=dirv)))
     dx, dy = (_mm(v) for v in t.drain)
     dd = _mm(t.drain_d)
-    out["放油螺塞"] = bd.Solid.make_cylinder(dd * 0.8, 10, bd.Plane((dx, dy, W / 2), z_dir=(1, 0, 0))).fuse(
-        bd.Solid.make_cylinder(dd / 2, 14, bd.Plane((dx, dy, W / 2), z_dir=(-1, 0, 0))))
+    if t.accessory_wall == "z":
+        zw = zb
+        dirv = (0, math.sin(a), math.cos(a))
+        p0 = (_mm(ox), _mm(oy) - 15 * math.sin(a), zw - 15 * math.cos(a))
+        p1 = (_mm(ox), _mm(oy) + 30 * math.sin(a), zw + 30 * math.cos(a))
+        drain_at, out_dir = (dx, dy, zw), (0, 0, 1)
+    else:
+        dirv = (math.cos(a), math.sin(a), 0)
+        p0 = (_mm(ox) - 15 * math.cos(a), _mm(oy) - 15 * math.sin(a), W / 2)
+        p1 = (_mm(ox) + 30 * math.cos(a), _mm(oy) + 30 * math.sin(a), W / 2)
+        drain_at, out_dir = (dx, dy, W / 2), (1, 0, 0)
+    out["油标"] = bd.Solid.make_cylinder(8, 45, bd.Plane(p0, z_dir=dirv)).fuse(
+        bd.Solid.make_cylinder(11, 8, bd.Plane(p1, z_dir=dirv)))
+    out["放油螺塞"] = bd.Solid.make_cylinder(dd * 0.8, 10, bd.Plane(drain_at, z_dir=out_dir)).fuse(
+        bd.Solid.make_cylinder(dd / 2, 14, bd.Plane(drain_at, z_dir=tuple(-v for v in out_dir))))
     return out
 
 

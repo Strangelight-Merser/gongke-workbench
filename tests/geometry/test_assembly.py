@@ -45,3 +45,26 @@ def test_bevel_scheme_assembly():
     assert shaft1.min.X < (d.housing.x_range[0] - d.housing.delta) * 1e3
     gear = shapes["大锥齿轮"].bounding_box()
     assert gear.min.Z == pytest.approx(d.positions.z_back * 1e3, abs=0.5)
+
+
+def test_worm_scheme_assembly():
+    # 蜗杆方案：蜗杆在蜗轮正下方，螺纹中点在蜗轮中间平面；蜗轮在箱体内；蜗杆轴从 −x 端伸出
+    d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_worm.yaml"))
+    shapes = assembly.build(d, with_housing=True, z_up=False)
+    assert all(s.is_valid for s in shapes.values())
+    W = d.housing.inner_width * 1e3
+    ring = shapes["蜗轮齿圈"].bounding_box()
+    assert (ring.min.Z + ring.max.Z) / 2 == pytest.approx(W / 2, abs=0.5)
+    assert ring.min.Z > 0 and ring.max.Z < W
+    worm = shapes["Ⅰ轴（蜗杆轴）（蜗杆）"].bounding_box()
+    assert (worm.min.Y + worm.max.Y) / 2 == pytest.approx(-d.worm.a * 1e3, abs=0.5)
+    assert worm.min.X < (d.housing.x_range[0] - d.housing.delta) * 1e3
+    # 蜗杆轴承座内凸台不碰蜗轮
+    base, wheel = shapes["箱座"], shapes["蜗轮齿圈"]
+    inter = base.intersect(wheel)
+    assert inter is None or inter.volume < 1e-3
+    # 轴承装在座孔内：轴承外圈与箱座不重叠
+    for k, v in shapes.items():
+        if "轴承3" in k:
+            i = base.intersect(v)
+            assert i is None or i.volume < 1.0, k
