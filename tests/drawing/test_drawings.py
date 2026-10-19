@@ -130,3 +130,9 @@ def test_worm_scheme_drawings(tmp_path):
     assert "导程角" in worm and "GB/T 10089" in worm and "高频淬火" in worm
     wheel = texts(next(f for f in files if f.name == "蜗轮零件图"))
     assert "变位系数" in wheel and "HT200" in wheel and f"R{d.worm.throat_radius * 1e3:g}" in wheel
+    asm = next(f for f in files if f.name == "减速器装配图")
+    t = texts(asm)
+    assert "蜗杆减速器" in t and "蜗轮齿圈" in t and "圆锥滚子轴承" in t and "B-B" in t
+    # 中心距标注带极限偏差
+    dims = [e.dxf.text for e in ezdxf.readfile(asm.dxf).modelspace().query("DIMENSION")]
+    assert any("±" in s for s in dims)

@@ -44,9 +44,13 @@ def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile
         files.append(DrawingFile(name, number, dxf, svg_path, sh.size))
 
     worm = getattr(design, "worm_shaft", None) is not None
-    if not worm:
+    if worm:
+        from gongke_core.drawing import worm_assembly
+
+        sh = worm_assembly.draw(design, out / "assembly.dxf", "GK-00")
+    else:
         sh = assembly.draw(design, out / "assembly.dxf", "GK-00")
-        done(sh, "减速器装配图", "GK-00", "assembly")
+    done(sh, "减速器装配图", "GK-00", "assembly")
     for i, sr in enumerate(design.shafts, 1):
         no = f"GK-01-0{i}"
         sh = shaft.draw(design, sr, out / f"shaft{i}.dxf", no)
