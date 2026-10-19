@@ -30,7 +30,6 @@ def _box(x0, y0, z0, x1, y1, z1) -> bd.Solid:
 def cover(t: HousingDetail) -> bd.Solid:
     """箱盖：上凸包外形的薄壁壳体、下凸缘、轴承座上半部分和轴承孔，顶部开视孔。"""
     h = t.h
-    d1 = _mm(h.delta1)
     W = _mm(h.inner_width)
     fw = _mm(t.flange_w)
     b1 = _mm(h.flange_cover)

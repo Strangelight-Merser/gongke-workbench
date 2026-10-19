@@ -59,7 +59,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 - 箱体主要尺寸（壁厚、凸缘、地脚螺栓等经验公式）。
 - 三维：渐开线斜齿轮、阶梯轴（含键槽）、轴承、简化箱体，组成装配体导出 STEP。
 - 计算说明书 DOCX，带公式、取值依据和校核结论。
-- 二维工程图：装配图（主、俯、左三视图，含明细栏、技术特性表）和轴、齿轮零件图，DXF 格式。箱盖外形和附件尺寸在 `layout/housing_detail.py` 中统一确定，三维和二维共用。
+- 二维工程图：装配图（主、俯、左三视图，含明细栏、技术特性表）和轴、齿轮、箱座、箱盖零件图，DXF 格式。箱盖外形和附件尺寸在 `layout/housing_detail.py` 中统一确定，三维和二维共用。
 
 **不做（第一版）：**
 
@@ -84,7 +84,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 
 ## 6. 后续路线
 
-1. 箱体零件图（轴的安全系数法校核已完成）。
+1. 圆锥-圆柱、蜗杆方案的箱体零件图（二级圆柱齿轮减速器的箱座、箱盖已完成：`drawing/housing_base.py`、`drawing/housing_cover.py`）。
 2. 其他方案已完成：蜗杆减速器（`calc/worm.py`、`layout/worm_reducer.py`、`layout/worm_blank.py`、`worm_design.py`、`geometry/worm.py`、`drawing/worm_wheel.py`、`drawing/worm_assembly.py`）；圆锥-圆柱减速器（`calc/bevel.py`、`layout/bevel_blank.py`、`layout/bevel_reducer.py`、`bevel_design.py`、`geometry/bevel.py`、`drawing/bevel_gear.py`）。
 3. 轴和齿轮的 CalculiX 校核向导，与解析解对照。
 4. 一键安装包。

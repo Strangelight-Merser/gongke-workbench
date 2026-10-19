@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from gongke_core import standards
+from gongke_core.calc.tolerance import center_distance_fa
 from gongke_core.design import ReducerDesign
 from gongke_core.drawing import hidden, material_name
 from gongke_core.drawing.gear import dms
@@ -71,7 +72,6 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
     W = h.inner_width * MM
     delta = h.delta * MM
     fw = t.flange_w * MM
-    b, b1 = h.flange_base * MM, h.flange_cover * MM
     zsh = _zshafts(d)
     xs = [s.layout.x * MM for s in zsh]
     xo0, xo1 = (v * MM for v in t.x_outer)
@@ -164,8 +164,10 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
 
     # ------------------------------------------------ 尺寸
     zr = z_min - 5
-    for xa, xb in zip(xs, xs[1:]):
-        tv.dim((zr, xa), (zr, xb), (zr - 10 / s, xa), 90, "<>", 0)
+    mesh = [d.low] if getattr(d, "bevel", None) is not None else [d.high, d.low]
+    for (xa, xb), pair in zip(zip(xs, xs[1:]), mesh):
+        fa = center_distance_fa(pair.inp.grade, pair.a) * MM
+        tv.dim((zr, xa), (zr, xb), (zr - 10 / s, xa), 90, f"<>±{fa:.3f}".rstrip("0"), 0)
     tv.dim((-delta - fw, xo0 - fw), (W + delta + fw, xo0 - fw), (-delta - fw, xo0 - fw - 14 / s), 0, "<>", 0)
     tv.dim((z_max - 5, xo0 - fw), (z_max - 5, xo1 + fw), (z_max + 2 / s, xo0 - fw), 90, "<>", 0)
     tv.dim((0, xo1 + fw), (W, xo1 + fw), (0, xo1 + fw + 14 / s), 0, "<>", 0)
@@ -493,7 +495,6 @@ def _top_pinion_shaft(d, t: HousingDetail, v: View, sh: Sheet, tadd, next_angle,
     U = lambda u, r: (za + r, -u)  # noqa: E731  u、r 单位 mm
     Um = lambda u, r: U(u * MM, r * MM)  # noqa: E731  u、r 单位 m
     segs = ps.segments
-    lay = d.shafts[0].layout
     # 轴（外形）
     prev = None
     for seg in segs:
@@ -608,7 +609,6 @@ def b_total(h) -> float:
 
 def _front_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
     h = d.housing
-    W = h.inner_width * MM
     fw = t.flange_w * MM
     b, b1 = h.flange_base * MM, h.flange_cover * MM
     zsh = _zshafts(d)
@@ -692,13 +692,11 @@ def _front_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
 
     # ---------------- 吊钩（箱座两端铸出）
     for xe in t.hooks:
-        xe *= MM
-        sg = 1 if xe > mid_x else -1
-        yt = -b - 1.6 * h.bolt_bearing * MM  # 让开凸缘下的螺母
-        pts = [(xe, yt), (xe + sg * fw * 0.9, yt), (xe + sg * fw * 0.9, yt - 0.7 * fw), (xe, yt - 2.0 * fw)]
+        pts, (hx, hy), hr = t.hook_shape(xe)
+        pts = [(px * MM, py * MM) for px, py in pts]
         for p, q in zip(pts, pts[1:]):
             seg(p, q)
-        arc(xe + sg * fw * 0.45, yt - 0.4 * fw, 0.2 * fw, 0, 360)
+        arc(hx * MM, hy * MM, hr * MM, 0, 360)
 
     # ---------------- 连接螺栓（前侧凸缘一排）、起盖螺钉
     def bolt(x, dd, length, head_only=False):
@@ -869,8 +867,8 @@ def _left_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet):
     cover_near = min(x - r * MM for x, r in zip(xs, t.cover_r))
     items.append((cover_near, (-delta, b1, W + delta, top), "粗实线"))
     for xe in t.hooks[:1]:
-        yt = -b - 1.6 * h.bolt_bearing * MM
-        items.append((xe * MM - fw, (W / 2 - delta, yt - 2.0 * fw, W / 2 + delta, yt), "粗实线"))
+        pts = t.hook_shape(xe)[0]
+        items.append((xe * MM - fw, (W / 2 - delta, pts[-1][1] * MM, W / 2 + delta, pts[0][1] * MM), "粗实线"))
     for sr, x, rb, cap in zip(zsh, xs, t.boss_r, t.caps):
         rb = rb * MM
         r2 = cap.D2 * MM / 2

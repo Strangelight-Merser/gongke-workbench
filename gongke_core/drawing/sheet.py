@@ -30,7 +30,7 @@ LAYERS = {
     "粗实线": (7, "CONTINUOUS", 50),
     "细实线": (7, "CONTINUOUS", 25),
     "点画线": (1, "CENTER", 25),
-    "虚线": (6, "DASHED", 25),
+    "虚线": (6, "GB_DASHED", 25),
     "尺寸": (3, "CONTINUOUS", 25),
     "剖面线": (8, "CONTINUOUS", 18),
     "文字": (7, "CONTINUOUS", 25),
@@ -71,6 +71,8 @@ class Sheet:
         self.w, self.h = (l, b) if landscape else (b, l)
         self.doc = ezdxf.new("R2018", setup=True, units=4)  # 4 = mm
         self.msp = self.doc.modelspace()
+        # 虚线（GB/T 4457.4）：画长约 4 mm，间隔约 1.5 mm
+        self.doc.linetypes.add("GB_DASHED", pattern=[5.5, 4.0, -1.5], description="GB 虚线 ____ ____ ____")
         for name, (color, lt, lw) in LAYERS.items():
             self.doc.layers.add(name, color=color, linetype=lt, lineweight=lw)
         self.doc.styles.new("GB", dxfattribs={"font": FONT, "width": TEXT_WIDTH})
@@ -178,8 +180,10 @@ class Sheet:
 
     # ------------------------------------------------------------ 技术符号
 
-    def roughness(self, x, y, ra: str, angle: float = 0.0, h: float = 3.5):
-        """表面结构符号（GB/T 131）：去除材料的基本符号，长边上方标 Ra 值。(x, y) 为符号尖端。"""
+    def roughness(self, x, y, ra: str, angle: float = 0.0, h: float = 3.5, keep: bool = False):
+        """表面结构符号（GB/T 131）：去除材料的基本符号，长边上方标 Ra 值。(x, y) 为符号尖端。
+
+        keep=True 时画不去除材料的符号（三角形内切圆，用于铸造毛坯面）。"""
         h1 = 1.4 * h
         h2 = 2.1 * h1
         t = math.tan(math.radians(30))
@@ -190,7 +194,14 @@ class Sheet:
 
         self.line(R(0, 0), R(-h1 * t, h1), "细实线")
         self.line(R(0, 0), R(h2 * t, h2), "细实线")
-        self.line(R(-h1 * t, h1), R(h1 * t, h1), "细实线")
+        if keep:
+            r = h1 / 3  # 符号短边与水平线构成的等边三角形（高 h1）的内切圆
+            c = R(0, 2 * r)
+            self.msp.add_circle(c, r, dxfattribs={"layer": "细实线"})
+        else:
+            self.line(R(-h1 * t, h1), R(h1 * t, h1), "细实线")
+        if not ra:
+            return
         w = len(ra) * h * 0.6 + 4
         self.line(R(h2 * t, h2), R(h2 * t + w, h2), "细实线")
         self.text(*R(h2 * t + 1, h2 - h - 1), ra, h, rotation=angle)
@@ -202,7 +213,7 @@ class Sheet:
         self.roughness(at[0] + 5, at[1], ra, 0, h)
 
     def gtol(self, x, y, kind: str, value: str, datum: str = "", h: float = 3.5):
-        """几何公差框格（GB/T 1182），左下角在 (x, y)。kind：runout / symmetry / perpendicular / parallel。"""
+        """几何公差框格（GB/T 1182），左下角在 (x, y)。kind：runout / symmetry / perpendicular / parallel / cylindricity / flatness。"""
         hh = 2 * h
         cells = [hh, len(value) * h * 0.6 + 4] + ([len(datum) * h * 0.6 + 4] if datum else [])
         cx = x
@@ -219,6 +230,13 @@ class Sheet:
         elif kind == "perpendicular":
             self.line((sx - s * 0.6, sy - s * 0.5), (sx + s * 0.6, sy - s * 0.5), "细实线")
             self.line((sx, sy - s * 0.5), (sx, sy + s * 0.6), "细实线")
+        elif kind == "cylindricity":  # 圆柱度：圆 + 两条斜切线
+            self.msp.add_circle((sx, sy), s * 0.38, dxfattribs={"layer": "细实线"})
+            self.line((sx - s * 0.65, sy - s * 0.5), (sx - s * 0.05, sy + s * 0.5), "细实线")
+            self.line((sx + s * 0.05, sy - s * 0.5), (sx + s * 0.65, sy + s * 0.5), "细实线")
+        elif kind == "flatness":  # 平面度：平行四边形
+            self.poly([(sx - s * 0.6, sy - s * 0.3), (sx + s * 0.3, sy - s * 0.3), (sx + s * 0.6, sy + s * 0.3),
+                       (sx - s * 0.3, sy + s * 0.3)], "细实线", close=True)
         elif kind == "parallel":
             self.line((sx - s * 0.5, sy - s * 0.5), (sx - s * 0.1, sy + s * 0.5), "细实线")
             self.line((sx + s * 0.1, sy - s * 0.5), (sx + s * 0.5, sy + s * 0.5), "细实线")
@@ -276,7 +294,10 @@ class Sheet:
             tx = x1 - 60
             ty = y0 + 56 + 8 + (7 * (len(self.parts_rows) + 1) if self.parts_rows else 0)
             self.text(tx, ty + 2, "其余", 5)
-            self.roughness(tx + 18, ty, rest_ra, h=3.5)
+            if rest_ra == "毛坯":  # 铸件其余表面不加工
+                self.roughness(tx + 18, ty, "", h=3.5, keep=True)
+            else:
+                self.roughness(tx + 18, ty, rest_ra, h=3.5)
 
     def _title_block(self, info: TitleInfo):
         x1, y0 = self.inner[2], self.inner[1]

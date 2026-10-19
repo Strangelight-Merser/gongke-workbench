@@ -227,7 +227,6 @@ def _gear(doc: Doc, p: GearPair):
 def _belt(doc: Doc, d: ReducerDesign):
     b = d.belt
     sec = b.sec
-    k = d.kin
     n1 = b.inp.n1
     _h1(doc, "普通 V 带传动设计")
     doc.p(f"小带轮装在电动机轴上，n1 = {n1:.0f} r/min；大带轮装在Ⅰ轴轴伸上。传递功率取电动机所需功率 "

@@ -254,6 +254,19 @@ class HousingDetail:
     side_bore: SideBore | None = None
     worm_bore: WormBore | None = None
     accessory_wall: str = "x"  # 油标和放油螺塞所在的壁："x" 为右端壁，"z" 为前侧壁（z = W + δ）
+    hook_drop: float = 0.0  # 吊钩自上缘向下的高度
+
+    def hook_shape(self, xe: float) -> tuple[list[tuple[float, float]], tuple[float, float], float]:
+        """箱座端壁 xe 处铸出的吊钩（在中间平面 z = W/2 的外形）：(轮廓折线, 吊孔中心, 吊孔半径)，单位 m。
+        上缘让开凸缘下的螺母，下方不碰端壁上的油标座。"""
+        fw = self.flange_w
+        sg = 1 if xe > sum(self.x_outer) / 2 else -1
+        yt = -self.h.flange_base - 1.6 * self.h.bolt_bearing
+        drop = self.hook_drop or 2 * fw
+        y2 = yt - max(0.35 * drop, 0.5 * fw)
+        r = 0.18 * fw
+        pts = [(xe, yt), (xe + sg * 0.9 * fw, yt), (xe + sg * 0.9 * fw, y2), (xe, yt - drop)]
+        return pts, (xe + sg * 0.45 * fw, yt - max(r + 3e-3, 0.2 * min(drop, 2 * fw))), r
 
     @property
     def z_range(self) -> tuple[float, float]:
@@ -421,9 +434,15 @@ def detail(d) -> HousingDetail:
         xa = 0.5 * (xo[1] + max(w.b1 / 2, 0.0))
         dip = ((xa, oil + 20 * MM), 45.0)
         drain = (xa, drain[1])
+    # 吊钩高度：下端离端壁上的油标座至少 5 mm
+    drop = 2 * fw
+    if wall == "x":
+        dip_top = dip[0][1] + 11 * MM * math.sqrt(2)
+        yt = -h.flange_base - 1.6 * h.bolt_bearing
+        drop = max(min(drop, yt - dip_top - 5 * MM), 0.8 * fw)
     return HousingDetail(
         h, xs, caps, boss, cover_r, outer, inner, xo, fw, y_bottom, foot_w,
         merged, fb, bolt_length(h, h.bolt_bearing), bolt_length(h, h.bolt_flange),
         pins, max(0.75 * h.bolt_flange, 6 * MM), jack, foot_bolts, insp, eyebolts, eye_d, oil, dip, drain,
-        16 * MM, [xo[1]] if side else [xo[0], xo[1]], side, worm_bore, wall,
+        16 * MM, [xo[1]] if side else [xo[0], xo[1]], side, worm_bore, wall, drop,
     )

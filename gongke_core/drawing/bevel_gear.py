@@ -61,7 +61,6 @@ def draw(pair: BevelPair, member: int, bore: float, path: str | Path, title: str
     rb = g.bore * MM / 2
     t2, kb = g.key_t2 * MM, g.key_b * MM
     t_ref = reference_face(g) * MM
-    t_min = min(p[0] for p in prof)
     t_max = max(p[0] for p in prof)
     da = g.da * MM
     rK = K[1]

@@ -95,7 +95,6 @@ def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str,
     for size in ("A3", "A2", "A1"):
         sh = Sheet(size)
         x0, y0, x1, y1 = sh.inner
-        avail_w = (x1 - x0 - 140) / (1 + 1.6)  # 主视图宽 b，左视图宽 da，按比例分配
         s = pick_scale(b + da + 60, da + 20, x1 - x0 - 150, y1 - y0 - 56 - 50)
         if s >= 0.5 or size == "A1":
             break

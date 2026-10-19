@@ -169,7 +169,7 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         sh.cross(c, rs, 3)
         sh.section_label(c[0], c[1] + rs + 13, letter)
         sh.dim((c[0] - hb, c[1] + top), (c[0] + hb, c[1] + top), (c[0], c[1] + rs + 3.5), 0,
-               f"<>N9", s, 0)
+               "<>N9", s, 0)
         sh.dim((c[0], c[1] - rs), (c[0], c[1] + top), (c[0] + rs + 6, c[1]), 90, "<>", s, 1)
         sh.roughness(c[0] + hb, c[1] + top + 1, "Ra 3.2", h=2.5)
 

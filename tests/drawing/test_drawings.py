@@ -136,3 +136,35 @@ def test_worm_scheme_drawings(tmp_path):
     # 中心距标注带极限偏差
     dims = [e.dxf.text for e in ezdxf.readfile(asm.dxf).modelspace().query("DIMENSION")]
     assert any("±" in s for s in dims)
+
+
+def test_housing_base_drawing(drawings):
+    d, files = drawings
+    f = next(f for f in files if f.dxf.stem == "housing_base")
+    assert f.number == "GK-04-01"
+    doc, texts = _texts(f.dxf)
+    joined = " ".join(texts)
+    assert "箱座" in joined and "HT200" in joined and "A-A" in joined and "时效处理" in joined
+    # 中心距按齿轮精度等级标注极限偏差（7～8 级 fa = IT8/2，GB/T 10095-1988 的取法）
+    from gongke_core.calc import tolerance as tol
+
+    dims = [e.dxf.text for e in doc.modelspace().query("DIMENSION")]
+    fa = tol.center_distance_fa(d.high.inp.grade, d.high.a) * 1e3
+    assert any(t.startswith("<>±") and abs(float(t[3:]) - fa) < 6e-4 for t in dims)
+    # 每个轴承孔都标出 H7
+    for sr in d.shafts:
+        assert f"Ø{sr.layout.bearing.D * 1e3:g}H7" in joined
+
+
+def test_housing_cover_drawing(drawings):
+    d, files = drawings
+    f = next(f for f in files if f.dxf.stem == "housing_cover")
+    assert f.number == "GK-04-02"
+    _, texts = _texts(f.dxf)
+    joined = " ".join(texts)
+    assert "箱盖" in joined and "A-A" in joined and "起盖螺钉" in joined and "视孔" in joined
+    from gongke_core.layout.housing_detail import detail
+
+    t = detail(d)
+    # 箱盖外形各段圆弧半径都有标注
+    assert f"R{max(t.cover_r) * 1e3:.0f}" in joined

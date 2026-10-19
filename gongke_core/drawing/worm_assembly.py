@@ -217,7 +217,6 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     w, ws = d.worm, d.worm_shaft
     s2 = d.shafts[1].layout
     s1 = d.shafts[0].layout
-    W = h.inner_width * MM
     fw = t.flange_w * MM
     b, b1 = h.flange_base * MM, h.flange_cover * MM
     b2 = h.flange_foot * MM
@@ -231,7 +230,6 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     rw, Dw = wb.boss_r * MM, wb.D * MM
     xbi, xf = wb.x_inner * MM, wb.x_face * MM
     y_w = -a + rw + 12  # 局部剖视的上边界
-    mid_x = 0.0
 
     def fadd(name, qty, mat, note, at):
         if at[1] > b1 + 2:
@@ -280,21 +278,19 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     seg((xo0, y_w), (xo0, -b))
     seg((xo1, y_w), (xo1, -b))
     # 箱盖：半圆拱
-    rc = R = t.cover_r[0] * MM
+    R = t.cover_r[0] * MM
     cut = math.degrees(math.asin(min(b1 / R, 1.0)))
     for a_, b_ in hidden.visible_arcs(0, 0, R, cut, 180 - cut, occ):
         v.arc((0, 0), R, a_, b_)
     fadd("箱盖", "1", "HT200", "", (-0.55 * R, 0.6 * R))
     # 吊钩（箱座两端铸出）
     for xe in t.hooks:
-        xe *= MM
-        sg = 1 if xe > mid_x else -1
-        yt = -b - 1.6 * h.bolt_bearing * MM
-        pts = [(xe, yt), (xe + sg * fw * 0.9, yt), (xe + sg * fw * 0.9, yt - 0.7 * fw), (xe, yt - 2.0 * fw)]
+        pts, (hx, hy), hr = t.hook_shape(xe)
+        pts = [(px * MM, py * MM) for px, py in pts]
         for p, q in zip(pts, pts[1:]):
             seg(p, q)
-        for a_, b_ in hidden.visible_arcs(xe + sg * fw * 0.45, yt - 0.4 * fw, 0.2 * fw, 0, 360, occ):
-            v.arc((xe + sg * fw * 0.45, yt - 0.4 * fw), 0.2 * fw, a_, b_)
+        for a_, b_ in hidden.visible_arcs(hx * MM, hy * MM, hr * MM, 0, 360, occ):
+            v.arc((hx * MM, hy * MM), hr * MM, a_, b_)
 
     # 连接螺栓（前排）、起盖螺钉
     def bolt(x, dd, length, head_only=False):
@@ -402,7 +398,6 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
         start, end = 180 - a0, 360 + a0
         arcpts = _circle_pts(0, 0, r_, 96, start, end)
         for p, q in zip(arcpts, arcpts[1:]):
-            vis = p if layer == "点画线" else None
             for a_, b_ in hidden.visible_segments(p, q, rects=[worm_box] if layer == "粗实线" else []):
                 v.line(a_, b_, layer)
 
@@ -639,7 +634,7 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
 
     # ---------------- 蜗轮（齿圈、轮芯剖开）
     gb = worm_blank.blank(w, g.seat_d, g.width)
-    kb, t2 = gb.key_b * MM, gb.key_t2 * MM
+    t2 = gb.key_t2 * MM
     ring_ang, core_ang = next_angle(), next_angle()
     rb = gb.bore * MM / 2
     worm_c = (W / 2, -a, w.da1 * MM / 2)
@@ -648,7 +643,6 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
                 for z, r in gb.core_profile()]
         v.poly(core, close=True)
         v.hatch([core], core_ang)
-        ring = [(zc + z * MM, sgn * r * MM) for z, r in gb.ring_profile()]
         # 齿圈剖面只画到齿根（轮齿不剖）
         hb = gb.b2 * MM / 2
         R_root = (gb.a - gb.df2 / 2) * MM
@@ -748,7 +742,7 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
 
 def _top(d, t: HousingDetail, v: View, sh: Sheet, add):
     h = d.housing
-    w, ws = d.worm, d.worm_shaft
+    ws = d.worm_shaft
     lay = d.shafts[1].layout
     W = h.inner_width * MM
     delta = h.delta * MM
