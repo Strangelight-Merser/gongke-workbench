@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
+  <name>GongKe Workbench</name>
+  <description>工科工作台：面向机械类课程设计的中文工作台（减速器设计计算、三维建模、计算说明书）</description>
+  <version>0.1.0</version>
+  <date>2026-10-19</date>
+  <license file="LICENSE">LGPL-2.1-or-later</license>
+  <content>
+    <workbench>
+      <classname>GongKeWorkbench</classname>
+      <subdirectory>./freecad/gongke</subdirectory>
+      <icon>resources/icons/gongke.svg</icon>
+      <freecadmin>1.0.0</freecadmin>
+    </workbench>
+  </content>
+</package>

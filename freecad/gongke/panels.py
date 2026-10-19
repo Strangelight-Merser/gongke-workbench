@@ -1,0 +1,151 @@
+"""减速器设计任务面板。计算和建模在独立进程中进行，界面不会卡住。"""
+
+import os
+import tempfile
+from pathlib import Path
+
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide import QtCore, QtGui
+
+from freecad.gongke import runner
+from freecad.gongke.commands import params
+
+MATERIALS = [("40Cr_QT", "40Cr 调质 280HBW"), ("45_QT", "45 钢 调质 240HBW"), ("42CrMo_QT", "42CrMo 调质 300HBW"),
+             ("35SiMn_QT", "35SiMn 调质 260HBW"), ("45_N", "45 钢 正火 200HBW")]
+
+
+class ReducerTaskPanel:
+    def __init__(self):
+        self.form = QtGui.QWidget()
+        self.form.setWindowTitle("二级圆柱齿轮减速器设计")
+        lay = QtGui.QVBoxLayout(self.form)
+
+        box = QtGui.QGroupBox("设计任务（带式输送机）")
+        fl = QtGui.QFormLayout(box)
+        self.pull = self._spin(100, 50000, 2500, 0, " N")
+        self.speed = self._spin(0.1, 5, 1.4, 2, " m/s")
+        self.drum = self._spin(100, 1500, 400, 0, " mm")
+        self.years = self._spin(1, 30, 10, 0, " 年")
+        self.shifts = QtGui.QComboBox()
+        self.shifts.addItems(["单班制", "两班制", "三班制"])
+        self.shifts.setCurrentIndex(1)
+        self.sync = QtGui.QComboBox()
+        self.sync.addItems(["1500 r/min（4 极）", "1000 r/min（6 极）"])
+        fl.addRow("输送带拉力 F", self.pull)
+        fl.addRow("输送带速度 v", self.speed)
+        fl.addRow("卷筒直径 D", self.drum)
+        fl.addRow("使用年限", self.years)
+        fl.addRow("工作制度", self.shifts)
+        fl.addRow("电动机同步转速", self.sync)
+        lay.addWidget(box)
+
+        box2 = QtGui.QGroupBox("齿轮")
+        fl2 = QtGui.QFormLayout(box2)
+        self.mat1 = QtGui.QComboBox()
+        self.mat2 = QtGui.QComboBox()
+        for key, label in MATERIALS:
+            self.mat1.addItem(label, key)
+            self.mat2.addItem(label, key)
+        self.mat2.setCurrentIndex(1)
+        self.grade = QtGui.QComboBox()
+        self.grade.addItems(["7", "8", "9"])
+        self.grade.setCurrentIndex(1)
+        fl2.addRow("小齿轮材料", self.mat1)
+        fl2.addRow("大齿轮材料", self.mat2)
+        fl2.addRow("精度等级", self.grade)
+        lay.addWidget(box2)
+
+        self.with_model = QtGui.QCheckBox("生成三维装配体并导入当前文档")
+        self.with_model.setChecked(True)
+        lay.addWidget(self.with_model)
+        self.run_btn = QtGui.QPushButton("开始设计")
+        self.run_btn.clicked.connect(self.run)
+        lay.addWidget(self.run_btn)
+
+        self.result = QtGui.QTextBrowser()
+        self.result.setOpenExternalLinks(True)
+        self.result.setMinimumHeight(260)
+        lay.addWidget(self.result)
+        self.proc = None
+        self.out_dir = None
+
+    @staticmethod
+    def _spin(lo, hi, val, dec, suffix):
+        s = QtGui.QDoubleSpinBox()
+        s.setRange(lo, hi)
+        s.setDecimals(dec)
+        s.setValue(val)
+        s.setSuffix(suffix)
+        return s
+
+    def values(self) -> runner.FormValues:
+        return runner.FormValues(
+            belt_pull_N=self.pull.value(), belt_speed_m_s=self.speed.value(), drum_diameter_mm=self.drum.value(),
+            years=self.years.value(), shifts=self.shifts.currentIndex() + 1,
+            sync_speed_rpm=1500 if self.sync.currentIndex() == 0 else 1000,
+            pinion_material=self.mat1.currentData(), gear_material=self.mat2.currentData(),
+            grade=int(self.grade.currentText()),
+        )
+
+    def run(self):
+        try:
+            python = runner.find_python(params().GetString("PythonExe", ""))
+        except FileNotFoundError as e:
+            self.result.setPlainText(str(e))
+            return
+        doc_dir = Path(App.ActiveDocument.FileName).parent if App.ActiveDocument and App.ActiveDocument.FileName else None
+        self.out_dir = (doc_dir or Path(tempfile.mkdtemp(prefix="gongke_"))) / "gongke_reducer"
+        task = runner.write_task(self.values(), self.out_dir)
+        prog, args, cwd = runner.command(python, task, self.out_dir, step=self.with_model.isChecked())
+        self.proc = QtCore.QProcess()
+        env = QtCore.QProcessEnvironment.systemEnvironment()
+        for k, v in runner.environment().items():
+            env.insert(k, v)
+        self.proc.setProcessEnvironment(env)
+        self.proc.setWorkingDirectory(cwd)
+        self.proc.finished.connect(self.done)
+        self.run_btn.setEnabled(False)
+        self.result.setPlainText("正在计算" + ("并生成三维模型，约需 1 分钟…" if self.with_model.isChecked() else "…"))
+        self.proc.start(prog, args)
+
+    def done(self, code, _status=None):
+        self.run_btn.setEnabled(True)
+        log = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "replace")
+        err = bytes(self.proc.readAllStandardError()).decode("utf-8", "replace")
+        try:
+            out = runner.read_outputs(self.out_dir)
+        except FileNotFoundError:
+            self.result.setPlainText(f"运行失败（退出码 {code}）：\n{err or log}")
+            return
+        s = out["summary"]
+        rows = "".join(
+            f"<tr><td>{c['item']}</td><td style='color:{'green' if c['ok'] else 'red'}'>{'满足' if c['ok'] else '不满足'}</td>"
+            f"<td>{c['detail']}</td></tr>" for c in s["checks"])
+        g = s["gears"]
+        html = (
+            f"<p><b>电动机</b> {s['motor']['model']}（{s['motor']['power_kw']} kW，{s['motor']['speed_rpm']:.0f} r/min）</p>"
+            f"<p><b>高速级</b> mn={g['high']['mn']:.2f} z={g['high']['z1']}/{g['high']['z2']} a={g['high']['a']:.0f} mm；"
+            f"<b>低速级</b> mn={g['low']['mn']:.2f} z={g['low']['z1']}/{g['low']['z2']} a={g['low']['a']:.0f} mm</p>"
+            f"<table border='1' cellspacing='0' cellpadding='2'>{rows}</table>"
+        )
+        labels = {"reducer_assembly.step": "三维装配体（STEP）", "report.docx": "计算说明书（Word）",
+                  "report.md": "计算说明书（Markdown）"}
+        for name, path in out["files"].items():
+            html += f"<p><a href='{QtCore.QUrl.fromLocalFile(str(path)).toString()}'>{labels.get(name, name)}</a></p>"
+        self.result.setHtml(html)
+        step = out["files"].get("reducer_assembly.step")
+        if step and self.with_model.isChecked():
+            import Import
+
+            doc = App.ActiveDocument or App.newDocument("减速器")
+            Import.insert(str(step), doc.Name)
+            doc.recompute()
+            Gui.SendMsgToActiveView("ViewFit")
+            Gui.activeDocument().activeView().viewIsometric()
+
+    def getStandardButtons(self):
+        return int(QtGui.QDialogButtonBox.Close)
+
+    def reject(self):
+        Gui.Control.closeDialog()

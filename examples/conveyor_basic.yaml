@@ -1,0 +1,28 @@
+# 带式输送机传动装置设计任务书（示例）
+title: 带式输送机传动装置设计
+conveyor:
+  belt_pull_N: 2500        # 输送带工作拉力 F
+  belt_speed_m_s: 1.4      # 输送带速度 v
+  drum_diameter_mm: 400    # 卷筒直径 D
+life:
+  years: 10
+  days_per_year: 300
+  shifts: 2                # 每班 8 小时
+bearing_life_years: 3      # 轴承按检修期 3 年计
+motor_sync_speed_rpm: 1500
+ratio_split: 1.3           # 高速级传动比 i1 = √(1.3 i)
+gears:
+  high:
+    material1: 40Cr_QT
+    material2: 45_QT
+    grade: 8
+    z1: 24
+    beta_deg: 14
+  low:
+    material1: 40Cr_QT
+    material2: 45_QT
+    grade: 8
+    z1: 24
+    beta_deg: 14
+    # overrides:            # 可填入从教材图表查得的系数，覆盖程序的近似值
+    #   k_v: 1.05

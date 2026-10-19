@@ -1,0 +1,23 @@
+name: 测试
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml pytest python-docx pillow build123d
+      - run: pytest -q
+
+  freecad-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y xvfb libfuse2
+      - run: tests/e2e/run_freecad_e2e.sh
