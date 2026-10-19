@@ -214,6 +214,8 @@ def _shaft(idx: int, task: ReducerTask, kin: kinematics.Kinematics, h: lay.Housi
                 return last
             if not strength.ok:
                 break  # 轴的强度不够，直接加大轴径
+    if last is None:
+        raise standards.SelectionError(f"{name}：轴承内径 {d_b0 / MM:.0f} mm 以上没有可选的深沟球轴承（超出本程序的数据范围）")
     return last
 
 

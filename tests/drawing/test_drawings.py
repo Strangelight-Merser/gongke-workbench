@@ -71,6 +71,8 @@ def test_assembly_parts_list(drawings):
     for sr in d.shafts:
         assert f"深沟球轴承 {sr.layout.bearing.designation}" in joined
     assert "轴承透盖" in joined and "轴承闷盖" in joined
+    for name in ("箱盖", "视孔盖", "通气器", "杆式油标", "放油螺塞", "吊环螺钉", "圆锥销", "起盖螺钉"):
+        assert name in joined, name
     assert "技术要求" in joined
     # 粗实线、剖面线图层都有内容
     msp = doc.modelspace()

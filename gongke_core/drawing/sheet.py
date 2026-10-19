@@ -92,6 +92,7 @@ class Sheet:
         c = MARGIN_C[size]
         self.inner = (BIND_A, c, self.w - c, self.h - c)  # x0, y0, x1, y1
         self.parts_rows: list[list[str]] = []
+        self.parts_first_rows: int | None = None  # 标题栏上方明细栏的最多行数，其余续接在标题栏左方
 
     # ------------------------------------------------------------ 基本图元
 
@@ -307,18 +308,23 @@ class Sheet:
         self.parts_rows.append([str(no), name, str(qty), material, note])
 
     def _parts_list(self):
-        x1, y0 = self.inner[2], self.inner[1] + 56
-        X = x1 - 180
+        """明细栏：画在标题栏上方，序号自下而上；行数超过 parts_first_rows 时续接在标题栏左方（GB/T 10609.2）。"""
+        x1, y0 = self.inner[2], self.inner[1]
+        n1 = self.parts_first_rows if self.parts_first_rows is not None else len(self.parts_rows)
+        blocks = [(x1 - 180, y0 + 56, self.parts_rows[:n1])]
+        if len(self.parts_rows) > n1:
+            blocks.append((x1 - 360, y0, self.parts_rows[n1:]))
         cols = [10, 45, 12, 30, 83]
-        rows = [["序号", "名称", "数量", "材料", "标准 / 备注"]] + self.parts_rows
-        for i, row in enumerate(rows):
-            yy = y0 + 7 * i
-            self.rect(X, yy, x1, yy + 7, "细实线")
-            cx = X
-            for w, v in zip(cols, row):
-                self.line((cx, yy), (cx, yy + 7), "细实线")
-                self.text(cx + w / 2, yy + 3.5, v, 3.5 if len(v) * 2.6 < w else 2.5, "MIDDLE")
-                cx += w
+        for X, Y, body in blocks:
+            rows = [["序号", "名称", "数量", "材料", "标准 / 备注"]] + body
+            for i, row in enumerate(rows):
+                yy = Y + 7 * i
+                self.rect(X, yy, X + 180, yy + 7, "细实线")
+                cx = X
+                for w, v in zip(cols, row):
+                    self.line((cx, yy), (cx, yy + 7), "细实线")
+                    self.text(cx + w / 2, yy + 3.5, v, 3.5 if len(v) * 2.6 < w else 2.5, "MIDDLE")
+                    cx += w
 
     def table(self, x, y_top, rows: list[list[str]], widths: list[float], row_h: float = 7.0, h: float = 3.5):
         """通用表格（如齿轮参数表、技术特性表），左上角 (x, y_top)。"""
@@ -372,6 +378,10 @@ class View:
 
     def circle(self, c, r, layer="粗实线"):
         self.sh.circle(self.P(*c), r * self.s, layer)
+
+    def arc(self, c, r, a0, a1, layer="粗实线"):
+        assert not self.rot
+        self.sh.arc(self.P(*c), r * self.s, a0, a1, layer)
 
     def hatch(self, loops, angle=45, spacing=3.0):
         self.sh.hatch([[self.P(*p) for p in loop] for loop in loops], angle, spacing)

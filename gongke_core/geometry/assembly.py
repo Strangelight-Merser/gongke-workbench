@@ -61,8 +61,16 @@ def build(design: ReducerDesign, with_housing: bool = True, z_up: bool = True, t
                 hub = hub.moved(bd.Location((x, 0, end.z0 / MM)))
             out[f"{lay.name}联轴器半体"] = hub
     if with_housing:
+        from gongke_core.geometry import housing as hg
+        from gongke_core.layout.housing_detail import detail
+
+        t = detail(design)
         out["箱座"] = parts.housing_base(design.housing, [s.layout.x for s in design.shafts],
                                         [s.layout.bearing.D for s in design.shafts])
+        out["箱盖"] = hg.cover(t)
+        out.update(hg.accessories(t))
+        seals = [s.layout.diameters.get("密封") or s.layout.bearing.d for s in design.shafts]
+        out.update(hg.bearing_caps(t, [s.layout.extension for s in design.shafts], seals))
     if z_up:
         rot = bd.Location((0, 0, 0), (1, 0, 0), 90)
         out = {k: rot * v for k, v in out.items()}
