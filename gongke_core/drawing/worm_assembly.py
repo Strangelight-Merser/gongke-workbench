@@ -53,7 +53,6 @@ def draw(d, path: str | Path, drawing_no: str = "GK-00") -> Sheet:
     e = h.cap_thickness * MM
     xo0, xo1 = (v * MM for v in t.x_outer)
     yb = t.y_bottom * MM
-    R = t.cover_r[0] * MM
     ed = t.eyebolt_d * MM
     wb = t.worm_bore
     xf = wb.x_face * MM
@@ -62,7 +61,7 @@ def draw(d, path: str | Path, drawing_no: str = "GK-00") -> Sheet:
     x_min = ws.segments[0].z0 * MM - 5
     x_max = max(xo1 + fw, xf + e) + 5
     eye_top = max(envelope_height(t.cover_outer, x) for x in t.eyebolts) * MM + 4.6 * ed
-    y_top = max(eye_top, R + t.inspection.thickness * MM + 1.4 * t.inspection.vent_d * MM) + 5
+    y_top = max(eye_top, t.inspection.center[1] * MM + t.inspection.thickness * MM + 1.4 * t.inspection.vent_d * MM) + 5
     z_min = min(s2.segments[0].z0 * MM, -L1 - e) - 5
     z_max = s2.segments[-1].z1 * MM + 5
     z_max_l = max(z_max, W + delta + 50)  # 左视图右侧有油标
@@ -337,6 +336,10 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     L, th = ins.length * MM, ins.thickness * MM
     v.rect(cx - L / 2, cy, cx + L / 2, cy + th)
     v.line((cx - L / 2, cy - 1.5), (cx + L / 2, cy - 1.5))
+    if ins.pad > 0:  # 拱顶上的视孔平台
+        for sx in (-1, 1):
+            xp = cx + sx * L / 2
+            v.line((xp, cy - 1.5), (xp, envelope_height(t.cover_outer, xp / MM) * MM))
     sd = ins.screw_d * MM
     for s_ in (-L / 2 + 10, L / 2 - 10):
         v.rect(cx + s_ - 0.85 * sd, cy + th, cx + s_ + 0.85 * sd, cy + th + 0.7 * sd)
@@ -369,7 +372,7 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     # 箱座：两端壁（含轴承座）上部、底部（含两端轴承座下半、箱底、底座）
     for sg in (-1, 1):
         X = lambda x: sg * x  # noqa: E731
-        up = [(X(-xo0 if sg < 0 else xo1) if False else (xo0 if sg < 0 else xo1), y_w),
+        up = [((xo0 if sg < 0 else xo1), y_w),
               ((xi0 if sg < 0 else xi1), y_w), ((xi0 if sg < 0 else xi1), yt_), (X(xbi), yt_), (X(xbi), -a + hD),
               (X(xf), -a + hD), (X(xf), yt_), ((xo0 if sg < 0 else xo1), yt_)]
         v.poly(up, close=True)
@@ -542,23 +545,24 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     v.poly(base, close=True)
     v.hatch([base], 45)
     covers = []
+    yp, wp = ins.center[1] * MM, ins.width * MM / 2  # 视孔平台顶面与半宽（无平台时 yp = R）
     for mirror in (False, True):
         Z = (lambda z: W - z) if mirror else (lambda z: z)  # noqa: E731
-        pts = [(Z(-L1), D2b / 2), (Z(0), D2b / 2), (Z(0), Ri), (Z(W / 2 - hw), Ri), (Z(W / 2 - hw), R),
-               (Z(-delta), R), (Z(-delta), rb2), (Z(-L1), rb2)]
+        pts = [(Z(-L1), D2b / 2), (Z(0), D2b / 2), (Z(0), Ri), (Z(W / 2 - hw), Ri), (Z(W / 2 - hw), yp),
+               (Z(W / 2 - wp), yp), (Z(W / 2 - wp), R), (Z(-delta), R), (Z(-delta), rb2), (Z(-L1), rb2)]
         covers.append(pts)
         v.poly(pts, close=True)
     v.hatch(covers, 135)
     # 视孔盖（剖开）、垫片、通气器（不剖）
     Bw, th = ins.width * MM / 2, ins.thickness * MM
-    plate = [(W / 2 - Bw, R), (W / 2 + Bw, R), (W / 2 + Bw, R + th), (W / 2 - Bw, R + th)]
+    plate = [(W / 2 - Bw, yp), (W / 2 + Bw, yp), (W / 2 + Bw, yp + th), (W / 2 - Bw, yp + th)]
     v.poly(plate, close=True)
     v.hatch([plate], 45, 1.5)
     vd = ins.vent_d * MM
     for hw_, n0, n1_ in ((0.6 * vd, th, th + 0.5 * vd), (0.9 * vd, th + 0.5 * vd, th + 0.9 * vd),
                          (0.45 * vd, th + 0.9 * vd, th + 1.4 * vd)):
-        v.rect(W / 2 - hw_, R + n0, W / 2 + hw_, R + n1_)
-    v.centerline((W / 2, R - 3), (W / 2, R + th + 1.4 * vd + 3), 0)
+        v.rect(W / 2 - hw_, yp + n0, W / 2 + hw_, yp + n1_)
+    v.centerline((W / 2, yp - 3), (W / 2, yp + th + 1.4 * vd + 3), 0)
 
     # ---------------- 蜗轮轴（不剖）
     prev = None

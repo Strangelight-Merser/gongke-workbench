@@ -60,9 +60,16 @@ def cover(t: HousingDetail) -> bd.Solid:
         body = body.cut(bd.Solid.make_cylinder(_mm(cap.D) / 2, W + 2 * L1 + 2, bd.Plane((_mm(x), 0, -L1 - 1))))
     if t.side_bore is not None:
         body = body.cut(side_solids[1])
-    # 视孔
+    # 视孔（顶面为圆弧时先铸出平台）
     ins = t.inspection
     pl = _inspection_plane(t)
+    if ins.pad > 0:
+        R = ins.center[1] - ins.pad
+        sag = R - math.sqrt(max(R * R - (ins.length / 2) ** 2, 0.0))
+        dep = _mm(ins.pad + sag) + 3
+        L_, B_ = _mm(ins.length), _mm(ins.width)
+        pad = bd.Solid.make_box(L_, dep, B_).moved(pl * bd.Location((-L_ / 2, -dep, -B_ / 2)))
+        body = body.fuse(pad.cut(inner))
     hole = bd.Solid.make_box(_mm(ins.hole_length), 60, _mm(ins.hole_width)).moved(
         pl * bd.Location((-_mm(ins.hole_length) / 2, -40, -_mm(ins.hole_width) / 2)))
     body = body.cut(hole)

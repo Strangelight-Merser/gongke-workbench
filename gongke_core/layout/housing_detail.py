@@ -196,6 +196,7 @@ class InspectionCover:
     hole_width: float
     screw_d: float
     vent_d: float  # 通气器螺纹规格
+    pad: float = 0.0  # 视孔凸台高出箱盖外形的高度（盖板贴在圆弧顶上时需铸出平台）
 
 
 @dataclass
@@ -398,8 +399,10 @@ def detail(d) -> HousingDetail:
         c = (seg.p[0] + t * (seg.q[0] - seg.p[0]), seg.p[1] + t * (seg.q[1] - seg.p[1]))
     else:
         i = max(range(len(xs)), key=lambda k: cover_r[k])
-        length, ang, c = 120 * MM, 0.0, (xs[i], cover_r[i])
-    insp = InspectionCover(c, ang, length, hole_w + 40 * MM, 6 * MM, length - 40 * MM, hole_w, 6 * MM, 16 * MM)
+        pad = 5 * MM  # 半圆拱顶上铸出的平台，盖板贴合面加工
+        length, ang, c = 120 * MM, 0.0, (xs[i], cover_r[i] + pad)
+    insp = InspectionCover(c, ang, length, hole_w + 40 * MM, 6 * MM, length - 40 * MM, hole_w, 6 * MM, 16 * MM,
+                           pad if seg is None else 0.0)
 
     # 吊环螺钉：装在箱盖两端的顶部（高速轴、低速轴上方）
     if bevel:
@@ -440,6 +443,9 @@ def detail(d) -> HousingDetail:
         dip_top = dip[0][1] + 11 * MM * math.sqrt(2)
         yt = -h.flange_base - 1.6 * h.bolt_bearing
         drop = max(min(drop, yt - dip_top - 5 * MM), 0.8 * fw)
+    if worm_bore is not None:  # 吊钩下端在蜗杆轴承座凸台以上，并让出主视图局部剖视的分界线
+        yt = -h.flange_base - 1.6 * h.bolt_bearing
+        drop = max(min(drop, yt - (worm_bore.y + worm_bore.boss_r) - 14 * MM), 0.8 * fw)
     return HousingDetail(
         h, xs, caps, boss, cover_r, outer, inner, xo, fw, y_bottom, foot_w,
         merged, fb, bolt_length(h, h.bolt_bearing), bolt_length(h, h.bolt_flange),

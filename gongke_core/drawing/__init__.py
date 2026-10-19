@@ -26,7 +26,7 @@ def material_name(code: str) -> str:
 
 def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile]:
     """生成整套图纸：装配图 GK-00、各轴 GK-01-0n、各（非齿轮轴的）齿轮 GK-02-0n，V 带方案另有大带轮 GK-03-01，
-    二级圆柱齿轮减速器另有箱座 GK-04-01、箱盖 GK-04-02。
+    箱座 GK-04-01、箱盖 GK-04-02。
 
     文件名用 ASCII：assembly.dxf、shaft1.dxf…、gear_high2.dxf（高速级大齿轮）等。
     """
@@ -93,12 +93,10 @@ def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile
 
         sh = pulley_dwg.draw(large_pulley(design), out / "pulley.dxf", "大带轮", "GK-03-01")
         done(sh, "大带轮零件图", "GK-03-01", "pulley")
-    if getattr(design, "bevel", None) is None and not worm:
-        # 箱体零件图目前只做二级圆柱齿轮减速器（圆锥-圆柱、蜗杆方案的端壁上另有轴承座）
-        from gongke_core.drawing import housing_base, housing_cover
+    from gongke_core.drawing import housing_base, housing_cover
 
-        sh = housing_base.draw(design, out / "housing_base.dxf", "GK-04-01")
-        done(sh, "箱座零件图", "GK-04-01", "housing_base")
-        sh = housing_cover.draw(design, out / "housing_cover.dxf", "GK-04-02")
-        done(sh, "箱盖零件图", "GK-04-02", "housing_cover")
+    sh = housing_base.draw(design, out / "housing_base.dxf", "GK-04-01")
+    done(sh, "箱座零件图", "GK-04-01", "housing_base")
+    sh = housing_cover.draw(design, out / "housing_cover.dxf", "GK-04-02")
+    done(sh, "箱盖零件图", "GK-04-02", "housing_cover")
     return files

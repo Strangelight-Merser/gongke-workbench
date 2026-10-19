@@ -36,10 +36,17 @@ def _wavy(v: View, p, q, amp: float):
 
 
 def tolerances(d) -> dict:
-    """箱座图上的公差（mm）：各级中心距偏差 ±fa，相邻轴承孔轴线的平行度 fΣδ / fΣβ，各轴承孔圆柱度。"""
-    lays = [s.layout for s in d.shafts]
-    pairs = [d.high, d.low]
-    out = {"fa": [], "parallel": [], "cyl": []}
+    """箱体图上的公差（mm）：轴线沿 z 的相邻轴承孔之间的中心距偏差 ±fa、平行度 (fΣδ, fΣβ)，各轴承孔圆柱度。
+    圆锥-圆柱减速器的Ⅰ轴沿 x，只有一级圆柱齿轮副；其座孔（套杯孔）的圆柱度放在 "side"。"""
+    from gongke_core.drawing.assembly import _zshafts
+
+    worm = getattr(d, "worm_shaft", None) is not None
+    lays = [d.shafts[1].layout] if worm else [s.layout for s in _zshafts(d)]
+    if worm:
+        pairs = []
+    else:
+        pairs = [d.low] if getattr(d, "bevel", None) is not None else [d.high, d.low]
+    out = {"fa": [], "parallel": [], "cyl": [], "side": None, "worm": None}
     for k, pair in enumerate(pairs):
         q = pair.inp.grade
         out["fa"].append(tol.center_distance_fa(q, pair.a) * MM)
@@ -50,7 +57,39 @@ def tolerances(d) -> dict:
         out["parallel"].append((f_d * MM, f_b * MM))
     for lay in lays:
         out["cyl"].append(tol.housing_bore_cylindricity(lay.bearing.D) * MM)
+    t = detail(d)
+    if t.side_bore is not None:
+        out["side"] = tol.housing_bore_cylindricity(t.side_bore.D) * MM
+    if worm:  # 蜗杆传动中心距偏差（GB/T 10089）、蜗杆座孔圆柱度
+        from gongke_core.drawing.worm_assembly import _fa
+
+        out["worm"] = (_fa(d.worm), tol.housing_bore_cylindricity(t.worm_bore.D) * MM)
     return out
+
+
+def _vgap(L, x, z0, z1, gaps):
+    """俯视图中沿 z 的直线（x 为常数），在 gaps 各区间处断开。"""
+    za = z0
+    for g0, g1 in sorted(gaps):
+        if g0 > za:
+            L((x, za), (x, g0))
+        za = max(za, g1)
+    if z1 > za:
+        L((x, za), (x, z1))
+
+
+def _front_side(t: HousingDetail, v: View, sgn: int):
+    """主视图中左端壁外的小锥齿轮轴承座（圆锥-圆柱减速器）：sgn = −1 为箱座（下半），+1 为箱盖（上半）。
+    凸台在凸缘以外可见，座孔为虚线。"""
+    sb = t.side_bore
+    xo0 = t.x_outer[0] * MM
+    fw = t.flange_w * MM
+    xf, rb, D = sb.x_face * MM, sb.boss_r * MM, sb.D * MM
+    xi0 = t.h.x_range[0] * MM
+    v.line((xf, 0), (xo0 - fw, 0))
+    v.line((xf, sgn * rb), (xo0, sgn * rb))
+    v.line((xf, 0), (xf, sgn * rb))
+    v.line((xf, sgn * D / 2), (xi0, sgn * D / 2), "虚线")
 
 
 def _fmt(v: float) -> str:
@@ -69,10 +108,17 @@ def draw(d, path: str | Path, drawing_no: str = "GK-04-01") -> Sheet:
     yb = t.y_bottom * MM
     xs = [x * MM for x in t.shaft_x]
     hook_out = 0.9 * fw
+    gap_ft = 57 if t.worm_bore is not None else 45  # 主视图与俯视图的间距（蜗杆方案主视图下方多一道尺寸）
 
     # ------------------------------------------------ 图幅与比例
     x_min = xo0 - fw - (hook_out if t.hooks and min(t.hooks) * MM < xo0 + 1 else 0)
+    if t.side_bore is not None:
+        x_min = min(x_min, t.side_bore.x_face * MM)
+    if t.worm_bore is not None:
+        x_min = min(x_min, -t.worm_bore.x_face * MM)
     x_max = xo1 + fw + (hook_out if t.hooks and max(t.hooks) * MM > xo1 - 1 else 0)
+    if t.worm_bore is not None:
+        x_max = max(x_max, t.worm_bore.x_face * MM)
     z_min, z_max = -max(L1, delta + fw), W + max(L1, delta + fw)
     front_w, front_h = x_max - x_min, -yb
     top_h = z_max - z_min
@@ -85,9 +131,9 @@ def draw(d, path: str | Path, drawing_no: str = "GK-04-01") -> Sheet:
             if sc > 1:
                 continue
             w_need = 45 + front_w * sc + 60 + left_w * sc + 45
-            h_need = 40 + front_h * sc + 45 + top_h * sc + 30
+            h_need = 40 + front_h * sc + gap_ft + top_h * sc + 30
             top_right = x0 + 45 + front_w * sc
-            top_bottom = y1 - 40 - front_h * sc - 45 - top_h * sc - 20
+            top_bottom = y1 - 40 - front_h * sc - gap_ft - top_h * sc - 20
             if (w_need <= x1 - x0 and h_need <= y1 - y0
                     and (top_right <= x1 - 185 or top_bottom >= y0 + 60)):
                 chosen = sc
@@ -98,7 +144,7 @@ def draw(d, path: str | Path, drawing_no: str = "GK-04-01") -> Sheet:
     ox = x0 + 45 - x_min * s
     oy_f = y1 - 40  # 剖分面
     front_bottom = oy_f + yb * s
-    oy_t = front_bottom - 45 + z_min * s  # 俯视图：图上 Y = oy_t − z·s
+    oy_t = front_bottom - gap_ft + z_min * s  # 俯视图：图上 Y = oy_t − z·s
     front_right = ox + x_max * s
     ox_l = front_right + 60 - z_min * s
     fv = View(sh, (ox, oy_f), s)
@@ -106,12 +152,13 @@ def draw(d, path: str | Path, drawing_no: str = "GK-04-01") -> Sheet:
     lv = View(sh, (ox_l, oy_f), s)
 
     tl = tolerances(d)
-    _front(d, t, fv, sh, tl)
+    (_front_worm if t.worm_bore is not None else _front)(d, t, fv, sh, tl)
     _top(d, t, tv, sh, tl)
     _left(d, t, lv, sh)
     # 剖切符号 A-A：在俯视图上沿低速轴轴线，从左向右看（箭头指向 +x）
     xc = xs[-1]
-    for zz, sg in ((z_min - 6, -1), (z_max + 6, 1)):
+    za = max(-z_min, delta + fw + 14 / s) + 6  # 让开俯视图上方的螺栓间距尺寸
+    for zz, sg in ((-za, -1), (W + za, 1)):
         p0, p1 = tv.P(xc, -zz), tv.P(xc, -(zz + sg * 5))
         sh.line(p0, p1, "图框")
         sh.arrow(p1, (p1[0] + 8, p1[1]), 2.5, "细实线")
@@ -128,6 +175,10 @@ def draw(d, path: str | Path, drawing_no: str = "GK-04-01") -> Sheet:
         "加工面未注倒角 C2；未注尺寸公差：加工面按 GB/T 1804-m，铸造面按 GB/T 6414-2017 DCTG10。",
         "箱座内表面清理后涂耐油油漆，外表面涂底漆。",
     ]
+    if t.side_bore is not None:
+        reqs.insert(3, "左端壁上的小锥齿轮轴承座孔与箱盖合箱后镗出，其轴线应与Ⅱ轴座孔轴线垂直相交。")
+    if t.worm_bore is not None:
+        reqs.insert(3, "两端蜗杆轴承座孔应一次镗出，其轴线对蜗轮轴座孔轴线的垂直度按 GB/T 10089 的轴交角极限偏差 fΣ 控制。")
     # 放在俯视图右侧、标题栏上方
     tx = max(ox + x_max * s + 30, lv.P(z_min, 0)[0] - 20)
     ty = front_bottom - 40
@@ -195,6 +246,9 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
         for p, q in zip(pts, pts[1:]):
             seg(p, q)
         v.circle((hx * MM, hy * MM), hr * MM)
+
+    if t.side_bore is not None:
+        _front_side(t, v, -1)
 
     # ---------------- 连接螺栓孔、定位销孔、地脚螺栓孔（不可见，虚线）
     def hidden_hole(x, r, y0, y1):
@@ -285,6 +339,117 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     sh.gtol(px - 4, py + 14, "flatness", "0.03")
 
 
+def _front_worm(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
+    """蜗杆减速器箱座主视图：蜗杆轴线以上画外形，以下为过蜗杆轴线（z = W/2）的局部剖视，剖出两端蜗杆轴承座。"""
+    h = d.housing
+    s = v.s
+    fw = t.flange_w * MM
+    b, b2 = h.flange_base * MM, h.flange_foot * MM
+    xo0, xo1 = (val * MM for val in t.x_outer)
+    xi0, xi1 = (val * MM for val in h.x_range)
+    yb = t.y_bottom * MM
+    y_floor = h.y_range[0] * MM
+    wb = t.worm_bore
+    a = -wb.y * MM
+    rw, hD = wb.boss_r * MM, wb.D * MM / 2
+    xbi, xf = wb.x_inner * MM, wb.x_face * MM
+    y_w = -a + rw + 12  # 局部剖视的上边界
+    D = t.caps[0].D * MM
+    rb = t.boss_r[0] * MM
+    occ = [(0.0, 0.0, rb)]
+
+    def seg(p, q, layer="粗实线"):
+        for a_, b_ in hidden.visible_segments(p, q, occ):
+            v.line(a_, b_, layer)
+
+    # ---------------- 外形：蜗轮轴轴承座凸台下半与座孔、剖分面、凸缘、端壁、吊钩
+    v.arc((0, 0), rb, 180, 360)
+    v.arc((0, 0), D / 2, 180, 360)
+    v.centerline((0, 0), (0, -rb), 3)
+    v.line((xo0 - fw, 0), (-D / 2, 0))
+    v.line((D / 2, 0), (xo1 + fw, 0))
+    seg((xo0 - fw, 0), (xo0 - fw, -b))
+    seg((xo1 + fw, 0), (xo1 + fw, -b))
+    seg((xo0 - fw, -b), (xo1 + fw, -b))
+    seg((xo0, -b), (xo0, y_w))
+    seg((xo1, -b), (xo1, y_w))
+    for xe in t.hooks:
+        pts, (hx, hy), hr = t.hook_shape(xe)
+        pts = [(px * MM, py * MM) for px, py in pts]
+        for p, q in zip(pts, pts[1:]):
+            seg(p, q)
+        v.circle((hx * MM, hy * MM), hr * MM)
+
+    def hidden_hole(x, r, y0, y1):
+        v.line((x - r, y0), (x - r, y1), "虚线")
+        v.line((x + r, y0), (x + r, y1), "虚线")
+        v.centerline((x, y0), (x, y1), 2)
+
+    d1, d2 = round(h.bolt_bearing * MM), round(h.bolt_flange * MM)
+    for xb in t.bearing_bolts:
+        hidden_hole(xb * MM, CLEARANCE[d1] / 2, -b, 0)
+    for xb in t.flange_bolts:
+        hidden_hole(xb * MM, CLEARANCE[d2] / 2, -b, 0)
+    pin = _std(t.pin_d * MM, PIN_D)
+    for px, _ in t.pins:
+        if all(abs(px - xb) > 1e-6 for xb in t.flange_bolts):
+            hidden_hole(px * MM, pin / 2, -b, 0)
+
+    # ---------------- 局部剖视：两端壁与蜗杆轴承座、箱底、底座
+    yt_, yb_ = -a + rw, -a - rw
+    for sg in (-1, 1):
+        xo_, xi_ = (xo0, xi0) if sg < 0 else (xo1, xi1)
+        up = [(xo_, y_w), (xi_, y_w), (xi_, yt_), (sg * xbi, yt_), (sg * xbi, -a + hD), (sg * xf, -a + hD),
+              (sg * xf, yt_), (xo_, yt_)]
+        v.poly(up, close=True)
+        v.hatch([up], 45)
+    if yb_ > y_floor:
+        inner_lo = [(-xbi, yb_), (xi0, yb_), (xi0, y_floor), (xi1, y_floor), (xi1, yb_), (xbi, yb_)]
+    else:
+        inner_lo = [(-xbi, y_floor), (xbi, y_floor)]
+    yfoot = yb + b2
+    outer_r = [(xf, yb_), (xo1, yb_), (xo1, yfoot)] if yb_ > yfoot else [(xf, yfoot)]
+    outer_l = [(xo0, yfoot), (xo0, yb_), (-xf, yb_)] if yb_ > yfoot else [(-xf, yfoot)]
+    lo = ([(-xf, -a - hD), (-xbi, -a - hD)] + inner_lo + [(xbi, -a - hD), (xf, -a - hD)] + outer_r
+          + [(xo1 + fw, yfoot), (xo1 + fw, yb), (xo0 - fw, yb), (xo0 - fw, yfoot)] + outer_l)
+    v.poly(lo, close=True)
+    v.hatch([lo], 45)
+    # 剖切面后方的半个座孔：两端孔口的轮廓线
+    for x_ in (-xf, -xbi, xbi, xf):
+        v.line((x_, -a - hD), (x_, -a + hD))
+    _wavy(v, (xo0, y_w), (xo1, y_w), 1.0 / s)
+    v.centerline((-xf, -a), (xf, -a), 5)
+
+    # ---------------- 尺寸
+    xl = min(xo0 - fw - (0.9 * fw if t.hooks else 0), -xf) - 10 / s
+    v.dim((xo0 - fw, 0), (-xf, -a), (xl, 0), 90, f"<>±{_fmt(tl['worm'][0])}", 0)
+    v.dim((xo0 - fw, yb), (xo1 + fw, yb), (xo0 - fw, yb - 14 / s), 0, "<>", 0)
+    v.dim((-xf, -a - hD), (xf, -a - hD), (-xf, yb - 26 / s), 0, "<>", 0)
+    yi = (-a - hD + y_floor) / 2
+    v.dim((-xbi, -a - hD), (xbi, -a - hD), (-xbi, yi), 0, "<>", 0)
+    xr = max(xo1 + fw + (0.9 * fw if t.hooks else 0), xf)
+    v.dim((xo1 + fw, 0), (xo1 + fw, yb), (xr + 12 / s, 0), 90, "<>", 0)
+    v.dim((xo1 + fw, -b), (xo1 + fw, 0), (xr + 4 / s, 0), 90, "<>", 0)
+    v.dim((xo0 - fw, yb), (xo0 - fw, yb + b2), (xo0 - fw - 8 / s, yb), 90, "<>", 0)
+    ang = math.radians(-60)
+    px, py = v.P(D / 2 * math.cos(ang), D / 2 * math.sin(ang))
+    sh.leader_text((px, py), (px + 6, py - 14), f"Ø{D:g}H7", 3.0)
+    # 蜗杆座孔直径，圆柱度框格接在尺寸引线下方（两端座孔一次镗出）
+    px, py = v.P(xf - 0.4 * (xf - xbi), -a + hD)
+    sh.leader_text((px, py), (px - 10, py - 14), f"Ø{2 * hD:g}H7", 3.0)
+    sh.line((px - 10, py - 14), (px - 10, py - 18), "细实线")
+    sh.gtol(px - 10, py - 24, "cylindricity", _fmt(tl["worm"][1]), "", 3.0)
+    # 表面结构：剖分面、蜗杆座孔端面、底面
+    sh.roughness(*v.P(xi0 / 2, 0), "Ra 3.2", 0, 3.0)
+    tx, ty = v.P(xf, yt_ - 0.3 * (rw - hD))
+    sh.roughness_leader((tx, ty), (tx + 10, ty + 10), "Ra 3.2", 3.0)
+    tx, ty = v.P((xo0 + xi0) / 2 + 20, yb)
+    sh.roughness_leader((tx, ty), (tx - 12, ty - 10), "Ra 12.5", 3.0)
+    px, py = v.P(xo1 + fw / 2, 0)
+    sh.arrow((px, py + 14), (px, py), 2.5, "细实线")
+    sh.gtol(px - 4, py + 14, "flatness", "0.03")
+
+
 # ====================================================================== 俯视图（剖分面）
 
 def _top(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
@@ -331,7 +496,31 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
             L((xa2, z_end), (b_, z_end))
             xa = b_
         L((xa, z_edge), (xo1 + fw, z_edge))
-    L((xo0 - fw, zf0), (xo0 - fw, zf1))
+    sb = t.side_bore
+    gap_f = gap_i = []
+    if sb is not None:  # 左端壁上的小锥齿轮轴承座（剖分面上可见半个凸台和座孔）
+        zc, rbs_, Ds_ = sb.z * MM, sb.boss_r * MM, sb.D * MM
+        xf = sb.x_face * MM
+        gap_f, gap_i = [(zc - rbs_, zc + rbs_)], [(zc - Ds_ / 2, zc + Ds_ / 2)]
+        for zz in (zc - rbs_, zc + rbs_):
+            L((xf, zz), (xo0 - fw, zz))
+        L((xf, zc - rbs_), (xf, zc - Ds_ / 2))
+        L((xf, zc + Ds_ / 2), (xf, zc + rbs_))
+        for zz in (zc - Ds_ / 2, zc + Ds_ / 2):
+            L((xf, zz), (xi0, zz))
+        L((xf - 4, zc), (xi1, zc), "点画线")
+    wb = t.worm_bore
+    if wb is not None:  # 两端的蜗杆轴承座在凸缘下方（不可见）；伸出凸缘外的端面部分可见
+        zc, rw = wb.z * MM, wb.boss_r * MM
+        xf = wb.x_face * MM
+        for sg in (-1, 1):
+            xo_ = xo0 if sg < 0 else xo1
+            lay = "虚线" if xf <= xo1 + fw else "粗实线"
+            L((sg * xf, zc - rw), (sg * xf, zc + rw), lay)
+            for zz in (zc - rw, zc + rw):
+                L((xo_, zz), (sg * min(xf, xo1 + fw), zz), "虚线")
+        L((-xf - 4, zc), (xf + 4, zc), "点画线")
+    _vgap(L, xo0 - fw, zf0, zf1, gap_f)
     L((xo1 + fw, zf0), (xo1 + fw, zf1))
     # 内腔开口与轴承孔
     for z_wall in (0.0, W):
@@ -340,7 +529,7 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
             L((xa, z_wall), (x - D / 2, z_wall))
             xa = x + D / 2
         L((xa, z_wall), (xi1, z_wall))
-    L((xi0, 0), (xi0, W))
+    _vgap(L, xi0, 0, W, gap_i)
     L((xi1, 0), (xi1, W))
     for x, D in zip(xs, Ds):
         for zz0, zz1 in ((-L1 if protrude else zf0, 0.0), (W, W + L1 if protrude else zf1)):
@@ -378,6 +567,11 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
         px, py = v.P(xb, -zr[0])
         sh.leader_text((px, py + CLEARANCE[d2] / 2 * s), (px + 8, py + 22),
                        f"{n2}×Ø{CLEARANCE[d2]:g} 下面锪平Ø{SPOT_FACE[d2]:g}", 3.0)
+    if t.worm_bore is not None:  # 主视图为局部剖视，地脚螺栓孔在此标注
+        fx, fz = t.foot_bolts[-1]
+        px, py = v.P(fx * MM + CLEARANCE[df] / 2 * 0.7, -fz * MM - CLEARANCE[df] / 2 * 0.7)
+        sh.leader_text((px, py), (px + 8, py - 12),
+                       f"{len(t.foot_bolts)}×Ø{CLEARANCE[df]:g} 上面锪平Ø{SPOT_FACE[df]:g}", 3.0)
     px_, pz_ = t.pins[0]
     px, py = v.P(px_ * MM, -pz_ * MM)
     sh.leader_text((px, py), (px + 8, py + 10), f"2×锥销孔Ø{pin:g} 配作", 3.0)
@@ -442,18 +636,21 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet):
         v.line((z, -D / 2), (z, 0))
     v.line((-L1, 0), (W + L1, 0))
     v.line((W / 2, yb - 4), (W / 2, 4), "点画线")
-    # 右端壁内表面上的放油孔（正对观察者，螺纹孔画法：小径粗实线圆，大径细实线 3/4 圆）
-    yd = t.drain[1] * MM
-    v.circle((W / 2, yd), MINOR[16] / 2)
-    v.arc((W / 2, yd), 8.0, 0, 270, "细实线")
-    sh.cross(v.P(W / 2, yd), 8.0 * s, 1.5)
-    # 油标孔与内壁的交线（斜孔，椭圆）
-    (_, dy_), ang = t.dipstick
-    yi = dy_ * MM - h.delta * MM * math.tan(math.radians(ang))
-    ri = MINOR[12] / 2
-    e = [(W / 2 + ri * math.cos(2 * math.pi * k / 48), yi + ri / math.cos(math.radians(ang)) * math.sin(2 * math.pi * k / 48))
-         for k in range(49)]
-    v.poly(e)
+    if t.accessory_wall == "z":
+        _left_worm_side(t, v)
+    else:
+        # 右端壁内表面上的放油孔（正对观察者，螺纹孔画法：小径粗实线圆，大径细实线 3/4 圆）
+        yd = t.drain[1] * MM
+        v.circle((W / 2, yd), MINOR[16] / 2)
+        v.arc((W / 2, yd), 8.0, 0, 270, "细实线")
+        sh.cross(v.P(W / 2, yd), 8.0 * s, 1.5)
+        # 油标孔与内壁的交线（斜孔，椭圆）
+        (_, dy_), ang = t.dipstick
+        yi = dy_ * MM - h.delta * MM * math.tan(math.radians(ang))
+        ri = MINOR[12] / 2
+        e = [(W / 2 + ri * math.cos(2 * math.pi * k / 48), yi + ri / math.cos(math.radians(ang)) * math.sin(2 * math.pi * k / 48))
+             for k in range(49)]
+        v.poly(e)
     # 尺寸
     v.dim((0, y_floor), (W, y_floor), (0, -D / 2 - 10 / s), 0, "<>", 0)
     v.dim((W, -rb), (W + delta, -rb), (W, -rb - 8 / s), 0, "<>", 0)
@@ -463,3 +660,41 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet):
     v.dim((zl, y_floor), (zl, yb), (zl - 8 / s, 0), 90, "<>", 0)
     tx, ty = v.P(W + L1, -(D / 2 + rb) / 2)
     sh.roughness_leader((tx, ty), (tx + 10, ty + 10), "Ra 3.2", 3.0)
+
+
+def _left_worm_side(t: HousingDetail, v: View):
+    """蜗杆减速器箱座 A-A 剖视中剖切面后方的部分：+x 端内凸台端面（蜗杆座孔）、前侧壁上的油标座和放油孔。"""
+    h = t.h
+    W = h.inner_width * MM
+    delta = h.delta * MM
+    y_floor = h.y_range[0] * MM
+    wb = t.worm_bore
+    cz, cy = wb.z * MM, wb.y * MM
+    for r_ in (wb.boss_r * MM, wb.D * MM / 2):
+        pts = [(cz + r_ * math.cos(2 * math.pi * k / 96), cy + r_ * math.sin(2 * math.pi * k / 96)) for k in range(97)]
+        for p, q in zip(pts, pts[1:]):
+            if 0 <= p[0] <= W and 0 <= q[0] <= W and p[1] >= y_floor and q[1] >= y_floor:
+                v.line(p, q)
+    v.centerline((cz - wb.D * MM / 2, cy), (cz + wb.D * MM / 2, cy), 3)
+    # 油标座（在前侧壁外，45° 斜向上），螺纹孔不可见
+    (_, oy_), ang = t.dipstick
+    oy_ *= MM
+    zw = W + delta
+    c, sn = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+
+    def P(s_, n_):
+        return (zw + c * s_ - sn * n_, oy_ + sn * s_ + c * n_)
+
+    def s_at(z, n_):
+        return (z - zw + sn * n_) / c
+
+    r_b, r_h = 11.0, MINOR[12] / 2
+    v.poly([P(s_at(zw, -r_b), -r_b), P(14, -r_b), P(14, r_b), P(s_at(zw, r_b), r_b)])
+    for n_ in (-r_h, r_h):
+        v.line(P(s_at(W, n_), n_), P(14, n_), "虚线")
+    v.line(P(s_at(W, 0) - 3, 0), P(17, 0), "点画线")
+    # 放油孔（在前侧壁内，不可见）
+    yd = t.drain[1] * MM
+    for yy in (yd - MINOR[16] / 2, yd + MINOR[16] / 2):
+        v.line((W, yy), (zw, yy), "虚线")
+    v.line((W - 3, yd), (zw + 3, yd), "点画线")

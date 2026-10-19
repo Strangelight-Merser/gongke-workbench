@@ -118,6 +118,9 @@ def test_bevel_scheme_drawings(tmp_path):
     assert "圆锥-圆柱齿轮减速器" in asm and "圆锥滚子轴承 " in asm and "套杯" in asm
     big = texts(next(f for f in files if f.name == "大锥齿轮零件图"))
     assert "分度圆锥角" in big and "GB/T 11365" in big
+    # 箱座、箱盖零件图：左端壁上有小锥齿轮轴承座，技术要求说明座孔与Ⅱ轴座孔垂直相交
+    for name in ("箱座零件图", "箱盖零件图"):
+        assert "垂直相交" in texts(next(f for f in files if f.name == name))
 
 
 def test_worm_scheme_drawings(tmp_path):
@@ -168,3 +171,24 @@ def test_housing_cover_drawing(drawings):
     t = detail(d)
     # 箱盖外形各段圆弧半径都有标注
     assert f"R{max(t.cover_r) * 1e3:.0f}" in joined
+
+
+def test_worm_housing_drawings(tmp_path):
+    from gongke_core.layout.housing_detail import detail
+
+    d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_worm.yaml"))
+    files = drawing.build_all(d, tmp_path, svg=False)
+    t = detail(d)
+    texts = lambda f: " ".join(e.dxf.text for e in ezdxf.readfile(f.dxf).modelspace().query("TEXT"))  # noqa: E731
+    base = next(f for f in files if f.name == "箱座零件图")
+    tb = texts(base)
+    # 两端蜗杆座孔一次镗出，主视图局部剖视中标出座孔直径
+    assert "GB/T 10089" in tb and f"Ø{t.worm_bore.D * 1e3:g}H7" in tb
+    from gongke_core.drawing.worm_assembly import _fa
+
+    dims = [e.dxf.text for e in ezdxf.readfile(base.dxf).modelspace().query("DIMENSION")]
+    assert f"<>±{_fa(d.worm):.3f}".rstrip("0").rstrip(".") in dims
+    # 半圆拱箱盖顶上铸出视孔平台，A-A 剖到视孔
+    assert t.inspection.pad > 0
+    cover = next(f for f in files if f.name == "箱盖零件图")
+    assert "视孔" in texts(cover)

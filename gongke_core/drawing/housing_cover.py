@@ -11,9 +11,9 @@ from pathlib import Path
 
 from gongke_core.drawing import hidden
 from gongke_core.drawing.assembly import PIN_D, _std
-from gongke_core.drawing.housing_base import CLEARANCE, SPOT_FACE, _fmt, tolerances
+from gongke_core.drawing.housing_base import CLEARANCE, SPOT_FACE, _fmt, _front_side, _vgap, tolerances
 from gongke_core.drawing.sheet import SCALES, Sheet, TitleInfo, View
-from gongke_core.layout.housing_detail import Arc, HousingDetail, detail, envelope_height
+from gongke_core.layout.housing_detail import Arc, HousingDetail, detail, envelope_height, envelope_points
 
 MM = 1e3
 # 普通螺纹小径（GB/T 196-2003，粗牙）
@@ -42,6 +42,8 @@ def draw(d, path: str | Path, drawing_no: str = "GK-04-02") -> Sheet:
     top = max(top, ins.center[1] * MM + 5)
 
     x_min, x_max = xo0 - fw, xo1 + fw
+    if t.side_bore is not None:
+        x_min = min(x_min, t.side_bore.x_face * MM)
     z_min, z_max = -max(L1, delta + fw), W + max(L1, delta + fw)
     front_w, front_h = x_max - x_min, top
     top_h = left_w = z_max - z_min
@@ -77,7 +79,8 @@ def draw(d, path: str | Path, drawing_no: str = "GK-04-02") -> Sheet:
     _top(d, t, tv, sh)
     _left(d, t, lv, sh)
     xc = xs[-1]
-    for zz, sg in ((z_min - 6, -1), (z_max + 6, 1)):
+    za = max(-z_min, delta + fw + 14 / s) + 6  # 让开俯视图上方的螺栓间距尺寸
+    for zz, sg in ((-za, -1), (W + za, 1)):
         p0, p1 = tv.P(xc, -zz), tv.P(xc, -(zz + sg * 5))
         sh.line(p0, p1, "图框")
         sh.arrow(p1, (p1[0] + 8, p1[1]), 2.5, "细实线")
@@ -93,6 +96,8 @@ def draw(d, path: str | Path, drawing_no: str = "GK-04-02") -> Sheet:
         "加工面未注倒角 C2；未注尺寸公差：加工面按 GB/T 1804-m，铸造面按 GB/T 6414-2017 DCTG10。",
         "箱盖内表面清理后涂耐油油漆，外表面涂底漆。",
     ]
+    if t.side_bore is not None:
+        reqs.insert(3, "左端壁上的小锥齿轮轴承座孔与箱座合箱后镗出，其轴线应与Ⅱ轴座孔轴线垂直相交。")
     tx = max(ox + x_max * s + 30, lv.P(z_min, 0)[0] - 20)
     sh.tech_requirements(reqs, min(tx, x1 - 175), oy_f - 50)
     sh.frame(TitleInfo("箱盖", "HT200", s, "1", drawing_no), None, "毛坯")
@@ -145,6 +150,8 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
                     v.arc((e.cx * MM, 0), r, p0, p1)
         else:
             seg((e.p[0] * MM, max(e.p[1] * MM, b1)), (e.q[0] * MM, max(e.q[1] * MM, b1)))
+    if t.side_bore is not None:
+        _front_side(t, v, 1)
     # 吊环螺钉座（凸台）与螺纹孔（不可见）
     for xe in t.eyebolts:
         ye = envelope_height(t.cover_outer, xe) * MM
@@ -159,10 +166,16 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     cx, cy = ins.center[0] * MM, ins.center[1] * MM
     a = math.radians(ins.angle)
     ux, uy, nx, ny = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
-    d1w = h.delta1 * MM
+    d1w = h.delta1 * MM + ins.pad * MM
     for s_ in (-ins.hole_length * MM / 2, ins.hole_length * MM / 2):
         p = (cx + ux * s_, cy + uy * s_)
         v.line(p, (p[0] - nx * d1w, p[1] - ny * d1w), "虚线")
+    if ins.pad > 0:  # 拱顶上的视孔平台
+        Lp = ins.length * MM / 2
+        pts = [(cx - Lp, envelope_height(t.cover_outer, (cx - Lp) / MM) * MM), (cx - Lp, cy), (cx + Lp, cy),
+               (cx + Lp, envelope_height(t.cover_outer, (cx + Lp) / MM) * MM)]
+        v.poly(pts)
+        sh.roughness(*v.P(cx + Lp / 2, cy), "Ra 6.3", 0, 3.0)
     # 连接螺栓孔、定位销孔、起盖螺钉孔（不可见，虚线）
     def hidden_hole(x, r):
         v.line((x - r, 0), (x - r, b1), "虚线")
@@ -238,11 +251,25 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet):
             L((xa, z_edge), (a, z_edge))
             xa = b_
         L((xa, z_edge), (xo1 + fw, z_edge))
-    L((xo0 - fw, zf0), (xo0 - fw, zf1))
+    sb = t.side_bore
+    gap_f = []
+    if sb is not None:  # 左端壁上的小锥齿轮轴承座（上半），从上方看为矩形
+        zc, rb_, xf = sb.z * MM, sb.boss_r * MM, sb.x_face * MM
+        gap_f = [(zc - rb_, zc + rb_)]
+        for zz in (zc - rb_, zc + rb_):
+            L((xf, zz), (xo0, zz))
+        L((xf, zc - rb_), (xf, zc + rb_))
+        L((xf - 4, zc), (xo0 + 10, zc), "点画线")
+    _vgap(L, xo0 - fw, zf0, zf1, gap_f)
     L((xo1 + fw, zf0), (xo1 + fw, zf1))
-    # 箱盖壳体两侧面（z = −δ、W + δ），被凸台盖住的地方断开
-    left = min(xs[0] - math.sqrt(max((t.cover_r[0] * MM) ** 2 - b1**2, 0)), xs[0] - rbs[0])
-    right = max(xs[-1] + math.sqrt(max((t.cover_r[-1] * MM) ** 2 - b1**2, 0)), xs[-1] + rbs[-1])
+    # 箱盖壳体：外形在凸缘顶面（y = b1）处的左右端
+    pts = envelope_points(t.cover_outer)
+    xs_b1 = []
+    for (xa, ya), (xb, yb_) in zip(pts, pts[1:]):
+        ya, yb_ = ya * MM, yb_ * MM
+        if (ya - b1) * (yb_ - b1) <= 0 and ya != yb_:
+            xs_b1.append((xa + (xb - xa) * (b1 - ya) / (yb_ - ya)) * MM)
+    left, right = min(xs_b1), max(xs_b1)
     for z in (-delta, W + delta):
         L((left, z), (right, z))
     L((left, -delta), (left, W + delta))
@@ -266,20 +293,27 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet):
                  ((cx + hl, W / 2 + hw), (cx - hl, W / 2 + hw)), ((cx - hl, W / 2 + hw), (cx - hl, W / 2 - hw))):
         L(p, q)
     Lc, Bw, sd = ins.length * MM, ins.width * MM, ins.screw_d * MM
+    if ins.pad > 0:  # 视孔平台
+        for p, q in (((cx - Lc / 2, W / 2 - Bw / 2), (cx + Lc / 2, W / 2 - Bw / 2)),
+                     ((cx + Lc / 2, W / 2 - Bw / 2), (cx + Lc / 2, W / 2 + Bw / 2)),
+                     ((cx + Lc / 2, W / 2 + Bw / 2), (cx - Lc / 2, W / 2 + Bw / 2)),
+                     ((cx - Lc / 2, W / 2 + Bw / 2), (cx - Lc / 2, W / 2 - Bw / 2))):
+            L(p, q)
     holes = [(cx + s_ * math.cos(a), W / 2 + zz) for s_ in (-Lc / 2 + 10, Lc / 2 - 10)
              for zz in (-(Bw / 2 - 8), Bw / 2 - 8)]
     for hx, hz in holes:
         _tapped(v, sh, (hx, -hz), sd)
     px, py = v.P(holes[-1][0], -holes[-1][1])
     sh.leader_text((px, py), (px + 10, py - 10), f"4×M{sd:g}-7H 深 {1.5 * sd + 3:g}", 3.0)
-    px, py = v.P(cx + hl, -(W / 2 + hw))
-    sh.leader_text((px, py), (px + 8, py - 24), f"视孔 {ins.hole_length * MM:g}×{ins.hole_width * MM:g}", 3.0)
+    # 视孔尺寸写在孔内
+    px, py = v.P(cx - hl, -(W / 2 + 0.5 * hw))
+    sh.leader_text((px, py), v.P(cx - hl + 1.5 / s, -(W / 2 - 0.2 * hw)), f"视孔 {ins.hole_length * MM:g}×{ins.hole_width * MM:g}", 3.0)
     # 吊环螺钉孔
     ed = t.eyebolt_d * MM
     for xe in t.eyebolts:
         C((xe * MM, W / 2), 1.1 * ed)
         _tapped(v, sh, (xe * MM, -W / 2), ed)
-    px, py = v.P(t.eyebolts[0] * MM, -W / 2)
+    px, py = v.P(t.eyebolts[-1] * MM, -W / 2)
     sh.leader_text((px + 1.1 * ed * s * 0.7, py + 1.1 * ed * s * 0.7), (px + 10, py + 14), f"2×M{ed:g}-7H 深 {1.5 * ed:g}", 3.0)
     # 连接螺栓孔（上面锪平）、定位销孔、起盖螺钉孔
     d1, d2 = round(h.bolt_bearing * MM), round(h.bolt_flange * MM)
@@ -313,7 +347,7 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet):
     px, py = v.P(px_ * MM, -pz_ * MM)
     sh.leader_text((px, py), (px + 8, py + 10), f"2×锥销孔Ø{pin:g} 配作", 3.0)
     px, py = v.P(jx, -jz)
-    sh.leader_text((px, py - MINOR[d2] / 2 * s), (px + 6, py - 14), f"M{d2:g}-7H 通（起盖螺钉）", 3.0)
+    sh.leader_text((px, py - MINOR[d2] / 2 * s), (px - 36, py - 20), f"M{d2:g}-7H 通（起盖螺钉）", 3.0)
 
     # 尺寸
     v.dim((xo0 - fw, -zf0), (xo0 - fw, -zf1), (xo0 - fw - 10 / s, 0), 90, "<>", 0)
@@ -344,7 +378,18 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet):
     sec = [(-L1, D / 2), (0, D / 2), (0, Ri), (W, Ri), (W, D / 2), (W + L1, D / 2), (W + L1, rb), (W + delta, rb),
            (W + delta, R), (-delta, R), (-delta, rb), (-L1, rb)]
     loops = [sec]
-    if eye is not None:
+    ins = t.inspection
+    if abs(ins.center[0] - xc) < ins.hole_length / 2 and abs(ins.angle) < 1e-6:
+        # 剖切面通过视孔：顶部壁在孔处断开；视孔平台（若有）一并剖开
+        hw, Bp = ins.hole_width * MM / 2, ins.width * MM / 2
+        yt = ins.center[1] * MM if ins.pad > 0 else R
+        sec = [(-L1, D / 2), (0, D / 2), (0, Ri), (W / 2 - hw, Ri), (W / 2 - hw, yt), (W / 2 - Bp, yt),
+               (W / 2 - Bp, R), (-delta, R), (-delta, rb), (-L1, rb)]
+        sec2 = [(W / 2 + hw, Ri), (W, Ri), (W, D / 2), (W + L1, D / 2), (W + L1, rb), (W + delta, rb),
+                (W + delta, R), (W / 2 + Bp, R), (W / 2 + Bp, yt), (W / 2 + hw, yt)]
+        loops = [sec, sec2]
+        v.dim((W / 2 - hw, Ri), (W / 2 + hw, Ri), (W / 2 - hw, Ri - 16 / s), 0, "<>", 0)
+    elif eye is not None:
         # 剖切面通过吊环螺钉孔：顶部壁在孔处断开（按小径画剖面区域）
         r_in = MINOR[round(ed)] / 2
         top = R + 0.4 * ed

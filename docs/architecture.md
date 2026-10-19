@@ -84,7 +84,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 
 ## 6. 后续路线
 
-1. 圆锥-圆柱、蜗杆方案的箱体零件图（二级圆柱齿轮减速器的箱座、箱盖已完成：`drawing/housing_base.py`、`drawing/housing_cover.py`）。
+1. 箱体加强肋、轴承旁螺栓凸台（四种方案的箱座、箱盖零件图已完成：`drawing/housing_base.py`、`drawing/housing_cover.py`）。
 2. 其他方案已完成：蜗杆减速器（`calc/worm.py`、`layout/worm_reducer.py`、`layout/worm_blank.py`、`worm_design.py`、`geometry/worm.py`、`drawing/worm_wheel.py`、`drawing/worm_assembly.py`）；圆锥-圆柱减速器（`calc/bevel.py`、`layout/bevel_blank.py`、`layout/bevel_reducer.py`、`bevel_design.py`、`geometry/bevel.py`、`drawing/bevel_gear.py`）。
 3. 轴和齿轮的 CalculiX 校核向导，与解析解对照。
 4. 一键安装包。
