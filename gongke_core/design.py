@@ -10,6 +10,7 @@ import yaml
 
 from gongke_core import standards
 from gongke_core.calc import bearing as bearing_calc
+from gongke_core.calc import fatigue as fatigue_calc
 from gongke_core.calc import gear as gear_calc
 from gongke_core.calc import key as key_calc
 from gongke_core.calc import kinematics
@@ -34,6 +35,8 @@ class ReducerTask:
     key_sigma_allow: float = 110e6
     load_factor_bearing: float = 1.1
     coupling_service_factor: float = 1.5
+    shaft_S_required: float = 1.5  # 疲劳强度许用安全系数 [S]
+    shaft_fit_k: float | None = None  # 齿轮过盈配合处 kσ/εσ（教材附表查得，未给出时不校核该截面）
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReducerTask":
@@ -49,12 +52,15 @@ class ReducerTask:
             ratio_split=float(d.get("ratio_split", 1.3)),
         )
         gears = d.get("gears", {})
+        shaft = d.get("shaft", {}) or {}
         return cls(
             title=d.get("title", "带式输送机传动装置设计"),
             conveyor=conveyor,
             bearing_life_hours=d.get("bearing_life_years", 3) * hours_per_year,
             high=dict(gears.get("high", {})),
             low=dict(gears.get("low", {})),
+            shaft_S_required=float(shaft.get("S_required", 1.5)),
+            shaft_fit_k=float(shaft["k_sigma_fit"]) if shaft.get("k_sigma_fit") else None,
         )
 
     @classmethod
@@ -73,13 +79,14 @@ class ShaftResult:
     strength: shaft_calc.ShaftCheck
     bearings: bearing_calc.BearingCheck
     keys: list[key_calc.KeyCheck]
+    fatigue: fatigue_calc.FatigueCheck
     power: float
     speed_rpm: float
     torque: float
 
     @property
     def ok(self) -> bool:
-        return self.strength.ok and self.bearings.ok and all(k.ok for k in self.keys)
+        return self.strength.ok and self.bearings.ok and all(k.ok for k in self.keys) and self.fatigue.ok
 
 
 @dataclass
@@ -209,10 +216,14 @@ def _shaft(idx: int, task: ReducerTask, kin: kinematics.Kinematics, h: lay.Housi
                                  gears, segs, ext, hub,
                                  {"端部": d_end, "密封": d_seal, "轴承": d_b, "齿轮": dia.seat,
                                   "轴环": dia.collar, "轴肩": dia.shoulder})
-            last = ShaftResult(sl, case, strength, bc, keys, st.power, st.speed_rpm, st.torque)
-            if strength.ok and bc.ok:
+            integral = any(g.integral for g in gears)
+            mat_key = (high.inp.material1 if idx == 1 else low.inp.material1).split("_")[0] if integral else "45"
+            fat = fatigue_calc.check(segs, case, fatigue_calc.MATERIALS.get(mat_key, fatigue_calc.MATERIALS["45"]),
+                                     task.shaft_S_required, task.shaft_fit_k)
+            last = ShaftResult(sl, case, strength, bc, keys, fat, st.power, st.speed_rpm, st.torque)
+            if strength.ok and bc.ok and fat.ok:
                 return last
-            if not strength.ok:
+            if not strength.ok or not fat.ok:
                 break  # 轴的强度不够，直接加大轴径
     if last is None:
         raise standards.SelectionError(f"{name}：轴承内径 {d_b0 / MM:.0f} mm 以上没有可选的深沟球轴承（超出本程序的数据范围）")
@@ -256,6 +267,11 @@ def run(task: ReducerTask) -> ReducerDesign:
         sc = s.strength
         checks.append((f"{s.layout.name}弯扭合成强度", sc.ok,
                        f"σca = {sc.critical.sigma_ca/1e6:.1f} MPa ≤ [σ−1b] = {sc.sigma_allow/1e6:.0f} MPa"))
+        fc = s.fatigue
+        if fc.critical is not None:
+            c = fc.critical
+            checks.append((f"{s.layout.name}疲劳强度安全系数", fc.ok,
+                           f"Sca = {c.S_ca:.2f} ≥ [S] = {fc.S_required:g}（{c.label}，近似）"))
         b = s.bearings
         checks.append((f"{s.layout.name}轴承 {b.bearing.designation} 寿命", b.ok,
                        f"L10h = {min(b.life):.0f} h ≥ {b.required:.0f} h"))

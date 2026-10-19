@@ -298,7 +298,8 @@ def detail(d) -> HousingDetail:
     eyebolts = [xs[0] + 0.3 * (xs[1] - xs[0]), xs[2]]
     # 油面：低速级大齿轮浸油 1～2 个齿高且不小于 10 mm
     immerse = max(10 * MM, 2 * 2.25 * d.low.mn)
-    oil = -d.low.da2 / 2 + immerse
+    # 同时保证高速级大齿轮浸到约一个齿高（与 design 中的浸油深度校核一致）
+    oil = max(-d.low.da2 / 2 + immerse, -d.high.da2 / 2 + 2.25 * d.high.mn)
     dip = ((xo[1], oil + 20 * MM), 45.0)  # 油标座在油面以上，油标杆斜插入油池
     drain = (xo[1], y_bottom + h.flange_foot + 0.9 * 16 * MM + 3 * MM)  # 紧贴底座凸缘上方，尽量低
     return HousingDetail(

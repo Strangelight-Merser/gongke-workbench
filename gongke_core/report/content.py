@@ -184,6 +184,31 @@ def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
     doc.eq(f"危险截面位于 z = {mm(cr.z,1)} mm（{cr.role}段，d = {mm(cr.d,1)} mm）：M = √(Mx² + My²) = {cr.m:.2f} N·m，T = {abs(cr.torque):.2f} N·m")
     doc.eq(f"σca = √(M² + (αT)²) / W，α = {s.strength.alpha}：σca = {mpa(cr.sigma_ca)} MPa ≤ [σ−1b] = {mpa(s.strength.sigma_allow,0)} MPa，"
            + ("满足" if s.strength.ok else "不满足"))
+    _fatigue(doc, s)
+
+
+def _fatigue(doc: Doc, s: ShaftResult):
+    fc = s.fatigue
+    if fc.critical is None:
+        return
+    m = fc.material
+    doc.h2("5. 按疲劳强度精确校核（安全系数法）")
+    doc.p(f"材料 {m.name}：σB = {mpa(m.sigma_b,0)} MPa，σ−1 = {mpa(m.sigma_m1,0)} MPa，τ−1 = {mpa(m.tau_m1,0)} MPa，"
+          f"ψσ = {m.psi_sigma:g}，ψτ = {m.psi_tau:g}。弯曲应力按对称循环，扭转切应力按脉动循环（τa = τm = T/2WT）。"
+          "对每个轴肩和键槽截面计算：")
+    doc.eq("Kσ = kσ/εσ + 1/βσ − 1，Sσ = σ−1/(Kσσa)，Sτ = τ−1/(Kττa + ψττm)，Sca = SσSτ/√(Sσ² + Sτ²) ≥ [S]")
+    rows = []
+    for c in sorted(fc.sections, key=lambda c: c.z):
+        inf = lambda v: "—" if v == float("inf") or v > 1e6 else f"{v:.2f}"
+        rows.append([c.label, mm(c.d, 0), f"{c.m:.1f}", f"{abs(c.t):.1f}", f"{c.k_sigma:.2f}/{c.k_tau:.2f}",
+                     f"{c.eps:.2f}", f"{c.beta:.2f}", mpa(c.sigma_a, 1), mpa(c.tau_a, 1), inf(c.S_sigma), inf(c.S_tau), inf(c.S_ca)])
+    doc.table(["截面", "d/mm", "M/(N·m)", "T/(N·m)", "kσ/kτ", "ε", "β", "σa/MPa", "τa/MPa", "Sσ", "Sτ", "Sca"], rows)
+    c = fc.critical
+    doc.eq(f"最危险截面为{c.label}（d = {mm(c.d,0)} mm）：Sca = {c.S_ca:.2f} {'≥' if fc.ok else '<'} [S] = {fc.S_required:g}，"
+           + ("满足" if fc.ok else "不满足"))
+    doc.p("说明：kσ、kτ 由轴肩圆角的理论应力集中系数（Peterson 拟合公式）和敏感系数（Kuhn–Hardrath 公式）求得，"
+          "εσ、βσ 用解析公式代替查图，均为近似值；齿轮过盈配合处的 kσ/εσ 需查教材附表，"
+          "可填入任务书 shaft: k_sigma_fit 后重新计算。")
 
 
 def _bearings(doc: Doc, d: ReducerDesign):
@@ -265,6 +290,7 @@ def _refs(doc: Doc):
         "濮良贵、纪名刚 主编．机械设计（第八版）．高等教育出版社．",
         "机械设计课程设计指导书（各校通用版本）．",
         "GB/T 3480.1-2019 直齿轮和斜齿轮承载能力计算；ISO 6336-1/2/3．",
+        "W. D. Pilkey. Peterson's Stress Concentration Factors（阶梯轴圆角应力集中系数拟合公式）；R. G. Budynas, J. K. Nisbett. Shigley's Mechanical Engineering Design（敏感系数、尺寸系数、表面系数）．",
         "GB/T 276-2013、GB/T 6391-2010 滚动轴承；GB/T 1095/1096-2003 平键；JB/T 10391-2008 Y 系列电动机．",
     ]:
         doc.p(r)
