@@ -256,6 +256,11 @@ class HousingDetail:
     worm_bore: WormBore | None = None
     accessory_wall: str = "x"  # 油标和放油螺塞所在的壁："x" 为右端壁，"z" 为前侧壁（z = W + δ）
     hook_drop: float = 0.0  # 吊钩自上缘向下的高度
+    boss_h: float = 0.0  # 轴承旁凸台高度 h（剖分面到凸台下表面 / 上表面）
+    side_bosses: list[tuple[float, float]] = field(default_factory=list)  # 两侧壁轴承旁凸台的 x 范围
+    ribs: list[float] = field(default_factory=list)  # 箱座两侧壁外加强肋的 x 位置（在轴承座正下方）
+    rib_t: float = 0.0  # 肋厚 m ≈ 0.85δ
+    rib_depth: float = 0.0  # 肋伸出外壁的距离
 
     def hook_shape(self, xe: float) -> tuple[list[tuple[float, float]], tuple[float, float], float]:
         """箱座端壁 xe 处铸出的吊钩（在中间平面 z = W/2 的外形）：(轮廓折线, 吊孔中心, 吊孔半径)，单位 m。
@@ -281,9 +286,12 @@ class HousingDetail:
 BOLT_LENGTHS_MM = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90, 100, 110, 120, 130, 140, 150]  # GB/T 5782 常用长度
 
 
-def bolt_length(h: Housing, d: float) -> float:
-    """穿过箱盖、箱座凸缘的螺栓长度：两凸缘厚 + 弹簧垫圈 0.25d + 螺母 0.8d + 伸出 0.3d，取标准长度。"""
-    need = (h.flange_base + h.flange_cover + 1.35 * d) / MM
+def bolt_length(h: Housing, d: float, grip: float | None = None) -> float:
+    """穿过箱盖、箱座凸缘（或轴承旁凸台，夹紧厚度 grip）的螺栓长度：
+    夹紧厚度 + 弹簧垫圈 0.25d + 螺母 0.8d + 伸出 0.3d，取标准长度。"""
+    if grip is None:
+        grip = h.flange_base + h.flange_cover
+    need = (grip + 1.35 * d) / MM
     return next((v for v in BOLT_LENGTHS_MM if v >= need - 1e-9), BOLT_LENGTHS_MM[-1]) * MM
 
 
@@ -350,13 +358,38 @@ def detail(d) -> HousingDetail:
             merged[-1] = (merged[-1] + x) / 2
         else:
             merged.append(x)
-    # 箱盖箱座连接螺栓：两端各一个（离轴承旁螺栓太近时省去），中间间距不大于 150 mm
+    # 轴承旁凸台：螺母（箱座下方）和螺栓头（箱盖上方）的支承面须让开轴承座凸台圆柱，
+    # 各轴承取同一高度 h（便于加工支承面）。支承面半径按沉孔锪平半径 ≈ 1.05d1 计。
+    r_seat = 1.05 * h.bolt_bearing
+    need = h.flange_base + 0.5 * h.bolt_bearing
+    for xb in merged:
+        for x, rb in zip(xs, boss):
+            u = abs(xb - x) - r_seat
+            if u < rb:
+                need = max(need, math.sqrt(rb * rb - max(u, 0.0) ** 2) + 3 * MM)
+    boss_h = ceil_to(need, 5 * MM)
+    # 凸台沿 x 的范围：每个轴承两侧螺栓外再留 c2；相距不足 c2 的相邻凸台连成一体
+    rngs = []
+    for x, cap in zip(xs, caps):
+        near = [xb for xb in merged if abs(xb - x) < cap.D2 / 2 + 2.5 * h.bolt_bearing]
+        rngs.append((max(min(near) - h.c2, xo[0] - fw), min(max(near) + h.c2, xo[1] + fw)))
+    side_bosses: list[tuple[float, float]] = []
+    for a, b in sorted(rngs):
+        if side_bosses and a - side_bosses[-1][1] < h.c2:
+            side_bosses[-1] = (side_bosses[-1][0], max(side_bosses[-1][1], b))
+        else:
+            side_bosses.append((a, b))
+
+    def on_boss(x, margin=0.0):
+        return any(a - margin <= x <= b + margin for a, b in side_bosses)
+
+    # 箱盖箱座连接螺栓：两端各一个（离轴承旁螺栓太近时省去），中间间距不大于 150 mm，凸台上不再布置
     ends = [e for e in (xo[0] - fw / 2, xo[1] + fw / 2) if min(abs(e - x) for x in merged) > 3 * h.bolt_flange]
     stations = sorted(ends + merged)
     fb = list(ends)
     for a, b in zip(stations, stations[1:]):
         fb.extend(_fill(a, b, 150 * MM))
-    fb.sort()
+    fb = sorted(x for x in fb if not on_boss(x, 1.2 * h.bolt_flange))
 
     W = h.inner_width
     if side:  # 左端壁上有Ⅰ轴轴承座，定位销改放在凸缘的对角上
@@ -372,6 +405,8 @@ def detail(d) -> HousingDetail:
         if any(abs(x - xc) < cap.D2 / 2 + h.bolt_flange for xc, cap in zip(xs, caps)):
             continue
         if side and x < xo[0] + h.bolt_flange:
+            continue
+        if on_boss(x, 1.2 * h.bolt_flange):
             continue
         score = min(abs(x - b) for b in xs_all)
         if score > best:
@@ -448,7 +483,8 @@ def detail(d) -> HousingDetail:
         drop = max(min(drop, yt - (worm_bore.y + worm_bore.boss_r) - 14 * MM), 0.8 * fw)
     return HousingDetail(
         h, xs, caps, boss, cover_r, outer, inner, xo, fw, y_bottom, foot_w,
-        merged, fb, bolt_length(h, h.bolt_bearing), bolt_length(h, h.bolt_flange),
+        merged, fb, bolt_length(h, h.bolt_bearing, 2 * boss_h), bolt_length(h, h.bolt_flange),
         pins, max(0.75 * h.bolt_flange, 6 * MM), jack, foot_bolts, insp, eyebolts, eye_d, oil, dip, drain,
         16 * MM, [xo[1]] if side else [xo[0], xo[1]], side, worm_bore, wall, drop,
+        boss_h, side_bosses, list(xs), ceil_to(0.85 * h.delta, MM), min(h.bearing_seat_length, foot_w) - h.delta - 3 * MM,
     )

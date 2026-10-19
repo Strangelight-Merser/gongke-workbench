@@ -89,8 +89,8 @@ def _norm(a: float) -> float:
     return a % 360.0
 
 
-def visible_arcs(cx, cy, r, a0, a1, circles: list[Circle] = ()) -> list[tuple[float, float]]:
-    """圆弧（a0 → a1 逆时针，度）在各遮挡圆外的部分。"""
+def visible_arcs(cx, cy, r, a0, a1, circles: list[Circle] = (), rects: list[Rect] = ()) -> list[tuple[float, float]]:
+    """圆弧（a0 → a1 逆时针，度）在各遮挡圆、遮挡矩形外的部分。"""
     span = (a1 - a0) % 360.0 or 360.0
     pieces = [(0.0, span)]
     for ox, oy, orr in circles:
@@ -105,4 +105,36 @@ def visible_arcs(cx, cy, r, a0, a1, circles: list[Circle] = ()) -> list[tuple[fl
         lo = _norm(mid - half - a0)
         for k in (-360.0, 0.0, 360.0):
             pieces = _subtract(pieces, (lo + k, lo + k + 2 * half))
+    for rc in rects:
+        pieces = _arc_minus_rect(cx, cy, r, a0, pieces, rc)
     return [(a0 + lo, a0 + hi) for lo, hi in pieces if hi - lo > 1e-6]
+
+
+def _arc_minus_rect(cx, cy, r, a0, pieces, rc: Rect):
+    """从圆弧区间（相对 a0 的角度）中去掉落在矩形内部的部分：按圆与矩形各边的交点分段，取段中点判断。"""
+    x0, y0, x1, y1 = min(rc[0], rc[2]), min(rc[1], rc[3]), max(rc[0], rc[2]), max(rc[1], rc[3])
+    cuts = []
+    for xv in (x0, x1):
+        u = (xv - cx) / r
+        if -1 < u < 1:
+            t = math.degrees(math.acos(u))
+            cuts += [t, -t]
+    for yv in (y0, y1):
+        u = (yv - cy) / r
+        if -1 < u < 1:
+            t = math.degrees(math.asin(u))
+            cuts += [t, 180 - t]
+    rel = sorted({_norm(c - a0) for c in cuts})
+    out = []
+    for lo, hi in pieces:
+        pts = [lo] + [c + k for k in (0.0, 360.0) for c in rel if lo < c + k < hi] + [hi]
+        pts.sort()
+        for p, q in zip(pts, pts[1:]):
+            m = math.radians(a0 + (p + q) / 2)
+            mx, my = cx + r * math.cos(m), cy + r * math.sin(m)
+            if not (x0 < mx < x1 and y0 < my < y1):
+                if out and abs(out[-1][1] - p) < 1e-9:
+                    out[-1] = (out[-1][0], q)
+                else:
+                    out.append((p, q))
+    return out

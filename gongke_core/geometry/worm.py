@@ -143,7 +143,7 @@ def base(design, t) -> bd.Solid:
     """箱座：在通用箱座上加两端的蜗杆轴承座（外凸台 + 伸入箱内的内凸台）和座孔。"""
     h = design.housing
     wb = t.worm_bore
-    body = parts.housing_base(h, t.shaft_x, [design.shafts[1].layout.bearing.D])
+    body = parts.housing_base(h, t.shaft_x, [design.shafts[1].layout.bearing.D], t=t)
     r = _mm(wb.boss_r)
     y, z = _mm(wb.y), _mm(wb.z)
     xi, xf = _mm(wb.x_inner), _mm(wb.x_face)

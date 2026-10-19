@@ -94,3 +94,20 @@ def test_envelope_left_wall_tangent():
     # 顶点直接与后面更大的圆相切
     env = hd.upper_envelope([(0.0, 0.5), (2.0, 2.0)], left_wall=(-0.5, 2.0))
     assert env[1].q == pytest.approx((2.0, 2.0)) and len([e for e in env if isinstance(e, hd.Arc)]) == 1
+
+
+def test_bearing_side_boss_clears_bearing_seat(det):
+    _, t = det
+    h = t.h
+    # 螺母支承面（半径 1.05d1）落在凸台下表面 y = −h 上时，不与轴承座圆柱 (x − xc)² + y² ≤ rb² 相交
+    r_seat = 1.05 * h.bolt_bearing
+    for xb in t.bearing_bolts:
+        for xc, rb in zip(t.shaft_x, t.boss_r):
+            u = max(abs(xb - xc) - r_seat, 0.0)
+            assert u >= rb or math.hypot(u, t.boss_h) >= rb
+        # 每个轴承旁螺栓都在凸台范围内，且支承面不超出凸台
+        assert any(a <= xb - r_seat and xb + r_seat <= b for a, b in t.side_bosses)
+    # 连接螺栓 d2 不布置在凸台上；轴承旁螺栓长度按两凸台高度计
+    assert not any(a <= x <= b for x in t.flange_bolts for a, b in t.side_bosses)
+    assert t.bolt_length_d1 >= 2 * t.boss_h + 1.35 * h.bolt_bearing - 1e-9
+

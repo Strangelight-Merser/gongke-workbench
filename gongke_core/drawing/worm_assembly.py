@@ -241,9 +241,11 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
 
     cap2 = t.caps[0]
     occ = [(0.0, 0.0, cap2.D2 * MM / 2), (0.0, 0.0, t.boss_r[0] * MM)]
+    hb = t.boss_h * MM
+    blocks = [(a_ * MM, -hb, b_ * MM, hb) for a_, b_ in t.side_bosses]  # 轴承旁凸台
 
-    def seg(p, q, layer="粗实线", circles=None):
-        for a_, b_ in hidden.visible_segments(p, q, occ if circles is None else circles):
+    def seg(p, q, layer="粗实线", circles=None, rects=None):
+        for a_, b_ in hidden.visible_segments(p, q, occ if circles is None else circles, blocks if rects is None else rects):
             v.line(a_, b_, layer)
 
     def rect(x0, y0, x1, y1, layer="粗实线"):
@@ -269,8 +271,18 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     fadd("轴承透盖", "1", "HT200", "", (r2 * 0.75, -r2 * 0.55))
     fadd(f"螺钉 M{d3:g}×{_std(e + 1.5 * d3, SCREW_L)}", 2 * cap2.n, "Q235", "GB/T 5783-2016",
          (r0 * math.cos(math.radians(-45)), r0 * math.sin(math.radians(-45))))
-    for a_, b_ in hidden.visible_arcs(0, 0, t.boss_r[0] * MM, 0, 360, [(0.0, 0.0, r2)]):
+    for a_, b_ in hidden.visible_arcs(0, 0, t.boss_r[0] * MM, 0, 360, [(0.0, 0.0, r2)], blocks):
         v.arc((0, 0), t.boss_r[0] * MM, a_, b_)
+    for x0_, y0_, x1_, y1_ in blocks:
+        for p, q in (((x0_, y0_), (x1_, y0_)), ((x1_, y0_), (x1_, y1_)), ((x1_, y1_), (x0_, y1_)), ((x0_, y1_), (x0_, y0_))):
+            seg(p, q, rects=[])
+        seg((x0_, 0), (x1_, 0), circles=occ[:1], rects=[])
+    # 加强肋（局部剖视以上的部分）
+    m = t.rib_t * MM
+    for x in t.ribs:
+        y_top = -math.sqrt((t.boss_r[0] * MM) ** 2 - (m / 2) ** 2)
+        for sx in (-1, 1):
+            seg((x * MM + sx * m / 2, y_top), (x * MM + sx * m / 2, y_w))
     # 凸缘、箱壁（局部剖视以上）、底座
     rect(xo0 - fw, -b, xo1 + fw, 0)
     rect(xo0 - fw, 0, xo1 + fw, b1)
@@ -279,7 +291,7 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     # 箱盖：半圆拱
     R = t.cover_r[0] * MM
     cut = math.degrees(math.asin(min(b1 / R, 1.0)))
-    for a_, b_ in hidden.visible_arcs(0, 0, R, cut, 180 - cut, occ):
+    for a_, b_ in hidden.visible_arcs(0, 0, R, cut, 180 - cut, occ, blocks):
         v.arc((0, 0), R, a_, b_)
     fadd("箱盖", "1", "HT200", "", (-0.55 * R, 0.6 * R))
     # 吊钩（箱座两端铸出）
@@ -288,31 +300,31 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
         pts = [(px * MM, py * MM) for px, py in pts]
         for p, q in zip(pts, pts[1:]):
             seg(p, q)
-        for a_, b_ in hidden.visible_arcs(hx * MM, hy * MM, hr * MM, 0, 360, occ):
+        for a_, b_ in hidden.visible_arcs(hx * MM, hy * MM, hr * MM, 0, 360, occ, blocks):
             v.arc((hx * MM, hy * MM), hr * MM, a_, b_)
 
     # 连接螺栓（前排）、起盖螺钉
-    def bolt(x, dd, length, head_only=False):
-        seg((x, b1 + 0.7 * dd + 3), (x, b1 - length - 3), "点画线")
-        rect(x - dd, b1, x + dd, b1 + 0.7 * dd)
-        seg((x - dd / 2, b1), (x - dd / 2, b1 + 0.7 * dd))
-        seg((x + dd / 2, b1), (x + dd / 2, b1 + 0.7 * dd))
+    def bolt(x, dd, length, head_only=False, top=b1, bot=b):  # 螺栓头支承面 y = top，螺母支承面 y = −bot
+        seg((x, top + 0.7 * dd + 3), (x, top - length - 3), "点画线")
+        rect(x - dd, top, x + dd, top + 0.7 * dd)
+        seg((x - dd / 2, top), (x - dd / 2, top + 0.7 * dd))
+        seg((x + dd / 2, top), (x + dd / 2, top + 0.7 * dd))
         if head_only:
             return
-        yw_ = -b - 0.25 * dd
-        rect(x - 0.75 * dd, yw_, x + 0.75 * dd, -b)
+        yw_ = -bot - 0.25 * dd
+        rect(x - 0.75 * dd, yw_, x + 0.75 * dd, -bot)
         yn = yw_ - 0.8 * dd
         rect(x - dd, yn, x + dd, yw_)
         seg((x - dd / 2, yn), (x - dd / 2, yw_))
         seg((x + dd / 2, yn), (x + dd / 2, yw_))
-        y_end = b1 - length
+        y_end = top - length
         if y_end < yn:
             rect(x - dd / 2, y_end, x + dd / 2, yn)
 
     d1, d2 = h.bolt_bearing * MM, h.bolt_flange * MM
     L1b, L2b = t.bolt_length_d1 * MM, t.bolt_length_d2 * MM
     for xb in t.bearing_bolts:
-        bolt(xb * MM, d1, L1b)
+        bolt(xb * MM, d1, L1b, top=hb, bot=hb)
     for xb in t.flange_bolts:
         bolt(xb * MM, d2, L2b)
     xj = t.jack_screw[0] * MM
@@ -320,9 +332,9 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     bolt(xj, d2, lj, head_only=True)
     n1, n2 = 2 * len(t.bearing_bolts), 2 * len(t.flange_bolts)
     xb1 = t.bearing_bolts[0] * MM
-    fadd(f"螺栓 M{d1:g}×{L1b:g}", n1, "Q235", "GB/T 5782-2016", (xb1 - d1 * 0.6, b1 + 0.35 * d1))
-    fadd(f"螺母 M{d1:g}", n1, "Q235", "GB/T 6170-2015", (xb1 - d1 * 0.6, -b - 0.65 * d1))
-    fadd(f"弹簧垫圈 {d1:g}", n1, "65Mn", "GB/T 93-1987", (xb1 + d1 * 0.5, -b - 0.12 * d1))
+    fadd(f"螺栓 M{d1:g}×{L1b:g}", n1, "Q235", "GB/T 5782-2016", (xb1 - d1 * 0.6, hb + 0.35 * d1))
+    fadd(f"螺母 M{d1:g}", n1, "Q235", "GB/T 6170-2015", (xb1 - d1 * 0.6, -hb - 0.65 * d1))
+    fadd(f"弹簧垫圈 {d1:g}", n1, "65Mn", "GB/T 93-1987", (xb1 + d1 * 0.5, -hb - 0.12 * d1))
     if t.flange_bolts:
         xb2 = t.flange_bolts[0] * MM
         fadd(f"螺栓 M{d2:g}×{L2b:g}", n2, "Q235", "GB/T 5782-2016", (xb2 + d2 * 0.6, b1 + 0.35 * d2))
@@ -544,6 +556,10 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
             (-delta - fw, yb), (-delta - fw, yb + b2), (-delta, yb + b2), (-delta, -rb2), (-L1, -rb2)]
     v.poly(base, close=True)
     v.hatch([base], 45)
+    # 加强肋：纵向剖切，按不剖画出轮廓
+    dep = t.rib_depth * MM
+    for z_ in (-delta - dep, W + delta + dep):
+        v.line((z_, yb + b2), (z_, -rb2))
     covers = []
     yp, wp = ins.center[1] * MM, ins.width * MM / 2  # 视孔平台顶面与半宽（无平台时 yp = R）
     for mirror in (False, True):
@@ -757,7 +773,6 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet, add):
     xo0, xo1 = (val * MM for val in t.x_outer)
     R = t.cover_r[0] * MM
     cap = t.caps[0]
-    rb2 = t.boss_r[0] * MM
 
     def tadd(name, qty, mat, note, at):
         add(name, qty, mat, note, v.P(*at), "TL")
@@ -767,8 +782,11 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet, add):
     xr = math.sqrt(max(R**2 - b1**2, 0))
     v.rect(-delta, -xr, W + delta, xr)
     # 蜗轮轴轴承座和轴承盖、轴伸、联轴器
-    for za, zb in ((-L1, -delta - fw), (W + delta + fw, W + L1)):
-        v.rect(za, -rb2, zb, rb2)
+    from gongke_core.drawing.assembly import boss_spans
+
+    for a_, b_ in boss_spans(t):  # 轴承座与轴承旁凸台伸出凸缘外的部分
+        for za, zb in ((-L1, -delta - fw), (W + delta + fw, W + L1)):
+            v.rect(za, a_, zb, b_)
     r_cap = cap.D2 * MM / 2
     v.rect(-L1 - e, -r_cap, -L1, r_cap)
     v.rect(W + L1, -r_cap, W + L1 + e, r_cap)

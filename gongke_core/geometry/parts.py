@@ -212,10 +212,11 @@ def side_boss(side, x_inner: float) -> tuple[bd.Solid, bd.Solid]:
     return boss, bore
 
 
-def housing_base(h: Housing, shaft_x: list[float], bearing_D: list[float], side=None) -> bd.Solid:
+def housing_base(h: Housing, shaft_x: list[float], bearing_D: list[float], side=None, t=None) -> bd.Solid:
     """箱座（剖分面以下）简化模型：壁、上凸缘、底座、轴承座和轴承孔。剖分面为 y = 0。
 
-    side 为圆锥-圆柱减速器 −x 端壁上的Ⅰ轴轴承座（`housing_detail.SideBore`）。"""
+    side 为圆锥-圆柱减速器 −x 端壁上的Ⅰ轴轴承座（`housing_detail.SideBore`）；
+    t（`housing_detail.HousingDetail`）给出时加上轴承旁凸台和两侧壁外的加强肋。"""
     d = _mm(h.delta)
     x0, x1 = (_mm(v) for v in h.x_range)
     y0 = _mm(h.y_range[0])
@@ -242,6 +243,16 @@ def housing_base(h: Housing, shaft_x: list[float], bearing_D: list[float], side=
         for z0 in (-L1, w):
             boss = bd.Solid.make_cylinder(boss_d / 2, L1, bd.Plane((_mm(x), 0, z0)))
             body = body.fuse(boss)
+    if t is not None:
+        hb = _mm(t.boss_h)
+        for a, b_ in t.side_bosses:
+            for z0 in (-L1, w + d):
+                body = body.fuse(bd.Solid.make_box(_mm(b_ - a), hb, L1 - d).moved(bd.Location((_mm(a), -hb, z0))))
+        m, dep = _mm(t.rib_t), _mm(t.rib_depth)
+        y_top = y0 - d + b2
+        for x in t.ribs:
+            for z0 in (-d - dep, w + d):
+                body = body.fuse(bd.Solid.make_box(m, -y_top, dep).moved(bd.Location((_mm(x) - m / 2, y_top, z0))))
     if side is not None:
         side_solids = side_boss(side, h.x_range[0])
         body = body.fuse(side_solids[0])

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from gongke_core.drawing import hidden
 from gongke_core.drawing.assembly import PIN_D, _std
-from gongke_core.drawing.housing_base import CLEARANCE, SPOT_FACE, _fmt, _front_side, _vgap, tolerances
+from gongke_core.drawing.housing_base import CLEARANCE, SPOT_FACE, _fmt, _front_side, _side_bosses_front, _vgap, tolerances
 from gongke_core.drawing.sheet import SCALES, Sheet, TitleInfo, View
 from gongke_core.layout.housing_detail import Arc, HousingDetail, detail, envelope_height, envelope_points
 
@@ -118,15 +118,16 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     rbs = [r * MM for r in t.boss_r]
     occ = [(x, 0.0, rb) for x, rb in zip(xs, rbs)]
     ed = t.eyebolt_d * MM
+    blocks = _side_bosses_front(t, v, 1, occ)
 
     def seg(p, q, layer="粗实线", circles=None):
-        for a_, b_ in hidden.visible_segments(p, q, occ if circles is None else circles):
+        for a_, b_ in hidden.visible_segments(p, q, occ if circles is None else circles, blocks):
             v.line(a_, b_, layer)
 
-    # 轴承座凸台（上半）与轴承孔
+    # 轴承座凸台（上半）、轴承旁凸台与轴承孔
     for i, (x, D, rb) in enumerate(zip(xs, Ds, rbs)):
         others = [c for j, c in enumerate(occ) if j != i]
-        for a0, a1 in hidden.visible_arcs(x, 0, rb, 0, 180, others):
+        for a0, a1 in hidden.visible_arcs(x, 0, rb, 0, 180, others, blocks):
             v.arc((x, 0), rb, a0, a1)
         v.arc((x, 0), D / 2, 0, 180)
         v.centerline((x, 0), (x, rb), 3)
@@ -146,7 +147,7 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
             cut = math.degrees(math.asin(min(b1 / r, 1.0)))
             a0, a1 = max(e.a0, cut), min(e.a1, 180 - cut)
             if a1 > a0:
-                for p0, p1 in hidden.visible_arcs(e.cx * MM, 0, r, a0, a1, occ):
+                for p0, p1 in hidden.visible_arcs(e.cx * MM, 0, r, a0, a1, occ, blocks):
                     v.arc((e.cx * MM, 0), r, p0, p1)
         else:
             seg((e.p[0] * MM, max(e.p[1] * MM, b1)), (e.q[0] * MM, max(e.q[1] * MM, b1)))
@@ -177,14 +178,15 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
         v.poly(pts)
         sh.roughness(*v.P(cx + Lp / 2, cy), "Ra 6.3", 0, 3.0)
     # 连接螺栓孔、定位销孔、起盖螺钉孔（不可见，虚线）
-    def hidden_hole(x, r):
-        v.line((x - r, 0), (x - r, b1), "虚线")
-        v.line((x + r, 0), (x + r, b1), "虚线")
-        v.centerline((x, 0), (x, b1), 2)
+    def hidden_hole(x, r, top=b1):
+        v.line((x - r, 0), (x - r, top), "虚线")
+        v.line((x + r, 0), (x + r, top), "虚线")
+        v.centerline((x, 0), (x, top), 2)
 
     d1, d2 = round(h.bolt_bearing * MM), round(h.bolt_flange * MM)
+    hb = t.boss_h * MM
     for xb in t.bearing_bolts:
-        hidden_hole(xb * MM, CLEARANCE[d1] / 2)
+        hidden_hole(xb * MM, CLEARANCE[d1] / 2, hb)
     for xb in t.flange_bolts:
         hidden_hole(xb * MM, CLEARANCE[d2] / 2)
     pin = _std(t.pin_d * MM, PIN_D)
@@ -199,6 +201,8 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     v.dim((xo0 - fw, 0), (xs[0], 0), (xo0 - fw, yb_), 0, "<>", 1)
     top = t.cover_top * MM
     v.dim((xo1 + fw, 0), (xo1 + fw, b1), (xo1 + fw + 5 / s, 0), 90, "<>", 0)
+    xa_ = blocks[0][0]
+    v.dim((xa_, 0), (xa_, hb), (xa_ - 6 / s, 0), 90, "<>", 0)  # 轴承旁凸台高度
     v.dim((xo1 + fw, 0), (xs[-1], top), (xo1 + fw + 14 / s, 0), 90, "<>", 0)
     # 各段圆弧半径
     for k, e in enumerate(t.cover_outer):
@@ -238,12 +242,9 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet):
 
     zf0, zf1 = -delta - fw, W + delta + fw
     # 凸缘外缘；轴承座凸台伸出凸缘的部分
-    spans = []
-    for x, rb in zip(xs, rbs):
-        if spans and x - rb <= spans[-1][1]:
-            spans[-1][1] = x + rb
-        else:
-            spans.append([x - rb, x + rb])
+    from gongke_core.drawing.assembly import boss_spans
+
+    spans = boss_spans(t)
     protrude = L1 > delta + fw + 1e-6
     for z_edge, z_end in ((zf0, -L1), (zf1, W + L1)):
         xa = xo0 - fw
@@ -280,6 +281,14 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet):
             L((a, z0_), (a, z1_))
             L((b_, z0_), (b_, z1_))
             L((a, z1_), (b_, z1_))
+    # 轴承座圆柱面高出轴承旁凸台顶面时，两者的交线
+    hb = t.boss_h * MM
+    for x, rb in zip(xs, rbs):
+        if rb > hb and any(a * MM <= x <= b_ * MM for a, b_ in t.side_bosses):
+            for sx in (-1, 1):
+                xx = x + sx * math.sqrt(rb * rb - hb * hb)
+                for z0_, z1_ in ((-delta, -L1), (W + delta, W + L1)):
+                    L((xx, z0_), (xx, z1_))
     for x in xs:
         L((x, -L1 - 4), (x, W + L1 + 4), "点画线")
     L((xo0 - fw - 4, W / 2), (xo1 + fw + 4, W / 2), "点画线")

@@ -49,6 +49,11 @@ def cover(t: HousingDetail) -> bd.Solid:
     for x, rb in zip(t.shaft_x, t.boss_r):
         for z0 in (-L1, W):
             body = body.fuse(bd.Solid.make_cylinder(_mm(rb), L1, bd.Plane((_mm(x), 0, z0))))
+    # 轴承旁凸台（上半）
+    hb = _mm(t.boss_h)
+    for a, b_ in t.side_bosses:
+        for z0 in (-L1, zb):
+            body = body.fuse(_box(_mm(a), 0, z0, _mm(b_), hb, z0 + L1 - _mm(h.delta)))
     if t.side_bore is not None:
         from gongke_core.geometry.parts import side_boss
 
@@ -76,7 +81,8 @@ def cover(t: HousingDetail) -> bd.Solid:
     # 安装螺栓的通孔
     for x in t.bearing_bolts:
         for zc in (za - fw / 2, zb + fw / 2):
-            body = body.cut(bd.Solid.make_cylinder(_mm(h.bolt_bearing) / 2 + 1, b1 + 2, bd.Plane((_mm(x), -1, zc), z_dir=(0, 1, 0))))
+            body = body.cut(bd.Solid.make_cylinder(_mm(h.bolt_bearing) / 2 + 1, max(b1, hb) + 2,
+                                                   bd.Plane((_mm(x), -1, zc), z_dir=(0, 1, 0))))
     return body.clean()
 
 
@@ -111,16 +117,17 @@ def accessories(t: HousingDetail) -> dict[str, bd.Solid]:
         ring = bd.Solid.make_torus(ring_r, 0.4 * ed, bd.Plane((_mm(x), y + 1.6 * ed + ring_r, W / 2), z_dir=(0, 0, 1)))
         out[f"吊环螺钉-{k + 1}"] = rod.fuse(ring)
     # 连接螺栓（螺杆 + 六角头 + 螺母，简化为圆柱）
-    def bolt_solid(x, z, d, length):
+    def bolt_solid(x, z, d, length, top=b1, bot=b):  # 螺栓头支承面 y = top，螺母支承面 y = −bot
         d = _mm(d)
-        s = bd.Solid.make_cylinder(d / 2, _mm(length), bd.Plane((x, b1 + 0.0, z), z_dir=(0, -1, 0)))
-        s = s.fuse(bd.Solid.make_cylinder(d, 0.7 * d, bd.Plane((x, b1, z), z_dir=(0, 1, 0))))
-        s = s.fuse(bd.Solid.make_cylinder(d, 0.8 * d, bd.Plane((x, -b - 0.25 * d, z), z_dir=(0, -1, 0))))
+        s = bd.Solid.make_cylinder(d / 2, _mm(length), bd.Plane((x, top, z), z_dir=(0, -1, 0)))
+        s = s.fuse(bd.Solid.make_cylinder(d, 0.7 * d, bd.Plane((x, top, z), z_dir=(0, 1, 0))))
+        s = s.fuse(bd.Solid.make_cylinder(d, 0.8 * d, bd.Plane((x, -bot - 0.25 * d, z), z_dir=(0, -1, 0))))
         return s
     bolts = []
     for x in t.bearing_bolts:
         for zc in (za - fw / 2, zb + fw / 2):
-            bolts.append(bolt_solid(_mm(x), zc, h.bolt_bearing, t.bolt_length_d1))
+            hb = _mm(t.boss_h)
+            bolts.append(bolt_solid(_mm(x), zc, h.bolt_bearing, t.bolt_length_d1, hb, hb))
     for x in t.flange_bolts:
         for zc in (za - fw / 2, zb + fw / 2):
             bolts.append(bolt_solid(_mm(x), zc, h.bolt_flange, t.bolt_length_d2))

@@ -154,7 +154,7 @@ def build(design, with_housing: bool = True, teeth: bool = False) -> dict[str, b
         from gongke_core.layout.housing_detail import detail
 
         t = detail(design)
-        out["箱座"] = parts.housing_base(h, t.shaft_x, [s2.bearing.D, s3.bearing.D], t.side_bore)
+        out["箱座"] = parts.housing_base(h, t.shaft_x, [s2.bearing.D, s3.bearing.D], t.side_bore, t)
         out["箱盖"] = hg.cover(t)
         out.update(hg.accessories(t))
         caps = hg.bearing_caps(t, [None, s3.extension], [None, s3.diameters.get("密封")])

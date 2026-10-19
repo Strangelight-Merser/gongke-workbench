@@ -92,6 +92,29 @@ def _front_side(t: HousingDetail, v: View, sgn: int):
     v.line((xf, sgn * D / 2), (xi0, sgn * D / 2), "虚线")
 
 
+def _side_bosses_front(t: HousingDetail, v: View, sgn: int, occ) -> list[tuple[float, float, float, float]]:
+    """主视图中的轴承旁凸台（与轴承座端面平齐，只画合成外形）：sgn = −1 为箱座，+1 为箱盖。返回遮挡矩形。"""
+    hb = t.boss_h * MM
+    rects = [(a * MM, min(0, sgn * hb), b * MM, max(0, sgn * hb)) for a, b in t.side_bosses]
+    for x0, y0, x1, y1 in rects:
+        yo = sgn * hb
+        for p, q in (((x0, 0), (x0, yo)), ((x0, yo), (x1, yo)), ((x1, yo), (x1, 0))):
+            for a_, b_ in hidden.visible_segments(p, q, occ):
+                v.line(a_, b_)
+    return rects
+
+
+def _ribs_front(t: HousingDetail, v: View, y_bottom: float, rects):
+    """主视图中箱座前侧壁外的加强肋（轴承座正下方，正对观察者）。"""
+    m = t.rib_t * MM
+    for x, rb in zip(t.ribs, t.boss_r):
+        y_top = -math.sqrt((rb * MM) ** 2 - (m / 2) ** 2)
+        for sx in (-1, 1):
+            p, q = (x * MM + sx * m / 2, y_top), (x * MM + sx * m / 2, y_bottom)
+            for a_, b_ in hidden.visible_segments(p, q, (), rects):
+                v.line(a_, b_)
+
+
 def _fmt(v: float) -> str:
     """公差值写法：保留到 μm，去掉末尾的 0。"""
     return f"{v:.3f}".rstrip("0").rstrip(".")
@@ -204,15 +227,16 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     Ds = [c.D * MM for c in t.caps]
     rbs = [r * MM for r in t.boss_r]
     occ = [(x, 0.0, rb) for x, rb in zip(xs, rbs)]
+    blocks = _side_bosses_front(t, v, -1, occ)
 
     def seg(p, q, layer="粗实线", circles=None):
-        for a_, b_ in hidden.visible_segments(p, q, occ if circles is None else circles):
+        for a_, b_ in hidden.visible_segments(p, q, occ if circles is None else circles, blocks):
             v.line(a_, b_, layer)
 
-    # ---------------- 轴承座凸台（前侧，伸出凸缘外，最靠近观察者）与轴承孔
+    # ---------------- 轴承座凸台、轴承旁凸台（前侧，伸出凸缘外，最靠近观察者）与轴承孔
     for i, (x, D, rb) in enumerate(zip(xs, Ds, rbs)):
         others = [c for j, c in enumerate(occ) if j != i]
-        for a0, a1 in hidden.visible_arcs(x, 0, rb, 180, 360, others):
+        for a0, a1 in hidden.visible_arcs(x, 0, rb, 180, 360, others, blocks):
             v.arc((x, 0), rb, a0, a1)
         v.arc((x, 0), D / 2, 180, 360)
         v.centerline((x, 0), (x, -rb), 3)
@@ -223,6 +247,7 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
         v.line((xa, 0), (c0, 0))
         xa = c1
     v.line((xa, 0), (xo1 + fw, 0))
+    _ribs_front(t, v, yb + b2, blocks)
     # 凸缘、箱壁、底座
     seg((xo0 - fw, 0), (xo0 - fw, -b))
     seg((xo1 + fw, 0), (xo1 + fw, -b))
@@ -257,8 +282,9 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
         v.centerline((x, y0), (x, y1), 2)
 
     d1, d2 = round(h.bolt_bearing * MM), round(h.bolt_flange * MM)
+    hb = t.boss_h * MM
     for xb in t.bearing_bolts:
-        hidden_hole(xb * MM, CLEARANCE[d1] / 2, -b, 0)
+        hidden_hole(xb * MM, CLEARANCE[d1] / 2, -hb, 0)
     for xb in t.flange_bolts:
         hidden_hole(xb * MM, CLEARANCE[d2] / 2, -b, 0)
     pin = _std(t.pin_d * MM, PIN_D)
@@ -322,6 +348,8 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     xr = xo1 + fw + (0.9 * fw if t.hooks else 0)
     v.dim((xo1 + fw, 0), (xo1 + fw, yb), (xr + 12 / s, 0), 90, "<>", 0)
     v.dim((xo1 + fw, -b), (xo1 + fw, 0), (xr + 4 / s, 0), 90, "<>", 0)
+    xa_ = blocks[0][0]
+    v.dim((xa_, -hb), (xa_, 0), (xa_ - 6 / s, 0), 90, "<>", 0)  # 轴承旁凸台高度
     v.dim((xo0 - fw, yb), (xo0 - fw, yb + b2), (xo0 - fw - 8 / s, yb), 90, "<>", 0)
     # 轴承孔直径
     for i, (x, D) in enumerate(zip(xs, Ds)):
@@ -357,13 +385,16 @@ def _front_worm(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     D = t.caps[0].D * MM
     rb = t.boss_r[0] * MM
     occ = [(0.0, 0.0, rb)]
+    blocks = _side_bosses_front(t, v, -1, occ)
 
     def seg(p, q, layer="粗实线"):
-        for a_, b_ in hidden.visible_segments(p, q, occ):
+        for a_, b_ in hidden.visible_segments(p, q, occ, blocks):
             v.line(a_, b_, layer)
 
-    # ---------------- 外形：蜗轮轴轴承座凸台下半与座孔、剖分面、凸缘、端壁、吊钩
-    v.arc((0, 0), rb, 180, 360)
+    # ---------------- 外形：蜗轮轴轴承座凸台下半与座孔、轴承旁凸台、剖分面、凸缘、端壁、吊钩、加强肋
+    for a0, a1 in hidden.visible_arcs(0, 0, rb, 180, 360, (), blocks):
+        v.arc((0, 0), rb, a0, a1)
+    _ribs_front(t, v, y_w, blocks)
     v.arc((0, 0), D / 2, 180, 360)
     v.centerline((0, 0), (0, -rb), 3)
     v.line((xo0 - fw, 0), (-D / 2, 0))
@@ -386,8 +417,9 @@ def _front_worm(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
         v.centerline((x, y0), (x, y1), 2)
 
     d1, d2 = round(h.bolt_bearing * MM), round(h.bolt_flange * MM)
+    hb = t.boss_h * MM
     for xb in t.bearing_bolts:
-        hidden_hole(xb * MM, CLEARANCE[d1] / 2, -b, 0)
+        hidden_hole(xb * MM, CLEARANCE[d1] / 2, -hb, 0)
     for xb in t.flange_bolts:
         hidden_hole(xb * MM, CLEARANCE[d2] / 2, -b, 0)
     pin = _std(t.pin_d * MM, PIN_D)
@@ -430,6 +462,8 @@ def _front_worm(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     xr = max(xo1 + fw + (0.9 * fw if t.hooks else 0), xf)
     v.dim((xo1 + fw, 0), (xo1 + fw, yb), (xr + 12 / s, 0), 90, "<>", 0)
     v.dim((xo1 + fw, -b), (xo1 + fw, 0), (xr + 4 / s, 0), 90, "<>", 0)
+    xa_ = blocks[0][0]
+    v.dim((xa_, -hb), (xa_, 0), (xa_ - 6 / s, 0), 90, "<>", 0)  # 轴承旁凸台高度
     v.dim((xo0 - fw, yb), (xo0 - fw, yb + b2), (xo0 - fw - 8 / s, yb), 90, "<>", 0)
     ang = math.radians(-60)
     px, py = v.P(D / 2 * math.cos(ang), D / 2 * math.sin(ang))
@@ -472,14 +506,10 @@ def _top(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
         v.circle((c[0], -c[1]), r, layer)
 
     zf0, zf1 = -delta - fw, W + delta + fw
-    # 轴承座凸台伸出凸缘外的部分（按 x 区间合并相邻凸台）
-    spans = sorted((x - rb, x + rb) for x, rb in zip(xs, rbs))
-    merged: list[list[float]] = []
-    for a, b_ in spans:
-        if merged and a <= merged[-1][1]:
-            merged[-1][1] = max(merged[-1][1], b_)
-        else:
-            merged.append([a, b_])
+    # 轴承座凸台、轴承旁凸台伸出凸缘外的部分（按 x 区间合并）
+    from gongke_core.drawing.assembly import boss_spans
+
+    merged = boss_spans(t)
     protrude = L1 > delta + fw + 1e-6
     for z_edge, z_end in ((zf0, -L1), (zf1, W + L1)):
         xa = xo0 - fw
@@ -631,6 +661,10 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet):
             (-delta - fw, yb), (-delta - fw, yb + b2), (-delta, yb + b2), (-delta, -rb), (-L1, -rb)]
     v.poly(base, close=True)
     v.hatch([base], 45)
+    # 加强肋：纵向剖切，按不剖画出轮廓
+    dep = t.rib_depth * MM
+    for z_ in (-delta - dep, W + delta + dep):
+        v.line((z_, yb + b2), (z_, -rb))
     # 剖切面后方：轴承孔孔壁两端、凸台端面、剖分面
     for z in (-L1, 0.0, W, W + L1):
         v.line((z, -D / 2), (z, 0))

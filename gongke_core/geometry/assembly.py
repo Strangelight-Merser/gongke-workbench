@@ -83,7 +83,7 @@ def build(design: ReducerDesign, with_housing: bool = True, z_up: bool = True, t
 
         t = detail(design)
         out["箱座"] = parts.housing_base(design.housing, [s.layout.x for s in design.shafts],
-                                        [s.layout.bearing.D for s in design.shafts])
+                                        [s.layout.bearing.D for s in design.shafts], t=t)
         out["箱盖"] = hg.cover(t)
         out.update(hg.accessories(t))
         seals = [s.layout.diameters.get("密封") or s.layout.bearing.d for s in design.shafts]
