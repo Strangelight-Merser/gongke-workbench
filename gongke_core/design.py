@@ -14,6 +14,7 @@ from gongke_core.calc import gear as gear_calc
 from gongke_core.calc import key as key_calc
 from gongke_core.calc import kinematics
 from gongke_core.calc import shaft as shaft_calc
+from gongke_core.calc import shaft_stiffness as stiff_calc
 from gongke_core.calc import vbelt as vbelt_calc
 from gongke_core.layout import reducer as lay
 
@@ -95,10 +96,48 @@ class ShaftResult:
     power: float
     speed_rpm: float
     torque: float
+    stiffness: stiff_calc.StiffnessCheck | None = None  # 弯曲刚度（蜗杆轴另按 d1/1000 校核，此处为 None）
 
     @property
     def ok(self) -> bool:
-        return self.strength.ok and self.bearings.ok and all(k.ok for k in self.keys) and self.fatigue.ok
+        return (self.strength.ok and self.bearings.ok and all(k.ok for k in self.keys) and self.fatigue.ok
+                and (self.stiffness is None or self.stiffness.ok))
+
+
+def apply_stiffness(shafts: list[ShaftResult], pairs: dict, skip: tuple[int, ...] = ()) -> None:
+    """按各轴的载荷和结构计算弯曲刚度（挠度、偏转角）。pairs 把 GearOnShaft.pair 映射到传动件计算结果。"""
+    for s in shafts:
+        lay_ = s.layout
+        if lay_.index in skip:
+            continue
+        gears = []
+        for g in lay_.gears:
+            p = pairs[g.pair]
+            name = getattr(getattr(p, "inp", None), "name", "") or ""
+            kind = {"bevel": "锥齿轮", "worm": "蜗轮"}.get(g.pair, "齿轮")
+            label = f"{name}{'小' if g.member == 1 else '大'}{kind}" if kind != "蜗轮" else "蜗轮"
+            module = getattr(p, "mn", None) or p.m
+            gears.append((label, g.z, module))
+        bk = "圆锥滚子轴承" if isinstance(lay_.bearing, standards.TaperedBearing) else "深沟球轴承"
+        s.stiffness = stiff_calc.check(lay_.segments, s.load_case, gears, bk)
+
+
+def stiffness_lines(s: ShaftResult) -> list[tuple[str, bool, str]]:
+    """刚度校核结论（每根轴一行挠度、一行偏转角，各取与许用值之比最大的一处）。"""
+    if s.stiffness is None:
+        return []
+    out = []
+    for kind, title in (("y", "挠度"), ("θ", "偏转角")):
+        items = [i for i in s.stiffness.items if i.kind == kind]
+        if not items:
+            continue
+        w = max(items, key=lambda i: i.value / i.allow)
+        if kind == "y":
+            txt = f"y = {w.value / MM:.4f} mm ≤ [y] = {w.allow / MM:.3f} mm（{w.label[:-2]}）"
+        else:
+            txt = f"θ = {w.value:.5f} rad ≤ [θ] = {w.allow:g} rad（{w.label[:-3]}）"
+        out.append((f"{s.layout.name}{title}", all(i.ok for i in items), txt))
+    return out
 
 
 @dataclass
@@ -318,6 +357,7 @@ def run(task: ReducerTask) -> ReducerDesign:
                  (shafts[2].layout.diameters["端部"], shafts[2].layout.diameters["端部"]), shafts[2].layout.coupling_hub),
     ]
 
+    apply_stiffness(shafts, {"high": high, "low": low})
     checks: list[tuple[str, bool, str]] = []
     warnings: list[str] = []
     err = (kin.motor.speed_rpm / (kin.i_belt * high.u * low.u) - kin.drum_speed_rpm) / kin.drum_speed_rpm
@@ -350,6 +390,7 @@ def run(task: ReducerTask) -> ReducerDesign:
             checks.append((f"{k.location}平键挤压强度", k.ok,
                            f"σp = {k.sigma_p/1e6:.1f} MPa ≤ [σp] = {k.sigma_allow/1e6:.0f} MPa"
                            + ("（双键）" if k.count == 2 else "")))
+        checks.extend(stiffness_lines(s))
     # 高速级大齿轮不得碰到低速轴
     d3_max = max(seg.d for seg in shafts[2].layout.segments
                  if seg.z0 <= z_high + high.b2 / 2 and seg.z1 >= z_high - high.b2 / 2)

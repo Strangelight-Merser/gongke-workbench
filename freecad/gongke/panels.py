@@ -1,6 +1,5 @@
 """减速器设计任务面板。计算和建模在独立进程中进行，界面不会卡住。"""
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -73,6 +72,8 @@ class ReducerTaskPanel:
         self.with_drawings = QtGui.QCheckBox("生成二维工程图（装配图和零件图，DXF）")
         self.with_drawings.setChecked(True)
         lay.addWidget(self.with_drawings)
+        self.with_fem = QtGui.QCheckBox("用 CalculiX 有限元复核轴的刚度（FreeCAD 自带求解器）")
+        lay.addWidget(self.with_fem)
         self.run_btn = QtGui.QPushButton("开始设计")
         self.run_btn.clicked.connect(self.run)
         lay.addWidget(self.run_btn)
@@ -118,10 +119,11 @@ class ReducerTaskPanel:
         self.out_dir = (doc_dir or Path(tempfile.mkdtemp(prefix="gongke_"))) / "gongke_reducer"
         task = runner.write_task(self.values(), self.out_dir)
         prog, args, cwd = runner.command(python, task, self.out_dir, step=self.with_model.isChecked(),
-                                         full_teeth=self.full_teeth.isChecked(), drawings=self.with_drawings.isChecked())
+                                         full_teeth=self.full_teeth.isChecked(), drawings=self.with_drawings.isChecked(),
+                                         fem=self.with_fem.isChecked())
         self.proc = QtCore.QProcess()
         env = QtCore.QProcessEnvironment.systemEnvironment()
-        for k, v in runner.environment().items():
+        for k, v in runner.environment(self._ccx()).items():
             env.insert(k, v)
         self.proc.setProcessEnvironment(env)
         self.proc.setWorkingDirectory(cwd)
@@ -130,6 +132,12 @@ class ReducerTaskPanel:
         extra = [t for t, on in (("三维模型", self.with_model.isChecked()), ("工程图", self.with_drawings.isChecked())) if on]
         self.result.setPlainText("正在计算" + (f"并生成{'和'.join(extra)}…" if extra else "…"))
         self.proc.start(prog, args)
+
+    @staticmethod
+    def _ccx() -> str:
+        fem = App.ParamGet("User parameter:BaseApp/Preferences/Mod/Fem/Ccx")
+        return runner.freecad_ccx(App.getHomePath(), fem.GetString("ccxBinaryPath", ""),
+                                  fem.GetBool("UseStandardCcxLocation", True))
 
     def done(self, code, _status=None):
         self.run_btn.setEnabled(True)
@@ -151,7 +159,7 @@ class ReducerTaskPanel:
             f"<table border='1' cellspacing='0' cellpadding='2'>{rows}</table>"
         )
         labels = {"reducer_assembly.step": "三维装配体（STEP）", "report.docx": "计算说明书（Word）",
-                  "report.md": "计算说明书（Markdown）"}
+                  "report.md": "计算说明书（Markdown）", "fem/comparison.md": "轴的刚度有限元复核对照表"}
         for name, path in out["files"].items():
             html += f"<p><a href='{QtCore.QUrl.fromLocalFile(str(path)).toString()}'>{labels.get(name, name)}</a></p>"
         if out["drawings"]:

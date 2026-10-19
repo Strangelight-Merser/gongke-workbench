@@ -1,9 +1,9 @@
 """命令行入口。
 
-    python -m gongke_core design 任务书.yaml -o 输出目录 [--no-step] [--no-docx] [--no-drawings]
+    python -m gongke_core design 任务书.yaml -o 输出目录 [--no-step] [--no-docx] [--no-drawings] [--fem]
 
 输出：summary.json（结果摘要）、report.docx / .md、reducer_assembly.step、
-drawings/（装配图和零件图，DXF + SVG 预览）。
+drawings/（装配图和零件图，DXF + SVG 预览）；加 --fem 时还有 fem/（CalculiX 输入、结果和对照表）。
 FreeCAD 工作台也通过这个入口在独立进程中生成模型。
 """
 
@@ -26,6 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--no-docx", action="store_true", help="不生成 Word 说明书（仍生成 Markdown）")
     d.add_argument("--no-housing", action="store_true", help="装配体中不含箱座")
     d.add_argument("--no-drawings", action="store_true", help="不生成二维工程图")
+    d.add_argument("--fem", action="store_true", help="用 CalculiX 梁单元模型复核轴的刚度（需要 ccx，FreeCAD 自带）")
     d.add_argument("--full-teeth", action="store_true", help="建出完整渐开线齿形（文件约 30 MB，生成较慢）")
     args = ap.parse_args(argv)
 
@@ -36,8 +37,18 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     res = design.run(design.ReducerTask.from_yaml(args.task))
-    (out / "summary.json").write_text(json.dumps(summary.summarize(res), ensure_ascii=False, indent=2), encoding="utf-8")
-    doc = content.build(res)
+    fem = None
+    if args.fem:
+        from gongke_core.fem import ccx, shaft_check
+        try:
+            fem = shaft_check.run(res, out / "fem")
+        except ccx.CcxNotFound as e:
+            print(f"跳过有限元复核：{e}", file=sys.stderr)
+        else:
+            (out / "fem" / "comparison.md").write_text(shaft_check.to_markdown(fem), encoding="utf-8")
+            print(f"有限元复核完成：{len(fem.shafts)} 根轴，与解析结果最大相差 {fem.max_diff * 100:.2f}%")
+    (out / "summary.json").write_text(json.dumps(summary.summarize(res, fem), ensure_ascii=False, indent=2), encoding="utf-8")
+    doc = content.build(res, fem=fem)
     markdown_writer.write(doc, out / "report.md")
     if not args.no_docx:
         try:

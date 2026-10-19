@@ -15,7 +15,7 @@ from gongke_core.calc import key as key_calc
 from gongke_core.calc import kinematics
 from gongke_core.calc import shaft as shaft_calc
 from gongke_core.calc import worm as worm_calc
-from gongke_core.design import Coupling, ReducerTask, ShaftResult, _end_failed
+from gongke_core.design import Coupling, ReducerTask, ShaftResult, _end_failed, apply_stiffness, stiffness_lines
 from gongke_core.layout import reducer as lay
 from gongke_core.layout import worm_reducer as wlay
 
@@ -247,6 +247,7 @@ def run(task: ReducerTask) -> WormReducerDesign:
                  (s2.layout.diameters["端部"], s2.layout.diameters["端部"]), s2.layout.coupling_hub),
     ]
 
+    apply_stiffness(shafts, {"worm": w}, skip=(1,))
     checks: list[tuple[str, bool, str]] = []
     warnings: list[str] = []
     n_out = kin.motor.speed_rpm / w.u
@@ -279,6 +280,7 @@ def run(task: ReducerTask) -> WormReducerDesign:
             checks.append((f"{k.location}平键挤压强度", k.ok,
                            f"σp = {k.sigma_p/1e6:.1f} MPa ≤ [σp] = {k.sigma_allow/1e6:.0f} MPa"
                            + ("（双键）" if k.count == 2 else "")))
+        checks.extend(stiffness_lines(s))
     if w.sliding_velocity > 5:
         warnings.append(f"滑动速度 vs = {w.sliding_velocity:.1f} m/s 较高，蜗杆下置浸油润滑时注意搅油损失；"
                         "vs > 10 m/s 时宜改用蜗杆上置或喷油润滑。")

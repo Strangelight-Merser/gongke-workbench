@@ -37,7 +37,8 @@ def mpa(v: float, nd: int = 1) -> str:
     return f"{v / 1e6:.{nd}f}"
 
 
-def build(d: ReducerDesign, with_diagrams: bool = True) -> Doc:
+def build(d: ReducerDesign, with_diagrams: bool = True, fem=None) -> Doc:
+    """fem 为 gongke_core.fem.shaft_check.FemReport 时，加一章“轴的刚度有限元复核”。"""
     doc = Doc(d.task.title + " 设计计算说明书")
     _task(doc, d)
     _motor(doc, d)
@@ -59,6 +60,8 @@ def build(d: ReducerDesign, with_diagrams: bool = True) -> Doc:
     _couplings(doc, d)
     _housing(doc, d)
     _lubrication(doc, d)
+    if fem is not None:
+        _fem(doc, d, fem, with_diagrams)
     _summary(doc, d)
     _refs(doc)
     return doc
@@ -465,6 +468,28 @@ def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
     doc.eq(f"σca = √(M² + (αT)²) / W，α = {s.strength.alpha}：σca = {mpa(cr.sigma_ca)} MPa ≤ [σ−1b] = {mpa(s.strength.sigma_allow,0)} MPa，"
            + ("满足" if s.strength.ok else "不满足"))
     _fatigue(doc, s)
+    _stiffness(doc, s, 6 if s.fatigue.critical is not None else 5, with_diagrams)
+
+
+def _stiffness(doc: Doc, s: ShaftResult, n: int, with_diagrams: bool):
+    st = s.stiffness
+    if st is None:
+        return
+    doc.h2(f"{n}. 刚度校核")
+    doc.p("把轴看成支承在两轴承中心的简支梁，按各段实际直径（齿轮轴的轮齿段取齿根圆）计算截面惯性矩 I = πd⁴/64，"
+          "沿轴线对 y″ = M/(EI) 数值积分两次，由两支点挠度为零定出积分常数；两平面分别计算后按矢量合成。"
+          "E = 206 GPa，不计剪切变形和键槽的影响。")
+    doc.p("许用值（濮良贵《机械设计》表 15-5）：安装齿轮处挠度 [y] = (0.01～0.03)mn，取 0.02mn；"
+          "安装齿轮处偏转角 [θ] = 0.002 rad；深沟球轴承处 [θ] = 0.005 rad，圆锥滚子轴承处 [θ] = 0.0016 rad。")
+    rows = []
+    for it in st.items:
+        if it.kind == "y":
+            rows.append([it.label, mm(it.z, 1), f"{it.value * 1e3:.4f} mm", f"{it.allow * 1e3:.3f} mm", "满足" if it.ok else "不满足"])
+        else:
+            rows.append([it.label, mm(it.z, 1), f"{it.value:.5f} rad", f"{it.allow:g} rad", "满足" if it.ok else "不满足"])
+    doc.table(["校核点", "z / mm", "计算值", "许用值", "结论"], rows)
+    if with_diagrams:
+        doc.img(diagrams.deflection_diagram(s), f"{s.layout.name}挠度和偏转角曲线（两平面合成）")
 
 
 def _fatigue(doc: Doc, s: ShaftResult):
@@ -571,6 +596,31 @@ def _lubrication(doc: Doc, d: ReducerDesign):
     doc.p(f"齿轮最大圆周速度 {v:.2f} m/s < 12 m/s，齿轮采用浸油润滑，{dip}。"
           + ("轴承利用齿轮飞溅的油润滑（v ≥ 2 m/s）。" if v >= 2 else "圆周速度小于 2 m/s，轴承采用润滑脂润滑，内侧加挡油环。")
           + "伸出轴处采用毡圈油封或唇形密封圈。")
+
+
+def _fem(doc: Doc, d: ReducerDesign, rep, with_diagrams: bool):
+    _h1(doc, "轴的刚度有限元复核")
+    doc.p(f"用 {rep.solver} 对各轴建立梁单元模型复核上面的刚度计算。模型与解析法相同：按轴段直径取圆截面，"
+          "两轴承中心铰支，啮合力加在齿宽中点，轴向力的偏距产生的力偶作为节点力矩；每个单元不超过 2 mm。"
+          "单元为 Timoshenko 梁（U1），计入剪切变形，因此同时列出计入剪切的解析结果对照。"
+          "各轴的输入文件见输出目录 fem/shaft*.inp，可在 FreeCAD 有限元工作台或直接用 ccx 复算。")
+    rows = []
+    for r in rep.rows:
+        if r.kind == "y":
+            v = [f"{x * 1e3:.4f}" for x in (r.bending, r.timoshenko, r.fem)] + [f"{r.allow * 1e3:.3f}"]
+            unit = "mm"
+        else:
+            v = [f"{x:.5f}" for x in (r.bending, r.timoshenko, r.fem)] + [f"{r.allow:g}"]
+            unit = "rad"
+        rows.append([f"{r.shaft[:2]} {r.label}", unit, *v[:3], f"{r.diff * 100:+.2f}%", v[3]])
+    doc.table(["校核点", "单位", "解析（只计弯曲）", "解析（计剪切）", "有限元", "偏差", "许用值"], rows)
+    doc.p(f"有限元与计入剪切的解析结果最大相差 {rep.max_diff * 100:.2f}%，说明解析计算（支反力、弯矩、积分）无误。"
+          "这些轴较短粗，剪切变形使挠度比只计弯曲时大 5%～30%；教材的许用值是按只计弯曲的算法定的，"
+          f"校核仍以第一列为准，有限元结果{'也全部' if rep.ok else '有的不'}满足许用值。")
+    if with_diagrams:
+        for sf in rep.shafts:
+            s = next(x for x in d.shafts if x.layout.name == sf.name)
+            doc.img(diagrams.deflection_diagram(s, sf.fem, sf.timoshenko), f"{sf.name}挠度和偏转角：解析（计剪切）与有限元")
 
 
 def _summary(doc: Doc, d: ReducerDesign):

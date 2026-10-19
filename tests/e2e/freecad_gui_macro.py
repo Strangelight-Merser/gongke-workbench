@@ -27,6 +27,7 @@ try:
     scheme = os.environ.get("GONGKE_E2E_SCHEME")
     if scheme in ("vbelt", "bevel", "worm"):
         p.scheme.setCurrentIndex(("coupling", "vbelt", "bevel", "worm").index(scheme))
+    p.with_fem.setChecked(True)  # 用 FreeCAD 自带的 ccx
     p.run()
     ok = p.proc.waitForFinished(600000)
     P("finished", ok, p.proc.exitCode())
@@ -38,6 +39,7 @@ try:
     n_solids = sum(1 for o in doc.Objects if hasattr(o, "Shape") and o.Shape.Solids)
     assert p.proc.exitCode() == 0 and n_solids >= 15, "装配体导入不完整"
     assert "GK-00" in p.result.toPlainText(), "工程图未生成"
+    assert "有限元复核" in p.result.toPlainText(), "未找到 FreeCAD 自带的 ccx 或有限元复核失败"
     if os.environ.get("GONGKE_E2E_SCHEME") == "vbelt":
         assert "GK-03-01" in p.result.toPlainText(), "大带轮零件图未生成"
     if os.environ.get("GONGKE_E2E_SCHEME") == "bevel":

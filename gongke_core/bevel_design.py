@@ -18,7 +18,7 @@ from gongke_core.calc import gear as gear_calc
 from gongke_core.calc import key as key_calc
 from gongke_core.calc import kinematics
 from gongke_core.calc import shaft as shaft_calc
-from gongke_core.design import Coupling, ReducerTask, ShaftResult, _end_failed, _shaft, gear_loads
+from gongke_core.design import Coupling, ReducerTask, ShaftResult, _end_failed, apply_stiffness, stiffness_lines, _shaft, gear_loads
 from gongke_core.layout import bevel_reducer as blay
 from gongke_core.layout import reducer as lay
 
@@ -231,6 +231,7 @@ def run(task: ReducerTask) -> BevelReducerDesign:
                  (s3.layout.diameters["端部"], s3.layout.diameters["端部"]), s3.layout.coupling_hub),
     ]
 
+    apply_stiffness(shafts, {"bevel": bevel, "low": low})
     checks: list[tuple[str, bool, str]] = []
     warnings: list[str] = []
     n_out = kin.motor.speed_rpm / (bevel.u * low.u)
@@ -264,6 +265,7 @@ def run(task: ReducerTask) -> BevelReducerDesign:
             checks.append((f"{k.location}平键挤压强度", k.ok,
                            f"σp = {k.sigma_p/1e6:.1f} MPa ≤ [σp] = {k.sigma_allow/1e6:.0f} MPa"
                            + ("（双键）" if k.count == 2 else "")))
+        checks.extend(stiffness_lines(s))
     checks.append(("小锥齿轮悬臂支承", ps.span >= 2 * ps.overhang - 1e-9,
                    f"支点距离 {ps.span/MM:.0f} mm ≥ 2 × 悬臂长度 {ps.overhang/MM:.0f} mm"))
     # 大锥齿轮不得碰到Ⅲ轴

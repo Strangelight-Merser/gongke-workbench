@@ -69,7 +69,7 @@ def write_task(v: FormValues, out_dir: Path) -> Path:
 
 
 def command(python: str, task: Path, out_dir: Path, step: bool = True, full_teeth: bool = False,
-            drawings: bool = True) -> tuple[str, list[str], str]:
+            drawings: bool = True, fem: bool = False) -> tuple[str, list[str], str]:
     """返回 (程序, 参数, 工作目录)，供 QProcess 或 subprocess 使用。"""
     args = ["-m", "gongke_core", "design", str(task), "-o", str(out_dir)]
     if not step:
@@ -78,11 +78,26 @@ def command(python: str, task: Path, out_dir: Path, step: bool = True, full_teet
         args.append("--full-teeth")
     if not drawings:
         args.append("--no-drawings")
+    if fem:
+        args.append("--fem")
     return python, args, str(REPO_ROOT)
 
 
-def environment() -> dict:
+def freecad_ccx(home: str, user_path: str = "", use_standard: bool = True) -> str:
+    """FreeCAD 有限元工作台使用的 ccx：首选项里指定的路径，否则安装目录 bin/ 下自带的。找不到返回空串。"""
+    if not use_standard and user_path and Path(user_path).is_file():
+        return user_path
+    for name in ("ccx.exe", "ccx"):
+        p = Path(home) / "bin" / name
+        if p.is_file():
+            return str(p)
+    return ""
+
+
+def environment(ccx: str = "") -> dict:
     env = dict(os.environ)
+    if ccx:
+        env["GONGKE_CCX"] = ccx
     env["PYTHONPATH"] = str(REPO_ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     env["PYTHONIOENCODING"] = "utf-8"
     return env
@@ -111,7 +126,7 @@ SCHEMES = ("coupling", "vbelt", "bevel", "worm")
 def read_outputs(out_dir: Path) -> dict:
     out_dir = Path(out_dir)
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
-    files = {name: out_dir / name for name in ("reducer_assembly.step", "report.docx", "report.md")}
+    files = {name: out_dir / name for name in ("reducer_assembly.step", "report.docx", "report.md", "fem/comparison.md")}
     index = out_dir / "drawings" / "index.json"
     drawings = []
     if index.exists():

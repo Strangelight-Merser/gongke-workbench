@@ -7,7 +7,18 @@ import math
 from gongke_core.design import ReducerDesign
 
 
-def summarize(d: ReducerDesign) -> dict:
+def _stiffness(s) -> dict | None:
+    if s.stiffness is None:
+        return None
+    ys = [i for i in s.stiffness.items if i.kind == "y"]
+    ts = [i for i in s.stiffness.items if i.kind == "θ"]
+    wy, wt = max(ys, key=lambda i: i.value / i.allow), max(ts, key=lambda i: i.value / i.allow)
+    return {"y_mm": wy.value * 1e3, "y_allow_mm": wy.allow * 1e3, "y_at": wy.label,
+            "theta_rad": wt.value, "theta_allow_rad": wt.allow, "theta_at": wt.label, "ok": s.stiffness.ok}
+
+
+def summarize(d: ReducerDesign, fem=None) -> dict:
+    """fem 为 gongke_core.fem.shaft_check.FemReport（可选）。"""
     k = d.kin
     gears = {}
     if d.task.scheme == "worm":
@@ -48,6 +59,7 @@ def summarize(d: ReducerDesign) -> dict:
             "sigma_ca": s.strength.critical.sigma_ca / 1e6,
             "bearing_life_h": min(s.bearings.life),
             "integral_pinion": any(g.integral for g in lay.gears),
+            "stiffness": _stiffness(s),
         })
     belt = None
     if d.belt:
@@ -66,5 +78,10 @@ def summarize(d: ReducerDesign) -> dict:
         "shafts": shafts,
         "checks": [{"item": n, "ok": ok, "detail": t} for n, ok, t in d.checks],
         "warnings": d.warnings,
+        "fem": None if fem is None else {
+            "solver": fem.solver, "max_diff": fem.max_diff, "ok": fem.ok,
+            "rows": [{"shaft": r.shaft, "item": r.label, "bending": r.bending, "timoshenko": r.timoshenko,
+                      "fem": r.fem, "unit": "m" if r.kind == "y" else "rad"} for r in fem.rows],
+        },
         "ok": d.ok,
     }

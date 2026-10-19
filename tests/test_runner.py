@@ -68,3 +68,16 @@ def test_cli_worm_scheme(tmp_path):
     assert runner.gears_html(out["summary"]["gears"]).startswith("<b>蜗杆传动</b> m=")
     text = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert "蜗杆传动设计" in text and "热平衡计算" in text and "蜗杆刚度校核" in text
+
+
+def test_fem_option_and_freecad_ccx(tmp_path):
+    _, args, _ = runner.command("python", tmp_path / "t.yaml", tmp_path, fem=True)
+    assert "--fem" in args
+    assert runner.freecad_ccx(str(tmp_path)) == ""
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "ccx").write_text("")
+    assert runner.freecad_ccx(str(tmp_path)) == str(tmp_path / "bin" / "ccx")
+    user = tmp_path / "my_ccx"
+    user.write_text("")
+    assert runner.freecad_ccx(str(tmp_path), str(user), use_standard=False) == str(user)
+    assert runner.environment("/x/ccx")["GONGKE_CCX"] == "/x/ccx"

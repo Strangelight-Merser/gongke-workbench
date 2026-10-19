@@ -35,11 +35,11 @@ pip install pyyaml python-docx pillow build123d ezdxf
 python -m gongke_core design examples/conveyor_basic.yaml -o out
 ```
 
-`out/` 下得到 `summary.json`、`report.docx`、`report.md`（含弯矩图）、`reducer_assembly.step` 和 `drawings/`（`assembly.dxf`、`shaft1.dxf`…、`gear_low2.dxf` 等，每张都有同名 SVG 预览）。三维模型默认把齿轮画成齿顶圆柱（约 1 MB），加 `--full-teeth` 建出完整渐开线齿形（约 30 MB）；`--no-step`、`--no-drawings` 可跳过对应输出。任务书格式见 [examples/conveyor_basic.yaml](examples/conveyor_basic.yaml)，教材里查图得到的系数可以在 `overrides` 中填写，覆盖程序的近似值。
+`out/` 下得到 `summary.json`、`report.docx`、`report.md`（含弯矩图）、`reducer_assembly.step` 和 `drawings/`（`assembly.dxf`、`shaft1.dxf`…、`gear_low2.dxf` 等，每张都有同名 SVG 预览）。三维模型默认把齿轮画成齿顶圆柱（约 1 MB），加 `--full-teeth` 建出完整渐开线齿形（约 30 MB）；`--no-step`、`--no-drawings` 可跳过对应输出；加 `--fem` 用 CalculiX（FreeCAD 自带，或安装 `calculix-ccx`，需 2.21 以上）的梁单元模型复核各轴刚度，输出 `fem/` 目录并在说明书中加一章对照。任务书格式见 [examples/conveyor_basic.yaml](examples/conveyor_basic.yaml)，教材里查图得到的系数可以在 `overrides` 中填写，覆盖程序的近似值。
 
 ## 计算方法和数据
 
-- 轴先按弯扭合成法定直径，再在每个轴肩和键槽处按安全系数法做疲劳校核，不满足时自动加大轴径。
+- 轴先按弯扭合成法定直径，再在每个轴肩和键槽处按安全系数法做疲劳校核，不满足时自动加大轴径；然后按阶梯轴实际截面积分求挠度和偏转角，做刚度校核（濮良贵《机械设计》表 15-5 许用值）。
 - 计算按濮良贵《机械设计》（第八版）和课程设计指导书的方法，每个公式在代码注释和说明书中都写明出处。
 - 教材中只能查图的系数（动载系数 Kv、寿命系数 KHN/KFN）用 ISO 6336 的解析近似，说明书里会提示，并可在任务书中手工覆盖。
 - 只录入计算链路必须用到的少量标准数据（Y 系列电动机、深沟球轴承、平键、模数、齿形系数），存放在 `data/`，每个文件注明标准号，状态为“待人工核对”。
