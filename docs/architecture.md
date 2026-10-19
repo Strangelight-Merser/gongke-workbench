@@ -32,7 +32,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
   └─ calc.key          平键选型与挤压校核
         │  （全部结果是普通 dataclass，可序列化为 JSON）
         ├──────────────► report     计算说明书 DOCX / Markdown
-        ├──────────────► drawing    ezdxf 按 GB 规定画法绘制装配图、零件图 → DXF（+ SVG 预览）
+        ├──────────────► drawing    ezdxf 按 GB 规定画法绘制装配图、零件图 → DXF（+ SVG 预览、整套 PDF）
         └──────────────► geometry   build123d/OCCT 生成齿轮、轴、轴承、箱体 → STEP
                                     │
                                     ▼
@@ -96,3 +96,4 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 - 模型与解析法一一对应（同样的轴段直径、支点、载荷和力偶），所以两者的差别只来自数值方法，四个示例最大相差 0.15%。教材刚度校核不计剪切变形，而这些轴短粗，剪切使挠度大 5%～30%，因此说明书同时列出“只计弯曲”“计入剪切”和有限元三列，校核仍按教材方法（第一列）。
 - 输出：`fem/shaft*.inp`（可在 FreeCAD FEM 或 ccx 中复算）、`.dat`、`.frd`，`fem/comparison.md` 对照表，说明书加一章、`summary.json` 加 `fem` 字段。
 - 齿根应力（`fem/gear_tooth.py`、`fem/gear_check.py`）：`calc/tooth_profile.py` 按 GB/T 1356 基本齿条（ρf = 0.38m）展成当量直齿轮齿廓（渐开线按方程精确计算，过渡曲线由刀尖圆角按啮合基本定律求包络）；Gmsh（GPL，独立进程，FreeCAD 自带，在 ccx 同目录查找，或 `GONGKE_GMSH`）划分三齿扇形的二次三角形网格，过渡曲线处 0.02m；CalculiX CPS6 平面应力求解，齿顶加载。取 m = 1、Ft = 1 N、b = 1 时齿根最大拉应力即 YFa·YSa。z = 17～400 比教材查表值低 3%～6%，网格加密一倍变化 < 0.1%。蜗轮不做。
+- 图纸 PDF（`drawing/pdf.py`）：沿用 ezdxf drawing 插件的前端（与 SVG 预览相同，文字转为轮廓），自己实现一个只写矢量路径的 PDF 后端（约 200 行），整套图每张一页。没有用 PyMuPDF（AGPL）或 matplotlib（中文字体依赖系统）。

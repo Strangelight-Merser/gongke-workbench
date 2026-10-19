@@ -126,7 +126,8 @@ SCHEMES = ("coupling", "vbelt", "bevel", "worm")
 def read_outputs(out_dir: Path) -> dict:
     out_dir = Path(out_dir)
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
-    files = {name: out_dir / name for name in ("reducer_assembly.step", "report.docx", "report.md", "fem/comparison.md")}
+    files = {name: out_dir / name for name in ("reducer_assembly.step", "report.docx", "report.md", "drawings/drawings.pdf",
+                                                "fem/comparison.md")}
     index = out_dir / "drawings" / "index.json"
     drawings = []
     if index.exists():

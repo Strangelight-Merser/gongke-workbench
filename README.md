@@ -35,7 +35,7 @@ pip install pyyaml python-docx pillow build123d ezdxf
 python -m gongke_core design examples/conveyor_basic.yaml -o out
 ```
 
-`out/` 下得到 `summary.json`、`report.docx`、`report.md`（含弯矩图）、`reducer_assembly.step` 和 `drawings/`（`assembly.dxf`、`shaft1.dxf`…、`gear_low2.dxf` 等，每张都有同名 SVG 预览）。三维模型默认把齿轮画成齿顶圆柱（约 1 MB），加 `--full-teeth` 建出完整渐开线齿形（约 30 MB）；`--no-step`、`--no-drawings` 可跳过对应输出；加 `--fem` 用 CalculiX（FreeCAD 自带，或安装 `calculix-ccx`，需 2.21 以上）复核各轴刚度（梁单元）和各齿轮的齿根弯曲应力（二维模型，网格用 Gmsh，FreeCAD 也自带），输出 `fem/` 目录并在说明书中加一章对照和应力云图。任务书格式见 [examples/conveyor_basic.yaml](examples/conveyor_basic.yaml)，教材里查图得到的系数可以在 `overrides` 中填写，覆盖程序的近似值。
+`out/` 下得到 `summary.json`、`report.docx`、`report.md`（含弯矩图）、`reducer_assembly.step` 和 `drawings/`（`assembly.dxf`、`shaft1.dxf`…、`gear_low2.dxf` 等，每张都有同名 SVG 预览；整套图另合成一个 `drawings.pdf`，每张一页、页面等于图幅，可直接打印）。三维模型默认把齿轮画成齿顶圆柱（约 1 MB），加 `--full-teeth` 建出完整渐开线齿形（约 30 MB）；`--no-step`、`--no-drawings` 可跳过对应输出；加 `--fem` 用 CalculiX（FreeCAD 自带，或安装 `calculix-ccx`，需 2.21 以上）复核各轴刚度（梁单元）和各齿轮的齿根弯曲应力（二维模型，网格用 Gmsh，FreeCAD 也自带），输出 `fem/` 目录并在说明书中加一章对照和应力云图。任务书格式见 [examples/conveyor_basic.yaml](examples/conveyor_basic.yaml)，教材里查图得到的系数可以在 `overrides` 中填写，覆盖程序的近似值。
 
 ## 计算方法和数据
 
@@ -57,7 +57,6 @@ python -m gongke_core design examples/conveyor_basic.yaml -o out
 - 联轴器只给出计算转矩和孔径，型号需按 GB/T 5014 自行核对。
 - 工程图是按设计数据直接绘制的“规定画法”，不是从三维模型投影：装配图的主视图、左视图只画外形（不作局部剖）；四种方案都有箱座、箱盖零件图（含轴承旁凸台和箱座外加强肋）；零件图的倒角、圆角用技术要求统一说明。作为底稿使用，提交前请按指导书补全。
 - 工程图字体按 Windows 的仿宋（simfang.ttf）设置；FreeCAD 自带的 DXF 导入只导入线条，不导入文字和尺寸，看完整图纸请用 CAD 软件或 SVG 预览。
-- 没有 PDF 输出（避免引入 AGPL 许可的依赖），可在 CAD 软件中打印为 PDF。
 
 ## 测试
 

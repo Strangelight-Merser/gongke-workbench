@@ -159,7 +159,8 @@ class ReducerTaskPanel:
             f"<table border='1' cellspacing='0' cellpadding='2'>{rows}</table>"
         )
         labels = {"reducer_assembly.step": "三维装配体（STEP）", "report.docx": "计算说明书（Word）",
-                  "report.md": "计算说明书（Markdown）", "fem/comparison.md": "轴的刚度有限元复核对照表"}
+                  "report.md": "计算说明书（Markdown）", "drawings/drawings.pdf": "整套图纸（PDF，可直接打印）",
+                  "fem/comparison.md": "有限元复核对照表"}
         for name, path in out["files"].items():
             html += f"<p><a href='{QtCore.QUrl.fromLocalFile(str(path)).toString()}'>{labels.get(name, name)}</a></p>"
         if out["drawings"]:

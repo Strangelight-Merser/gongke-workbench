@@ -55,6 +55,11 @@ def test_build_all_files(drawings):
     for f in files:
         assert f.dxf.exists() and f.svg.exists()
         assert f.dxf.name.isascii()
+    # 整套 PDF：每张图一页，页面等于图幅（A1 841×594 mm）
+    data = (files[0].dxf.parent / "drawings.pdf").read_bytes()
+    assert data.startswith(b"%PDF-1.4") and data.rstrip().endswith(b"%%EOF")
+    assert data.count(b"/Type /Page ") == len(files)
+    assert b"/MediaBox [0 0 2383.94 1683.78]" in data
 
 
 def _texts(path):
@@ -102,7 +107,7 @@ def test_gear_shaft_drawing_has_param_table(drawings):
 def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
     vb = EXAMPLE.parent / "conveyor_vbelt.yaml"
     d = design.run(design.ReducerTask.from_yaml(vb))
-    files = drawing.build_all(d, tmp_path, svg=False)
+    files = drawing.build_all(d, tmp_path, svg=False, pdf=False)
     pul = next(f for f in files if f.number == "GK-03-01")
     texts = " ".join(e.dxf.text for e in ezdxf.readfile(pul.dxf).modelspace().query("TEXT"))
     assert "大带轮" in texts and "HT200" in texts and "槽角" in texts
@@ -110,7 +115,7 @@ def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
 
 def test_bevel_scheme_drawings(tmp_path):
     d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_bevel.yaml"))
-    files = drawing.build_all(d, tmp_path, svg=False)
+    files = drawing.build_all(d, tmp_path, svg=False, pdf=False)
     names = [f.name for f in files]
     assert names[0] == "减速器装配图" and "大锥齿轮零件图" in names
     texts = lambda f: " ".join(e.dxf.text for e in ezdxf.readfile(f.dxf).modelspace().query("TEXT"))  # noqa: E731
@@ -125,7 +130,7 @@ def test_bevel_scheme_drawings(tmp_path):
 
 def test_worm_scheme_drawings(tmp_path):
     d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_worm.yaml"))
-    files = drawing.build_all(d, tmp_path, svg=False)
+    files = drawing.build_all(d, tmp_path, svg=False, pdf=False)
     names = [f.name for f in files]
     assert "蜗杆零件图" in names and "蜗轮零件图" in names
     texts = lambda f: " ".join(e.dxf.text for e in ezdxf.readfile(f.dxf).modelspace().query("TEXT"))  # noqa: E731
@@ -177,7 +182,7 @@ def test_worm_housing_drawings(tmp_path):
     from gongke_core.layout.housing_detail import detail
 
     d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_worm.yaml"))
-    files = drawing.build_all(d, tmp_path, svg=False)
+    files = drawing.build_all(d, tmp_path, svg=False, pdf=False)
     t = detail(d)
     texts = lambda f: " ".join(e.dxf.text for e in ezdxf.readfile(f.dxf).modelspace().query("TEXT"))  # noqa: E731
     base = next(f for f in files if f.name == "箱座零件图")

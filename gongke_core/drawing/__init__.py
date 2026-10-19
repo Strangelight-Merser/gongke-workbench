@@ -24,17 +24,19 @@ def material_name(code: str) -> str:
     return code.split("_")[0]
 
 
-def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile]:
+def build_all(design, out_dir: str | Path, svg: bool = True, pdf: bool = True) -> list[DrawingFile]:
     """生成整套图纸：装配图 GK-00、各轴 GK-01-0n、各（非齿轮轴的）齿轮 GK-02-0n，V 带方案另有大带轮 GK-03-01，
     箱座 GK-04-01、箱盖 GK-04-02。
 
-    文件名用 ASCII：assembly.dxf、shaft1.dxf…、gear_high2.dxf（高速级大齿轮）等。
+    文件名用 ASCII：assembly.dxf、shaft1.dxf…、gear_high2.dxf（高速级大齿轮）等；
+    pdf=True 时另把整套图按顺序合成一个 drawings.pdf（每张一页，页面等于图幅，可直接打印）。
     """
     from gongke_core.drawing import assembly, gear, render, shaft
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     files: list[DrawingFile] = []
+    pages: list[tuple[Path, float, float]] = []
 
     def done(sh, name, number, stem):
         dxf = out / f"{stem}.dxf"
@@ -43,6 +45,7 @@ def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile
             svg_path = out / f"{stem}.svg"
             render.to_svg(dxf, svg_path, sh.w, sh.h)
         files.append(DrawingFile(name, number, dxf, svg_path, sh.size))
+        pages.append((dxf, sh.w, sh.h))
 
     worm = getattr(design, "worm_shaft", None) is not None
     if worm:
@@ -99,4 +102,8 @@ def build_all(design, out_dir: str | Path, svg: bool = True) -> list[DrawingFile
     done(sh, "箱座零件图", "GK-04-01", "housing_base")
     sh = housing_cover.draw(design, out / "housing_cover.dxf", "GK-04-02")
     done(sh, "箱盖零件图", "GK-04-02", "housing_cover")
+    if pdf:
+        from gongke_core.drawing import pdf as pdf_writer
+
+        pdf_writer.to_pdf(pages, out / "drawings.pdf", design.task.title + " 图纸")
     return files

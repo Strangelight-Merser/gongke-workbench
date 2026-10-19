@@ -3,7 +3,7 @@
     python -m gongke_core design 任务书.yaml -o 输出目录 [--no-step] [--no-docx] [--no-drawings] [--fem]
 
 输出：summary.json（结果摘要）、report.docx / .md、reducer_assembly.step、
-drawings/（装配图和零件图，DXF + SVG 预览）；加 --fem 时还有 fem/（CalculiX 输入、结果和对照表）。
+drawings/（装配图和零件图，DXF + SVG 预览，整套 drawings.pdf）；加 --fem 时还有 fem/（CalculiX 输入、结果和对照表）。
 FreeCAD 工作台也通过这个入口在独立进程中生成模型。
 """
 
@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
             index = [{"name": f.name, "number": f.number, "size": f.size, "dxf": f.dxf.name,
                       "svg": f.svg.name if f.svg else None} for f in files]
             (out / "drawings" / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"工程图已生成（{time.time()-t1:.1f} s）：{len(files)} 张，见 {out / 'drawings'}")
+            print(f"工程图已生成（{time.time()-t1:.1f} s）：{len(files)} 张，见 {out / 'drawings'}（整套打印用 drawings.pdf）")
     if not args.no_step and not no_geometry:
         from gongke_core.geometry import assembly
         t1 = time.time()
