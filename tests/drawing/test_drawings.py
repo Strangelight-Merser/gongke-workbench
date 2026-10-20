@@ -104,6 +104,64 @@ def test_gear_shaft_drawing_has_param_table(drawings):
     assert "A-A" in texts or any("A" == t for t in texts)
 
 
+def _dim_texts(path):
+    """尺寸块中的文字（含极限偏差）。"""
+    doc = ezdxf.readfile(str(path))
+    out = []
+    for blk in doc.blocks:
+        if blk.name.startswith("*D"):
+            out += [e.text for e in blk.query("MTEXT")]
+    return " ".join(out)
+
+
+def test_shaft_drawing_has_limit_deviations_and_geometric_tolerances(drawings):
+    # 课程设计轴零件图的通行要求：配合段注极限偏差，键槽注宽度偏差和槽底尺寸偏差及对称度，
+    # 轴颈注圆柱度（GB/T 275），轴承定位轴肩注端面圆跳动
+    d, files = drawings
+    f = next(f for f in files if f.dxf.stem == "shaft3")
+    dims = _dim_texts(f.dxf)
+    lay = d.shafts[2].layout
+    from gongke_core.calc import tolerance as tol
+    up, lo = tol.deviations("k6", lay.diameters["轴承"])
+    assert tol.fmt_dev(up) in dims and tol.fmt_dev(lo) in dims
+    assert "-0.200" in dims  # 槽底尺寸 d − t1 的下偏差
+    _, texts = _texts(f.dxf)
+    assert texts.count("A-B") >= 4
+    assert tol.fmt_mm(tol.journal_cylindricity(lay.diameters["轴承"])) in texts
+    assert tol.fmt_mm(tol.shoulder_runout(lay.diameters["轴承"])) in texts
+
+
+def test_gear_drawing_lists_accuracy_items(drawings):
+    d, files = drawings
+    f = next(f for f in files if f.dxf.stem == "gear_high2")
+    _, texts = _texts(f.dxf)
+    for sym in ("±fpt", "Fp", "Fα", "Fβ", "Fr", "公法线长度偏差", "xn"):
+        assert sym in texts, sym
+    from gongke_core.calc import tolerance as tol
+    fp = tol.cumulative_pitch_Fp(d.high.inp.grade, d.high.d2, d.high.mn)
+    assert f"{round(fp * 1e6) / 1000:.3f}" in texts
+
+
+def test_assembly_has_installation_dimensions_and_trial_run(drawings):
+    d, files = drawings
+    f = next(f for f in files if f.dxf.stem == "assembly")
+    doc, texts = _texts(f.dxf)
+    joined = " ".join(texts)
+    assert "空载试运转" in joined and "负载试运转" in joined
+    assert "4×Ø" in joined  # 地脚螺栓孔
+    assert "H7/d11" in joined  # 轴承盖与座孔
+    # 深沟球轴承规定画法：每个轴承一个滚动体圆
+    from gongke_core.layout.housing_detail import detail
+    t = detail(d)
+    n_brg = 2 * len(d.shafts)
+    msp = doc.modelspace()
+    small = [c for c in msp.query('CIRCLE[layer=="粗实线"]')
+             if any(abs(c.dxf.radius * 2 - (sr.layout.bearing.D - sr.layout.bearing.d) / 4 * 1e3 * 0.5) < 0.05
+                    for sr in d.shafts)]
+    assert len(small) >= n_brg
+    assert len(msp.query('CIRCLE[layer=="虚线"]')) >= len(t.foot_bolts)
+
+
 def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
     vb = EXAMPLE.parent / "conveyor_vbelt.yaml"
     d = design.run(design.ReducerTask.from_yaml(vb))

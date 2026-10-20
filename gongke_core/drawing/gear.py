@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+from gongke_core.calc import tolerance as tol
 from gongke_core.calc.gear import GearPair, transverse_pressure_angle
 from gongke_core.drawing.sheet import Sheet, TitleInfo, View, pick_scale
 from gongke_core.layout.gear_blank import GearBlank, blank
@@ -40,30 +41,61 @@ def dms(rad: float) -> str:
     return f"{d}°{m:02d}′{s:02d}″"
 
 
-def param_rows(pair: GearPair, member: int) -> list[list[str]]:
+def accuracy(pair: GearPair, member: int, span: float | None = None) -> dict:
+    """本齿轮的检验项目公差（GB/T 10095.1/.2-2008）和公法线长度偏差，单位 m。span 为所在轴的轴承跨距（缺省取 3b）。"""
+    q = pair.inp.grade
+    d = pair.d1 if member == 1 else pair.d2
+    b = pair.b1 if member == 1 else pair.b2
+    L = span or 3 * pair.b2
+    th = tol.thickness_deviation(q, pair.a, pair.mn, pair.alpha_n, pair.d1, pair.d2, d, pair.b2, L)
+    return {"fpt": tol.single_pitch_fpt(q, d, pair.mn), "Fp": tol.cumulative_pitch_Fp(q, d, pair.mn),
+            "Falpha": tol.profile_total_Falpha(q, d, pair.mn), "Fbeta": tol.helix_total_Fbeta(q, d, b), "b": b,
+            "Fr": tol.radial_runout_Fr(q, d, pair.mn), "Ebns": th.Ebns, "Ebni": th.Ebni, "L": L}
+
+
+def param_rows(pair: GearPair, member: int, span: float | None = None) -> list[list[str]]:
     z = pair.z1 if member == 1 else pair.z2
     mate = pair.z2 if member == 1 else pair.z1
     w, k = base_tangent_length(z, pair.mn, pair.alpha_n, pair.beta)
+    acc = accuracy(pair, member, span)
     f = lambda v: f"{v * 1e3:g}"
+    um = lambda v: f"{round(v * 1e6) / 1000:.3f}"  # noqa: E731
     return [
         ["法向模数", "mn", f(pair.mn)],
         ["齿数", "z", str(z)],
         ["法向压力角", "αn", f"{pair.inp.alpha_n_deg:g}°"],
         ["齿顶高系数", "ha*", "1"],
+        ["法向变位系数", "xn", "0"],
         ["螺旋角", "β", dms(pair.beta)],
         ["螺旋方向", "", "右旋" if member == 1 else "左旋"],
         ["精度等级", "", f"{pair.inp.grade} GB/T 10095.1"],
-        ["公法线长度", "Wk", f"{w * 1e3:.3f}"],
-        ["跨测齿数", "k", str(k)],
         ["配对齿轮齿数", "", str(mate)],
-        ["中心距", "a", f(pair.a)],
+        ["中心距及偏差", "a", f"{f(pair.a)}±{um(tol.center_distance_fa(pair.inp.grade, pair.a))}"],
+        ["公法线长度", "Wk", f"{w * 1e3:.3f}"],
+        ["公法线长度偏差", "", f"{tol.fmt_dev(acc['Ebns'])}/{tol.fmt_dev(acc['Ebni'])}"],
+        ["跨测齿数", "k", str(k)],
+        ["单个齿距偏差", "±fpt", um(acc["fpt"])],
+        ["齿距累积总偏差", "Fp", um(acc["Fp"])],
+        ["齿廓总偏差", "Fα", um(acc["Falpha"])],
+        ["螺旋线总偏差", "Fβ", um(acc["Fbeta"])],
+        ["径向跳动公差", "Fr", um(acc["Fr"])],
     ]
 
 
-def param_table(sh: Sheet, pair: GearPair, member: int):
+def param_table(sh: Sheet, pair: GearPair, member: int, span: float | None = None):
     x1, y1 = sh.inner[2], sh.inner[3]
     widths = [32, 14, 34]
-    sh.table(x1 - sum(widths), y1, param_rows(pair, member), widths, 7)
+    sh.table(x1 - sum(widths), y1, param_rows(pair, member, span), widths, 6)
+
+
+def blank_tolerances(pair: GearPair, member: int, da: float, span: float | None = None) -> tuple[float, float]:
+    """齿坯公差（GB/Z 18620.3-2008）：齿顶圆（作测量基准）径向圆跳动取 0.15(L/b)Fβ 与 0.3Fp 中的大值，
+    基准端面轴向圆跳动 0.2(Dd/b)Fβ（Dd 取 0.9da）。返回 (径向, 轴向)，m，向上圆整到 μm。"""
+    acc = accuracy(pair, member, span)
+    radial = max(0.15 * acc["L"] / acc["b"] * acc["Fbeta"], 0.3 * acc["Fp"])
+    axial = 0.2 * 0.9 * da / acc["b"] * acc["Fbeta"]
+    up = lambda v: math.ceil(v * 1e6 - 1e-6) * 1e-6  # noqa: E731
+    return up(radial), up(axial)
 
 
 def _section_loops(g: GearBlank) -> list[list[tuple[float, float]]]:
@@ -85,7 +117,7 @@ def _section_loops(g: GearBlank) -> list[list[tuple[float, float]]]:
 
 
 def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str, drawing_no: str = "",
-         material: str = "45") -> Sheet:
+         material: str = "45", span: float | None = None) -> Sheet:
     g = blank(pair, member, bore)
     da, d, df, b = g.da * 1e3, g.d * 1e3, g.df * 1e3, g.b * 1e3
     rb = g.bore * 1e3 / 2
@@ -134,9 +166,9 @@ def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str,
     # 主视图尺寸
     mv.dim((-b / 2, da / 2), (b / 2, da / 2), (-b / 2, da / 2 + 10 / s), 0, "<>", 0)
     xd = b / 2 + 14 / s
-    mv.dim((b / 2, -da / 2), (b / 2, da / 2), (xd, 0), 90, "%%c<>h11", 2)
-    mv.dim((b / 2, -d / 2), (b / 2, d / 2), (xd + 12 / s, 0), 90, "%%c<>", 2)
-    mv.dim((-b / 2, -rb), (-b / 2, rb), (-b / 2 - 8 / s, 0), 90, "%%c<>H7", 0)
+    mv.dim((b / 2, -da / 2), (b / 2, da / 2), (xd, 0), 90, "%%c<>", 2, tol=tol.deviations("h11", da / 1e3))
+    mv.dim((b / 2, -d / 2), (b / 2, d / 2), (xd + 16 / s, 0), 90, "%%c<>", 2)
+    mv.dim((-b / 2, -rb), (-b / 2, rb), (-b / 2 - 8 / s, 0), 90, "%%c<>", 0, tol=tol.deviations("H7", 2 * rb / 1e3))
     if g.web:
         mv.dim((-b / 2, -g.hub_d * 1e3 / 2), (-b / 2, g.hub_d * 1e3 / 2), (-b / 2 - 20 / s, 0), 90, "%%c<>", 0)
         mv.dim((-b / 2, -g.rim_inner_d * 1e3 / 2), (-b / 2, g.rim_inner_d * 1e3 / 2), (-b / 2 - 32 / s, 0), 90, "%%c<>", 0)
@@ -152,10 +184,11 @@ def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str,
     sh.datum(*mv.P(b * 0.25, -rb), "A", "up")
     px, py = mv.P(b * 0.2, da / 2)
     sh.arrow((px - 8, py + 22), (px, py), 2.5, "细实线")
-    sh.gtol(px - 30, py + 22, "runout", "0.040", "A")
+    t_rad, t_ax = blank_tolerances(pair, member, da / 1e3, span)
+    sh.gtol(px - 30, py + 22, "runout", tol.fmt_mm(t_rad), "A")
     px, py = mv.P(b / 2, -da / 2 * 0.45)
     sh.arrow((px + 10, py - 12), (px, py), 2.5, "细实线")
-    sh.gtol(px + 10, py - 19, "runout", "0.020", "A")
+    sh.gtol(px + 10, py - 19, "runout", tol.fmt_mm(t_ax), "A")
 
     # ------------------------------------------------ 左视图
     lv.circle((0, 0), da / 2)
@@ -180,12 +213,20 @@ def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str,
     lv.line((hb, yb), (hb, rb + t2))
     lv.line((-hb, rb + t2), (hb, rb + t2))
     sh.cross(lv.P(0, 0), da / 2 * s, 4)
-    lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, rb + t2 + 8 / s), 0, "<>JS9", 0)
-    lv.dim((hb, -rb), (hb, rb + t2), (rb + 10 / s, 0), 90, "<>", 1)
+    yd = rb + t2 + 8 / s
+    lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, yd), 0, "<>", 0, tol=tol.deviations("JS9", kb / 1e3))
+    # 槽底尺寸 d + t2 的偏差（GB/T 1095-2003）：+0.1（键宽 ≤ 6）或 +0.2
+    lv.dim((hb, -rb), (hb, rb + t2), (rb + 10 / s, 0), 90, "<>", 1, tol=(0.1e-3 if kb <= 6 else 0.2e-3, 0.0))
     sh.roughness(*lv.P(hb, rb + t2), "Ra 3.2", 0, 2.5)
+    # 键槽对称度（对基准 A），指引线箭头与键宽尺寸线对齐
+    val = tol.fmt_mm(tol.keyway_symmetry(kb / 1e3))
+    ax, ay = lv.P(-hb, yd)
+    fw_ = 6 + len(val) * 1.8 + 4 + 1.8 + 4
+    sh.arrow((ax - 9, ay), (ax - 3, ay), 2.0, "细实线")
+    sh.gtol(ax - 9 - fw_, ay - 3, "symmetry", val, "A", 3.0)
 
     # ------------------------------------------------ 参数表、图框
-    param_table(sh, pair, member)
+    param_table(sh, pair, member, span)
     reqs = ["调质处理 217～255HBW。" if not material.startswith("40Cr") else "调质处理 241～286HBW。",
             "未注倒角 C2，未注圆角 R3。",
             "未注尺寸公差按 GB/T 1804-m。"]

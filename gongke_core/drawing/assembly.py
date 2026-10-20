@@ -3,7 +3,9 @@
 按 GB/T 4459.2、4459.7 和装配图规定画法：
 - 实心轴沿轴线剖切按不剖处理，画外形；齿轮、套筒剖开画剖面线，相邻零件剖面线方向相反；
 - 啮合区小齿轮轮齿画成可见，大齿轮被遮住的齿顶线画虚线；
-- 滚动轴承用通用画法（矩形线框加正十字）；
+- 深沟球轴承在轴线一侧用规定画法（内外圈剖面线、滚动体画圆），另一侧用通用画法（矩形线框加正十字），
+  圆锥滚子轴承两侧都用通用画法（GB/T 4459.7）；
+- 轴承盖按一个零件剖开：凸缘和伸入座孔的止口画同一方向的剖面线；
 - 主视图、左视图画外形，被轴承盖、轴承座等挡住的线不画（见 `hidden`）；
 - 零件序号沿图形四周按逆时针顺次排列，配明细栏、技术特性表和技术要求。
 
@@ -28,6 +30,9 @@ from gongke_core.layout.housing_detail import Arc, HousingDetail, detail, envelo
 MM = 1e3  # m → mm
 
 PIN_D = [6, 8, 10, 12, 16]
+# 课程设计装配图技术要求的最后两条：试运转
+TRIAL_RUN = ["装配后作空载试运转，正、反转各 1 h，运转平稳、无冲击和异常噪声，各连接处不松动。",
+             "负载试运转时油池温升不超过 35 ℃，轴承温升不超过 40 ℃。"]
 PIN_L = [20, 24, 26, 28, 30, 32, 35, 40, 45, 50, 55, 60]
 SCREW_L = [10, 12, 16, 20, 25, 30, 35, 40, 45, 50]
 
@@ -54,6 +59,66 @@ def _bearing_name(brg) -> tuple[str, str]:
     if isinstance(brg, standards.TaperedBearing):
         return f"圆锥滚子轴承 {brg.designation}", "GB/T 297-2015"
     return f"深沟球轴承 {brg.designation}", "GB/T 276-2013"
+
+
+def draw_bearing(v: View, zc: float, B: float, x: float, dd: float, Dd: float, ang: float,
+                 detail: bool = True) -> None:
+    """轴线沿 z 的滚动轴承（mm）。detail=True 时 +x 一侧用深沟球轴承规定画法：
+    内外圈画剖面线（同一方向），滚动体为直径 A/2 的圆（A = (D − d)/2），−x 一侧用通用画法。"""
+    A = (Dd - dd) / 2
+    rm = (dd + Dd) / 4  # 滚动体中心半径
+    for sgn in (1, -1):
+        y_in, y_out = x + sgn * dd / 2, x + sgn * Dd / 2
+        v.rect(zc - B / 2, min(y_in, y_out), zc + B / 2, max(y_in, y_out))
+        if detail and sgn > 0:
+            rb = A / 4
+            v.circle((zc, x + rm), rb)
+            # 内、外圈的分界线在滚动体中心两侧 A/6 处，与滚动体圆相交；剖面线区域绕开滚动体
+            h = A / 6
+            w = math.sqrt(max(rb**2 - h**2, 0.0))
+            n = 12
+            for side in (1, -1):  # 1：外圈，−1：内圈
+                yb = rm + side * h
+                v.line((zc - B / 2, x + yb), (zc - w, x + yb))
+                v.line((zc + w, x + yb), (zc + B / 2, x + yb))
+                # 从左交点沿滚动体圆弧（外圈经上方、内圈经下方）到右交点
+                a0, a1 = math.atan2(side * h, -w), math.atan2(side * h, w)
+                arc = [a0 + (a1 - a0) * k / n for k in range(n + 1)]
+                pts = [(zc - B / 2, x + yb), (zc - w, x + yb)]
+                pts += [(zc + rb * math.cos(t), x + rm + rb * math.sin(t)) for t in arc]
+                y_edge = Dd / 2 if side > 0 else dd / 2
+                pts += [(zc + w, x + yb), (zc + B / 2, x + yb), (zc + B / 2, x + y_edge), (zc - B / 2, x + y_edge)]
+                v.hatch([pts], ang, 1.2)
+        else:
+            ym = (y_in + y_out) / 2
+            v.line((zc - B * 0.3, ym), (zc + B * 0.3, ym), "细实线")
+            v.line((zc, ym - abs(y_out - y_in) * 0.3), (zc, ym + abs(y_out - y_in) * 0.3), "细实线")
+
+
+def cap_section(v: View, z_out: float, z_in: float, z_brg: float, x: float, r_cap: float, r_bore: float,
+                r_seal: float, ang: float) -> None:
+    """轴承盖剖面（mm）：凸缘在 z_out～z_in（z_in 为贴箱体的面），止口从 z_in 伸到轴承外圈端面 z_brg，
+    止口壁厚 8 mm。r_seal > 0 为透盖（中间有轴孔），否则为闷盖（整块剖面）。"""
+    r_sp = max(r_bore - 8, r_seal + 2)
+    spig = abs(z_brg - z_in) > 0.5
+
+    def half(sgn):
+        pts = [(z_out, x + sgn * r_cap), (z_in, x + sgn * r_cap)]
+        if spig:
+            pts += [(z_in, x + sgn * r_bore), (z_brg, x + sgn * r_bore), (z_brg, x + sgn * r_sp), (z_in, x + sgn * r_sp)]
+        return pts
+
+    if r_seal > 0:
+        loops = []
+        for sgn in (1, -1):
+            pts = [(z_out, x + sgn * r_seal)] + half(sgn) + [(z_in, x + sgn * r_seal)]
+            loops.append(pts)
+    else:
+        up, dn = half(1), half(-1)
+        loops = [up + list(reversed(dn))]
+    for pts in loops:
+        v.poly(pts, close=True)
+    v.hatch(loops, ang, 2.0)
 
 
 @dataclass
@@ -105,11 +170,11 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
         for sc in reversed(SCALES):
             if sc > 1:
                 continue
-            w_need = 40 + front_w * sc + 40 + left_w * sc + 30
+            w_need = 48 + front_w * sc + 40 + left_w * sc + 30
             h_need = 25 + front_h * sc + 32 + top_h * sc + 30
-            right_free = (x1 - x0) - 180 - (40 + front_w * sc + 45)  # 俯视图右侧放技术特性表、技术要求
+            right_free = (x1 - x0) - 180 - (48 + front_w * sc + 45)  # 俯视图右侧放技术特性表、技术要求
             front_bottom = y1 - 25 - front_h * sc
-            left_right = x0 + 40 + front_w * sc + 40 + left_w * sc + 30
+            left_right = x0 + 48 + front_w * sc + 40 + left_w * sc + 30
             first_rows = int((front_bottom - 22 - (y0 + 56)) / 7) - 1 if left_right > x1 - 180 else 99
             if (w_need <= x1 - x0 and h_need <= y1 - y0 and right_free >= 135
                     and first_rows + n_cont >= n_rows and front_bottom - 30 - 130 >= y0 + 7 * (n_cont + 1)):
@@ -120,7 +185,7 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
             break
     sh.parts_first_rows = max(first_rows, 10) if s is not None else None
 
-    ox = x0 + 40 - cx0 * s  # 模型 x = 0 在图纸上的 X（主视图、俯视图共用）
+    ox = x0 + 48 - cx0 * s  # 模型 x = 0 在图纸上的 X（主视图、俯视图共用）
     oy_f = y1 - 25 - fy1 * s  # 模型 y = 0（剖分面）在主视图中的 Y
     front_bottom = oy_f + fy0 * s
     oy_t = front_bottom - 32 + z_min * s  # 俯视图：图上 Y = oy_t − z·s
@@ -150,7 +215,7 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
     _standard_parts(d, t, add)
 
     # ------------------------------------------------ 零件序号与明细栏
-    col_fl = min(ox + cx0 * s, ox + (h.x_range[0] * MM - delta - fw) * s) - 22
+    col_fl = min(ox + cx0 * s, ox + (h.x_range[0] * MM - delta - fw) * s) - 30  # 俯视图左侧有宽度、总宽两道尺寸
     col_tr = ox + (xo1 + fw) * s + 30
     col_fr = front_right + 14
     row_ft = oy_f + fy1 * s + 12
@@ -170,7 +235,27 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
         tv.dim((zr, xa), (zr, xb), (zr - 10 / s, xa), 90, f"<>±{fa:.3f}".rstrip("0"), 0)
     tv.dim((-delta - fw, xo0 - fw), (W + delta + fw, xo0 - fw), (-delta - fw, xo0 - fw - 14 / s), 0, "<>", 0)
     tv.dim((z_max - 5, xo0 - fw), (z_max - 5, xo1 + fw), (z_max + 2 / s, xo0 - fw), 90, "<>", 0)
-    tv.dim((0, xo1 + fw), (W, xo1 + fw), (0, xo1 + fw + 14 / s), 0, "<>", 0)
+    # 安装尺寸：地脚螺栓孔的孔距（横向在凸缘上方，纵向在右侧）和孔径
+    from gongke_core.drawing.housing_base import CLEARANCE
+    fxs = sorted({fx * MM for fx, _ in t.foot_bolts})
+    fzs = sorted({fz * MM for _, fz in t.foot_bolts})
+    z_caps = -h.bearing_seat_length * MM - h.cap_thickness * MM  # 轴承盖外端面，孔距尺寸放在它的上方
+    tv.dim((fzs[0], fxs[0]), (fzs[0], fxs[-1]), (z_caps - 8 / s, fxs[0]), 90, "<>", 0)
+    tv.dim((fzs[0], fxs[-1]), (fzs[-1], fxs[-1]), (fzs[0], xo1 + fw + 14 / s), 0, "<>", 0)
+    dfh = CLEARANCE[round(h.bolt_foot * MM)]
+    px, py = tv.P(fzs[0], fxs[-1])
+    sh.leader_text((px + dfh / 2 * s * 0.7, py + dfh / 2 * s * 0.7), (px + 8, py + 14), f"{len(t.foot_bolts)}×Ø{dfh:g}", 3.0)
+    # 外伸轴段的配合长度（联轴器、带轮的安装尺寸）
+    for sr_ in zsh:
+        lay_ = sr_.layout
+        if not lay_.extension:
+            continue
+        end = next(sg for sg in lay_.segments if sg.role == "端部")
+        xx = lay_.x * MM + end.d * MM + 6 / s
+        tv.dim((end.z0 * MM, xx - 6 / s), (end.z1 * MM, xx - 6 / s), (end.z0 * MM, xx), 0, "<>", 0)
+    # 外形尺寸：两外伸轴端之间的总宽
+    z_ends = [z_min + 5, z_max - 5]
+    tv.dim((z_ends[0], xs[0]), (z_ends[1], xs[-1]), (z_ends[0], xo0 - fw - 22 / s), 0, "<>", 0)
     # 中心高、总高（左视图右侧）
     zl = z_max
     lv.dim((zl, fy0), (zl, 0), (zl + 10 / s, fy0), 90, "<>", 0)
@@ -206,6 +291,7 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
         "剖分面、各接触面及密封处不允许漏油，剖分面允许涂密封胶，不允许使用垫片。",
         f"箱内装 L-CKC 220 工业闭式齿轮油至油标规定高度（大齿轮浸油约 {(t.oil_level + d.low.da2 / 2) * MM:.0f} mm）。",
         "外表面涂灰色油漆。",
+        *TRIAL_RUN,
     ]
     sh.tech_requirements(reqs, tx, front_bottom - 30 - 8 * len(rows) - 22 - 0)
     for i, p in enumerate(parts, 1):
@@ -235,10 +321,22 @@ def _top_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
 
     # 箱座（剖分面俯视）；左端壁有Ⅰ轴轴承座时，凸缘外缘在凸台处、内壁在座孔处断开
     sb = t.side_bore
-    def rect_gap(z0, x0, z1, x1, r_gap, layer="粗实线"):
+    def xline(z, x0, x1, skip, layer):
+        """z 为常数的线，跳过 skip 中的 x 区间（被轴承座孔或轴承座凸台断开）。"""
+        xa = x0
+        for a, b_ in sorted(skip):
+            if b_ <= xa or a >= x1:
+                continue
+            if a > xa:
+                v.line((z, xa), (z, a), layer)
+            xa = max(xa, b_)
+        if xa < x1:
+            v.line((z, xa), (z, x1), layer)
+
+    def rect_gap(z0, x0, z1, x1, r_gap, layer="粗实线", skip=()):
         v.line((z0, x1), (z1, x1), layer)
-        v.line((z0, x0), (z0, x1), layer)
-        v.line((z1, x0), (z1, x1), layer)
+        xline(z0, x0, x1, skip, layer)
+        xline(z1, x0, x1, skip, layer)
         if sb is None:
             v.line((z0, x0), (z1, x0), layer)
         else:
@@ -248,13 +346,17 @@ def _top_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
 
     rb_side = sb.boss_r * MM if sb else 0
     rd_side = sb.D * MM / 2 if sb else 0
-    rect_gap(-delta - fw, y_min, W + delta + fw, y_max, rb_side)
-    rect_gap(0, ylo, W, yhi, rd_side)
-    rect_gap(-delta, ylo - delta, W + delta, yhi + delta, rd_side, "细实线")
-    # 轴承座和轴承旁凸台伸出凸缘外的部分（按 x 区间合并）
-    for a, b_ in boss_spans(t):
+    bores = [(x - c.D * MM / 2, x + c.D * MM / 2) for x, c in zip(xs, t.caps)]
+    spans = boss_spans(t)
+    rect_gap(-delta - fw, y_min, W + delta + fw, y_max, rb_side, skip=spans)
+    rect_gap(0, ylo, W, yhi, rd_side, skip=bores)
+    rect_gap(-delta, ylo - delta, W + delta, yhi + delta, rd_side, "细实线", skip=bores)
+    # 轴承座和轴承旁凸台伸出凸缘外的部分（按 x 区间合并），与凸缘连成一体，凸缘外缘在此不画线；座孔处端面断开
+    for a, b_ in spans:
         for za, zb in ((-L1, -delta - fw), (W + delta + fw, W + L1)):
-            v.rect(za, a, zb, b_)
+            v.line((za, a), (zb, a))
+            v.line((za, b_), (zb, b_))
+            xline(-L1 if za == -L1 else W + L1, a, b_, bores, "粗实线")
     for x, cap in zip(xs, t.caps):
         D = cap.D * MM
         for sgn in (1, -1):
@@ -270,6 +372,12 @@ def _top_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
     for px, pz in t.pins:
         v.circle((pz * MM, px * MM), pin_d / 2)
         sh.cross(v.P(pz * MM, px * MM), pin_d / 2 * v.s, 1.5)
+    # 地脚螺栓孔（在凸缘下方，不可见，画虚线），供标注安装尺寸
+    from gongke_core.drawing.housing_base import CLEARANCE
+    df = CLEARANCE[round(h.bolt_foot * MM)]
+    for fx, fz in t.foot_bolts:
+        v.circle((fz * MM, fx * MM), df / 2, "虚线")
+        sh.cross(v.P(fz * MM, fx * MM), df / 2 * v.s, 1.5)
     pin_l = _std(b_total(h) + 8, PIN_L)
     px, pz = t.pins[0]
     tadd(f"圆锥销 A{pin_d}×{pin_l}", len(t.pins), "35", "GB/T 117-2000", (pz * MM, px * MM))
@@ -321,14 +429,10 @@ def _top_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
         first = lay.segments[0]
         tadd(shaft_name, "1", mat, "", (first.z0 * MM + 5, x))
 
-        # 轴承（通用画法）
+        # 轴承：深沟球轴承一侧规定画法、一侧通用画法
+        ball = not isinstance(brg, standards.TaperedBearing)
         for zc, B in bodies:
-            for sgn in (1, -1):
-                y_in, y_out = x + sgn * dd / 2, x + sgn * Dd / 2
-                v.rect(zc - B / 2, min(y_in, y_out), zc + B / 2, max(y_in, y_out))
-                ym = (y_in + y_out) / 2
-                v.line((zc - B * 0.3, ym), (zc + B * 0.3, ym), "细实线")
-                v.line((zc, ym - abs(y_out - y_in) * 0.3), (zc, ym + abs(y_out - y_in) * 0.3), "细实线")
+            draw_bearing(v, zc, B, x, dd, Dd, next_angle(), ball)
         tadd(*_bearing_name(brg)[:1], "2", "", _bearing_name(brg)[1], (bodies[1][0], x + (dd + Dd) / 4))
 
         # 轴承盖（凸缘式）、调整垫片、毡圈
@@ -338,16 +442,10 @@ def _top_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
             sgn_z = -1 if side == "left" else 1
             za, zb = sorted((zb_face, zb_face + sgn_z * e))
             seal_r = (lay.diameters["密封"] or dd) * MM / 2 + 1 if is_open else 0
-            for sgn in (1, -1):
-                v.rect(za, x + sgn * seal_r, zb, x + sgn * r_cap)
-            v.hatch([[(za, x + seal_r), (zb, x + seal_r), (zb, x + r_cap), (za, x + r_cap)],
-                     [(za, x - r_cap), (zb, x - r_cap), (zb, x - seal_r), (za, x - seal_r)]], next_angle(), 2.0)
-            # 止口伸入轴承座孔，顶住轴承外圈
+            # 凸缘 + 伸入轴承座孔、顶住轴承外圈的止口，作为一个零件剖开
             bz, B = bodies[0 if side == "left" else 1]
             face = bz - B / 2 if side == "left" else bz + B / 2
-            sa, sb = sorted((zb_face, face))
-            for sgn in (1, -1):
-                v.rect(sa, x + sgn * max(Dd / 2 - 8, seal_r), sb, x + sgn * Dd / 2, "细实线")
+            cap_section(v, zb_face + sgn_z * e, zb_face, face, x, r_cap, Dd / 2, seal_r, next_angle())
             if is_open:
                 # 毡圈：嵌在透盖的梯形槽内（简化为矩形，交叉细线表示）
                 sd = lay.diameters["密封"] * MM
@@ -1022,7 +1120,10 @@ def _fits(d: ReducerDesign, v: View, sh: Sheet):
         x = lay.x * MM
         zb = _bearing_bodies(lay)[0][0]
         D, dd = lay.bearing.D * MM, lay.bearing.d * MM
-        fits.append(((zb, x - D / 2), f"%%c{D:g}H7"))
+        fits.append(((zb, x - D / 2), f"%%c{D:g}H7", True))
+        # 轴承盖止口与座孔：间隙配合（课程设计手册推荐 H7/d11）
+        zr = _bearing_bodies(lay)[1]
+        fits.append(((zr[0] + zr[1] / 2 + 3, x + D / 2), f"%%c{D:g}H7/d11"))
         fits.append(((zb - _bearing_bodies(lay)[0][1] / 2 - 1, x - dd / 2), f"%%c{dd:g}k6"))
         for gg in lay.gears:
             if not gg.integral:
@@ -1044,9 +1145,12 @@ def _fits(d: ReducerDesign, v: View, sh: Sheet):
             fits.append(((za - seg.d * MM / 2, -(seg.z0 + seg.z1) / 2 * MM), f"%%c{seg.d * MM:g}H7/r6"))
         end = next(s_ for s_ in ps.segments if s_.role == "端部")
         fits.append(((za - end.d * MM / 2, -(end.z0 + end.z1) / 2 * MM), f"%%c{end.d * MM:g}k6"))
-    for (pt, txt) in fits:
+    for pt, txt, *left in fits:
         tx, ty = v.P(*pt)
-        sh.leader_text((tx, ty), (tx + 6, ty - 9), txt.replace("%%c", "Ø"), 3.0)
+        if left and left[0]:  # 座孔标注向外侧（远离轴）引出，避免压在轴和轴承上
+            sh.leader_text((tx, ty), (tx - 4, ty - 9), txt.replace("%%c", "Ø"), 3.0, left=True)
+        else:
+            sh.leader_text((tx, ty), (tx + 6, ty - 9), txt.replace("%%c", "Ø"), 3.0)
 
 
 def _place_balloons(sh: Sheet, parts: list[Part], lanes: dict):

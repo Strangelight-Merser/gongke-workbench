@@ -14,6 +14,23 @@ from dataclasses import dataclass
 
 import ezdxf
 from ezdxf.enums import TextEntityAlignment
+from ezdxf.render import dim_base as _dim_base
+
+
+def _gb_tolerance_text(self, tol_upper: float, tol_lower: float):
+    """极限偏差按 GB/T 4458.5 书写：偏差为零时只写“0”，不带正负号和小数。"""
+    def fmt(v: float) -> str:
+        if abs(v) < 5e-7:
+            return "0"
+        return _dim_base.sign_char(v) + self.format_text(abs(v))
+
+    if tol_upper == tol_lower:
+        self.text = _dim_base.PLUS_MINUS + self.format_text(abs(tol_upper))
+    else:
+        self.text_upper, self.text_lower = fmt(tol_upper), fmt(-tol_lower)
+
+
+_dim_base.Tolerance.update_tolerance_text = _gb_tolerance_text
 
 # 图幅 B × L（GB/T 14689 基本幅面），以及装订边 a、周边 c
 SIZES = {"A0": (841, 1189), "A1": (594, 841), "A2": (420, 594), "A3": (297, 420), "A4": (210, 297)}
@@ -147,14 +164,18 @@ class Sheet:
 
     # ------------------------------------------------------------ 尺寸
 
-    def dim(self, p1, p2, base, angle=0.0, text="<>", scale=1.0, dec=1, location=None):
+    def dim(self, p1, p2, base, angle=0.0, text="<>", scale=1.0, dec=1, location=None, tol=None):
         """线性尺寸：angle=0 水平、90 竖直。scale 为视图比例，标注值显示实际尺寸。
 
         location 给定时把尺寸数字移到该处并画引线（用于狭窄或被遮挡的位置）。
+        tol = (上极限偏差, 下极限偏差)（m）时在尺寸数字后注极限偏差（GB/T 4458.5，偏差字高小一号）。
         """
         ov = {"dimlfac": 1 / scale, "dimdec": dec}
         if location is not None:
             ov["dimtmove"] = 1
+        if tol is not None:
+            up, lo = (round(v * 1e3, 3) for v in tol)
+            ov.update({"dimtol": 1, "dimtp": up, "dimtm": -lo, "dimtfac": 0.7, "dimtdec": 3, "dimtzin": 0})
         d = self.msp.add_linear_dim(base=base, p1=p1, p2=p2, angle=angle, text=text, dimstyle="GB",
                                     location=location, override=ov, dxfattribs={"layer": "尺寸"})
         d.render()
@@ -162,12 +183,13 @@ class Sheet:
     def dim_value(self, value_mm: float) -> str:
         return f"{value_mm:.2f}".rstrip("0").rstrip(".")
 
-    def leader_text(self, target, at, s, h=3.5):
-        """引出标注：带箭头的引线 + 水平线 + 文字。"""
+    def leader_text(self, target, at, s, h=3.5, left=False):
+        """引出标注：带箭头的引线 + 水平线 + 文字。left=True 时水平线和文字在 at 的左边。"""
         self.arrow(at, target)
         w = len(s) * h * 0.75 + 2
-        self.line(at, (at[0] + w, at[1]), "尺寸")
-        self.text(at[0] + 1, at[1] + 0.8, s, h)
+        x0 = at[0] - w if left else at[0]
+        self.line((x0, at[1]), (x0 + w, at[1]), "尺寸")
+        self.text(x0 + 1, at[1] + 0.8, s, h)
 
     def arrow(self, frm, to, size=3.0, layer="尺寸"):
         self.line(frm, to, layer)
@@ -411,7 +433,7 @@ class View:
     def centerline(self, a, b, ext=3.0):
         self.sh.centerline(self.P(*a), self.P(*b), ext)
 
-    def dim(self, a, b, base, angle=0.0, text="<>", dec=1):
+    def dim(self, a, b, base, angle=0.0, text="<>", dec=1, tol=None):
         if self.rot:
             angle = 90.0 - angle
-        self.sh.dim(self.P(*a), self.P(*b), self.P(*base), angle, text, self.s, dec)
+        self.sh.dim(self.P(*a), self.P(*b), self.P(*base), angle, text, self.s, dec, tol=tol)

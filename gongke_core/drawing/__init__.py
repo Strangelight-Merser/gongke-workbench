@@ -88,7 +88,8 @@ def build_all(design, out_dir: str | Path, svg: bool = True, pdf: bool = True) -
                 pair = pairs[g.pair]
                 title = f"{pair.inp.name}{'小' if g.member == 1 else '大'}齿轮"
                 mat = material_name(pair.inp.material1 if g.member == 1 else pair.inp.material2)
-                sh = gear.draw(pair, g.member, g.seat_d, out / f"{stem}.dxf", title, no, mat)
+                span = abs(sr.layout.bearing_z[1] - sr.layout.bearing_z[0])
+                sh = gear.draw(pair, g.member, g.seat_d, out / f"{stem}.dxf", title, no, mat, span)
             done(sh, title + "零件图", no, stem)
     if design.belt is not None:
         from gongke_core.drawing import pulley as pulley_dwg

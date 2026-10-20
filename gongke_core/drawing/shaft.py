@@ -1,9 +1,10 @@
 """轴（含齿轮轴）零件图。
 
 主视图轴线水平，键槽转到朝向观察者；每个键槽在主视图下方配一个移出断面图。
-尺寸：各段直径（配合段注公差带代号）、轴向长度（留一个最长的非配合段不注，避免封闭尺寸链）、
-总长、键槽长度和位置；断面图注键宽和槽底尺寸 d − t1。
-表面结构、基准、圆跳动按课程设计常用要求标注。
+尺寸：各段直径（配合段注极限偏差）、轴向长度（留一个最长的非配合段不注，避免封闭尺寸链）、
+总长、键槽长度和位置；断面图注键宽和槽底尺寸 d − t1（均带极限偏差）及键槽对称度。
+几何公差：配合段对公共轴线 A-B 的径向圆跳动，轴承轴颈圆柱度和轴承定位轴肩端面圆跳动（GB/T 275），
+键槽对称度（GB/T 1184 8 级）。
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+from gongke_core.calc import tolerance as tol
 from gongke_core.design import ReducerDesign, ShaftResult
 from gongke_core.drawing import material_name
 from gongke_core.drawing.sheet import Sheet, TitleInfo, View, pick_scale
@@ -57,7 +59,7 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         for k, (xm, dk) in enumerate(keyed):
             rs = dk / 2 * s
             c = max(sx + rs + 10, cx + xm * s) if k == 0 else sx + rs + 10
-            sx = c + rs + 25
+            sx = c + rs + 45  # 留出键槽对称度框格
             low = y0 + 64 if c + rs > x1 - 335 else y0 + 5
             if sec_y - rs < low or c + rs > x1 - 5:
                 return False
@@ -151,7 +153,7 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         # 断面图：放在主视图下方，从左向右排列
         rs = r * s
         c = (max(sec_x + rs + 10, v.P(xm, 0)[0]) if k == 0 else sec_x + rs + 10, sec_y)
-        sec_x = c[0] + rs + 25
+        sec_x = c[0] + rs + 45
         hb = kb / 2 * s
         top = rs - t1 * s
         ang = math.degrees(math.asin(min(hb / rs, 1)))
@@ -169,12 +171,21 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         sh.cross(c, rs, 3)
         sh.section_label(c[0], c[1] + rs + 13, letter)
         sh.dim((c[0] - hb, c[1] + top), (c[0] + hb, c[1] + top), (c[0], c[1] + rs + 3.5), 0,
-               "<>N9", s, 0)
-        sh.dim((c[0], c[1] - rs), (c[0], c[1] + top), (c[0] + rs + 6, c[1]), 90, "<>", s, 1)
+               "<>", s, 0, tol=tol.deviations("N9", kb / 1e3))
+        # 槽底尺寸 d − t1 的偏差（GB/T 1095-2003）：t1 偏差 +0.1（键宽 ≤ 6）或 +0.2
+        sh.dim((c[0], c[1] - rs), (c[0], c[1] + top), (c[0] + rs + 6, c[1]), 90, "<>", s, 1,
+               tol=(0.0, -0.1e-3 if kb <= 6 else -0.2e-3))
         sh.roughness(c[0] + hb, c[1] + top + 1, "Ra 3.2", h=2.5)
+        # 键槽对称度（对公共轴线 A-B）：被测要素是中心平面，指引线箭头与键宽尺寸线对齐
+        yd = c[1] + rs + 3.5
+        val = tol.fmt_mm(tol.keyway_symmetry(kb / 1e3))
+        fw_ = 6 + len(val) * 3.0 * 0.6 + 4 + 3 * 3.0 * 0.6 + 4
+        sh.arrow((c[0] - hb - 9, yd), (c[0] - hb - 3, yd), 2.0, "细实线")
+        sh.gtol(c[0] - hb - 9 - fw_, yd - 3, "symmetry", val, "A-B", 3.0)
 
     # ------------------------------------------------ 尺寸
     seen = set()
+    used_x: list[float] = []
     for a, b, seg in S:
         d = (seg.d if seg.role != "齿轮轴" else integral.tip_d) * 1e3
         key = (round(d, 2), seg.role)
@@ -184,21 +195,26 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         if seg.role == "退刀" or key in seen:
             continue
         seen.add(key)
-        fit = FITS.get(seg.role, "")
-        txt = f"%%c<>{fit}" if seg.role != "齿轮轴" else "%%c<>h11"
+        fit = FITS.get(seg.role, "") if seg.role != "齿轮轴" else "h11"
+        txt = "%%c<>"
+        dev = tol.deviations(fit, d / 1e3) if fit else None
         narrow = (b - a) * s < 14
         if seg.role == "齿轮轴" and bevel is not None:
             xt, rt = bevel["tipL"]
-            v.dim((xt, -rt), (xt, rt), (xt, 0), 90, "%%c<>h11", 2)
+            v.dim((xt, -rt), (xt, rt), (xt, 0), 90, "%%c<>", 2, tol=tol.deviations("h11", 2 * rt / 1e3))
             continue
         if seg.keyway or narrow:
             # 文字放不下或与键槽重叠：把文字引到轴的下方
             xm = (a + b) / 2 if narrow else a + (b - a - seg.keyway[2] * 1e3) / 4
             lx, ly = v.P(xm, -d / 2)
+            tx = lx - (24 if dev else 12) if seg.role == "轴承" else lx + 4  # 轴承段下方有基准符号，文字放左边
+            while any(abs(tx - u) < 7 for u in used_x):  # 相邻两段的引出文字（竖排）不得重叠
+                tx += 7
+            used_x.append(tx)
             sh.dim(v.P(xm, -d / 2), v.P(xm, d / 2), v.P(xm, 0), 90, txt, s, 1 if d % 1 else 0,
-                   location=(lx - 12 if seg.role == "轴承" else lx + 4, ly - 9))  # 轴承段下方有基准符号，文字放左边
+                   location=(tx, ly - 9), tol=dev)
         else:
-            v.dim((xm, -d / 2), (xm, d / 2), (xm, 0), 90, txt, 1 if d % 1 else 0)
+            v.dim((xm, -d / 2), (xm, d / 2), (xm, 0), 90, txt, 1 if d % 1 else 0, tol=dev)
     # 轴向尺寸链（下方），最长的非配合段不注
     fit_roles = set(FITS) | {"齿轮轴"}
     free = max((t for t in S if t[2].role not in fit_roles), key=lambda t: t[1] - t[0], default=None)
@@ -239,6 +255,23 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
                 fx, fy = px - 6, py + 24
                 sh.arrow((fx, fy), (px, py), 2.5, "细实线")
                 sh.gtol(fx, fy, "runout", RUNOUT[seg.role], "A-B")
+        # 轴承轴颈圆柱度、轴承定位轴肩端面圆跳动（GB/T 275-2015，普通级轴承）
+        for i, (a, b, seg) in enumerate(S):
+            if seg.role != "轴承":
+                continue
+            r = seg.d * 1e3 / 2
+            px, py = v.P(a + (b - a) * 0.5, r)
+            sh.arrow((px, py + 30), (px, py), 2.5, "细实线")
+            sh.gtol(px - 7, py + 30, "cylindricity", tol.fmt_mm(tol.journal_cylindricity(seg.d)), "", 3.0)
+            for j, face_x in ((i - 1, a), (i + 1, b)):
+                if 0 <= j < len(S) and S[j][2].role in ("轴肩", "轴环") and S[j][2].d > seg.d:
+                    rr = S[j][2].d * 1e3 / 2
+                    qx, qy = v.P(face_x, (r + rr) / 2)
+                    out = -1 if j < i else 1  # 框格放在轴肩外侧（远离轴承一侧），避开轴颈上的圆柱度框格
+                    fy = v.P(0, rr)[1] + 40
+                    sh.arrow((qx + out * 6, fy), (qx, qy), 2.5, "细实线")
+                    sh.gtol(qx + out * 6 - (0 if out > 0 else 33), fy, "runout",
+                            tol.fmt_mm(tol.shoulder_runout(seg.d)), "A-B", 3.0)
 
     # ------------------------------------------------ 图框
     is_gear_shaft = integral is not None
@@ -264,7 +297,7 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         param_table(sh, design.bevel, 1)
     elif is_gear_shaft:
         from gongke_core.drawing.gear import param_table
-        param_table(sh, pairs[integral.pair], integral.member)
+        param_table(sh, pairs[integral.pair], integral.member, abs(lay.bearing_z[1] - lay.bearing_z[0]))
     sh.frame(TitleInfo(name, mat, s, "1", drawing_no), reqs, "Ra 6.3")
     sh.save(path)
     return sh

@@ -5,7 +5,7 @@
 - 实心轴沿轴线剖切按不剖处理；横向剖切（左视图中的蜗杆）画剖面线；
 - 蜗杆蜗轮啮合：在蜗轮投影为圆的主视图中，蜗轮画齿顶圆（粗实线）和分度圆（点画线），被蜗杆遮住的部分不画；
   在蜗杆投影为圆的左视图中，蜗轮齿圈、轮芯剖开（相邻零件剖面线方向相反），喉部被蜗杆遮住的齿顶线不画；
-- 滚动轴承用通用画法（矩形线框加正十字）；
+- 蜗杆的圆锥滚子轴承用通用画法（矩形线框加正十字），蜗轮轴的深沟球轴承一侧用规定画法；
 - 零件序号沿图形四周逆时针排列，配明细栏、技术特性表和技术要求。
 
 视图按第一角投影配置：俯视图在主视图下方（下方为前），左视图在主视图右方（右方为前）。
@@ -17,9 +17,11 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+from gongke_core import standards
+from gongke_core.calc import worm as worm_calc
 from gongke_core.drawing import hidden
-from gongke_core.drawing.assembly import (PIN_D, PIN_L, SCREW_L, Part, _bearing_bodies, _bearing_name,
-                                          _place_balloons, _std, b_total)
+from gongke_core.drawing.assembly import (PIN_D, PIN_L, SCREW_L, Part, _bearing_bodies, _bearing_name, _place_balloons, _std,
+                                          TRIAL_RUN, b_total, cap_section, draw_bearing)
 from gongke_core.drawing.gear import dms
 from gongke_core.drawing.sheet import SCALES, Sheet, TitleInfo, View
 from gongke_core.layout import worm_blank
@@ -157,6 +159,26 @@ def draw(d, path: str | Path, drawing_no: str = "GK-00") -> Sheet:
     x_dim = min(xo0 - fw, ws.segments[0].z0 * MM) - 10 / s
     tv.dim((-delta - fw, xo0 - fw), (W + delta + fw, xo0 - fw), (-delta - fw, x_dim), 0, "<>", 0)
     tv.dim((z_max - 10, xo0 - fw), (z_max - 10, xo1 + fw), (z_max + 2 / s, xo0 - fw), 90, "<>", 0)
+    # 安装尺寸：地脚螺栓孔（在凸缘下方，虚线）的孔距和孔径，两外伸轴段的配合长度
+    from gongke_core.drawing.housing_base import CLEARANCE
+    dfh = CLEARANCE[round(h.bolt_foot * MM)]
+    for fx, fz in t.foot_bolts:
+        tv.circle((fz * MM, fx * MM), dfh / 2, "虚线")
+        sh.cross(tv.P(fz * MM, fx * MM), dfh / 2 * s, 1.5)
+    fxs = sorted({fx * MM for fx, _ in t.foot_bolts})
+    fzs = sorted({fz * MM for _, fz in t.foot_bolts})
+    z_top = -h.bearing_seat_length * MM - h.cap_thickness * MM
+    tv.dim((fzs[0], fxs[0]), (fzs[0], fxs[-1]), (z_top - 8 / s, fxs[0]), 90, "<>", 0)
+    tv.dim((fzs[0], fxs[-1]), (fzs[-1], fxs[-1]), (fzs[0], xo1 + fw + 10 / s), 0, "<>", 0)
+    px, py = tv.P(fzs[0], fxs[-1])
+    sh.leader_text((px + dfh / 2 * s * 0.7, py + dfh / 2 * s * 0.7), (px + 8, py + 14), f"{len(t.foot_bolts)}×Ø{dfh:g}", 3.0)
+    lay2 = d.shafts[1].layout
+    end2 = next(sg for sg in lay2.segments if sg.role == "端部")
+    xx = end2.d * MM + 6 / s
+    tv.dim((end2.z0 * MM, end2.d * MM), (end2.z1 * MM, end2.d * MM), (end2.z0 * MM, xx), 0, "<>", 0)
+    end1 = next(sg for sg in ws.segments if sg.role == "端部")
+    zz = W / 2 + end1.d * MM + 6 / s  # 放在轴伸下方，上方有零件序号的引线
+    tv.dim((W / 2 + end1.d * MM, end1.z0 * MM), (W / 2 + end1.d * MM, end1.z1 * MM), (zz, end1.z0 * MM), 90, "<>", 0)
     _fits(d, t, fv, lv, sh)
 
     # ------------------------------------------------ 技术特性、技术要求
@@ -180,6 +202,8 @@ def draw(d, path: str | Path, drawing_no: str = "GK-00") -> Sheet:
         "剖分面、各接触面及密封处不允许漏油，剖分面允许涂密封胶，不允许使用垫片。",
         f"箱内装 L-CKE 320 蜗轮蜗杆油至油标规定高度（蜗杆浸油约 {oil_dip:.0f} mm）。",
         "外表面涂灰色油漆。",
+        TRIAL_RUN[0],
+        f"负载试运转时油温不超过 {worm_calc.OIL_LIMIT:.0f} ℃，轴承温升不超过 40 ℃。",
     ]
     sh.tech_requirements(reqs, tx, front_bottom - 25 - 8 * len(rows) - 22)
     for i, p in enumerate(parts, 1):
@@ -600,13 +624,9 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
 
     # ---------------- 轴承（通用画法）
     bodies = _bearing_bodies(lay)
+    ball = not isinstance(brg, standards.TaperedBearing)
     for zc, B in bodies:
-        for sgn in (1, -1):
-            y_in, y_out = sgn * d2b / 2, sgn * D2b / 2
-            v.rect(zc - B / 2, min(y_in, y_out), zc + B / 2, max(y_in, y_out))
-            ym = (y_in + y_out) / 2
-            v.line((zc - B * 0.3, ym), (zc + B * 0.3, ym), "细实线")
-            v.line((zc, ym - abs(y_out - y_in) * 0.3), (zc, ym + abs(y_out - y_in) * 0.3), "细实线")
+        draw_bearing(v, zc, B, 0.0, d2b, D2b, next_angle(), ball)
     nm, std = _bearing_name(brg)
     ladd(nm, "2", "", std, (bodies[1][0], (d2b + D2b) / 4))
 
@@ -617,15 +637,9 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
         sgz = -1 if side == "left" else 1
         za, zb = sorted((face, face + sgz * e))
         seal_r = lay.diameters["密封"] * MM / 2 + 1 if is_open else 0
-        for sgn in (1, -1):
-            v.rect(za, sgn * seal_r, zb, sgn * r_cap)
-        v.hatch([[(za, seal_r), (zb, seal_r), (zb, r_cap), (za, r_cap)],
-                 [(za, -r_cap), (zb, -r_cap), (zb, -seal_r), (za, -seal_r)]], next_angle(), 2.0)
         bz, B = bodies[0 if side == "left" else 1]
         bface = bz - B / 2 if side == "left" else bz + B / 2
-        sa, sb_ = sorted((face, bface))
-        for sgn in (1, -1):
-            v.rect(sa, sgn * max(D2b / 2 - 8, seal_r), sb_, sgn * D2b / 2, "细实线")
+        cap_section(v, face + sgz * e, face, bface, 0.0, r_cap, D2b / 2, seal_r, next_angle())
         if is_open:
             sdm = lay.diameters["密封"] * MM
             fz0, fz1 = za + e * 0.25, zb - e * 0.25
