@@ -433,6 +433,16 @@ class View:
     def centerline(self, a, b, ext=3.0):
         self.sh.centerline(self.P(*a), self.P(*b), ext)
 
+    def wavy(self, p, q, amp_mm: float = 1.0):
+        """波浪线（局部剖视的分界线，细实线），从 p 到 q；amp_mm 为图纸上的波幅。"""
+        amp = amp_mm / self.s
+        L = math.dist(p, q)
+        n = max(int(L / (8 * amp)), 2)
+        ux, uy = (q[0] - p[0]) / L, (q[1] - p[1]) / L
+        pts = [(p[0] + ux * L * k / (4 * n) - uy * amp * math.sin(math.pi * k / 2),
+                p[1] + uy * L * k / (4 * n) + ux * amp * math.sin(math.pi * k / 2)) for k in range(4 * n + 1)]
+        self.poly(pts, "细实线")
+
     def dim(self, a, b, base, angle=0.0, text="<>", dec=1, tol=None):
         if self.rot:
             angle = 90.0 - angle

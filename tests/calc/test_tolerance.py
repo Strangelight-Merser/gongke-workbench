@@ -97,3 +97,8 @@ def test_bearing_seat_and_keyway_tolerances():
     # 键槽对称度按 GB/T 1184 8 级，主参数为槽宽
     assert tol.keyway_symmetry(0.010) == pytest.approx(20e-6)
     assert tol.keyway_symmetry(0.016) == pytest.approx(25e-6)
+    # GB/T 1095-2003：槽深 t1、t2 的极限偏差，键宽 2～6 mm 为 0.1 mm，8 mm 以上（课程设计常用范围）为 0.2 mm
+    assert tol.shaft_keyway_depth(0.006) == pytest.approx((0.0, -0.1e-3))
+    assert tol.shaft_keyway_depth(0.014) == pytest.approx((0.0, -0.2e-3))
+    assert tol.hub_keyway_depth(0.006) == pytest.approx((0.1e-3, 0.0))
+    assert tol.hub_keyway_depth(0.016) == pytest.approx((0.2e-3, 0.0))

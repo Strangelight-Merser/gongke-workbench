@@ -12,27 +12,19 @@ from pathlib import Path
 
 from gongke_core.calc import tolerance as tol
 from gongke_core.drawing import hidden
-from gongke_core.drawing.assembly import PIN_D, _std
+from gongke_core.drawing.assembly import CLEARANCE, MINOR, PIN_D, SPOT_FACE, _std
 from gongke_core.drawing.sheet import SCALES, Sheet, TitleInfo, View
 from gongke_core.layout.housing_detail import HousingDetail, detail
 
 MM = 1e3
 
 # 螺栓通孔（GB/T 5277-1985 中等装配）和沉孔锪平直径（GB/T 152.4-1988，用于六角头螺栓和螺母），mm
-CLEARANCE = {6: 6.6, 8: 9, 10: 11, 12: 13.5, 16: 17.5, 20: 22, 24: 26, 30: 33}
-SPOT_FACE = {6: 13, 8: 18, 10: 22, 12: 26, 16: 33, 20: 40, 24: 48, 30: 61}
 # 普通螺纹小径（GB/T 196-2003）：d − 1.0825P
-MINOR = {12: 10.106, 16: 14.376}  # M12（粗牙）、M16×1.5
 
 
 def _wavy(v: View, p, q, amp: float):
-    """波浪线（局部剖视的分界线，细实线），从 p 到 q。"""
-    L = math.dist(p, q)
-    n = max(int(L / (8 * amp)), 2)
-    ux, uy = (q[0] - p[0]) / L, (q[1] - p[1]) / L
-    pts = [(p[0] + ux * L * k / (4 * n) - uy * amp * math.sin(math.pi * k / 2),
-            p[1] + uy * L * k / (4 * n) + ux * amp * math.sin(math.pi * k / 2)) for k in range(4 * n + 1)]
-    v.poly(pts, "细实线")
+    """波浪线，amp 为视图坐标下的波幅。"""
+    v.wavy(p, q, amp * v.s)
 
 
 def tolerances(d) -> dict:
@@ -315,15 +307,16 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
         return (x - ox_ + sn45 * n_) / c45
 
     boss_s = 14.0  # 与装配图中的油标座一致
-    p1 = [(xw0, yb), (xo1 + fw, yb), (xo1 + fw, yb + b2), (xo1, yb + b2), (xo1, yd - rd_min), (xi1, yd - rd_min),
-          (xi1, y_floor), (xw0, y_floor)]
+    # 剖切面（z = W/2）正好通过底座凸缘的缺口，凸缘只剩缺口侧面的外形（不画剖面线）
+    p1 = [(xw0, yb), (xo1, yb), (xo1, yd - rd_min), (xi1, yd - rd_min), (xi1, y_floor), (xw0, y_floor)]
+    v.rect(xo1, yb, xo1 + fw, yb + b2)
     p2 = [(xi1, yd + rd_min), (xo1, yd + rd_min), P(s_at_x(xo1, -r_dip), -r_dip), P(boss_s, -r_dip), P(boss_s, -ri_min),
           P(s_at_x(xi1, -ri_min), -ri_min)]
     p3 = [P(s_at_x(xi1, ri_min), ri_min), P(boss_s, ri_min), P(boss_s, r_dip), P(s_at_x(xo1, r_dip), r_dip),
           (xo1, y_sec), (xi1, y_sec)]
     for lp in (p1, p2, p3):
         v.poly(lp, close=True)
-    v.hatch([p1, p2, p3], 45)
+    v.hatch([p1, p2, p3], 135)  # 与 45° 油标孔垂直，剖面线不与孔壁平行
     # 内螺纹大径（细实线）
     v.line((xi1, yd - rd_maj), (xo1, yd - rd_maj), "细实线")
     v.line((xi1, yd + rd_maj), (xo1, yd + rd_maj), "细实线")
@@ -331,7 +324,7 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     v.line(P(s_at_x(xi1, ri_maj), ri_maj), P(boss_s, ri_maj), "细实线")
     v.line((xi1 - 4, yd), (xo1 + 6, yd), "点画线")
     v.line(P(s_at_x(xi1, 0) - 4, 0), P(boss_s + 6, 0), "点画线")
-    _wavy(v, (xw0, yb), (xw0, y_floor), 1.0 / s)
+    _wavy(v, (xw0, yb), (xw0, max(y_floor, yb + b2)), 1.0 / s)
     _wavy(v, (xi1, y_sec), (xo1, y_sec), 1.0 / s)
     # 放油孔外端面的沉孔锪平
     tx, ty = v.P(xo1, yd - rd_min)
@@ -676,7 +669,8 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet):
         # 右端壁内表面上的放油孔（正对观察者，螺纹孔画法：小径粗实线圆，大径细实线 3/4 圆）
         yd = t.drain[1] * MM
         v.circle((W / 2, yd), MINOR[16] / 2)
-        v.arc((W / 2, yd), 8.0, 0, 270, "细实线")
+        a_lo = math.degrees(math.asin(max((y_floor - yd) / 8.0, -1.0)))  # 大径圆在箱底剖面以下的部分被挡住
+        v.arc((W / 2, yd), 8.0, 0, 180 - a_lo, "细实线")
         sh.cross(v.P(W / 2, yd), 8.0 * s, 1.5)
         # 油标孔与内壁的交线（斜孔，椭圆）
         (_, dy_), ang = t.dipstick

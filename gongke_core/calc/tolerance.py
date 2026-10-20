@@ -129,6 +129,16 @@ def deviations(code: str, size: float) -> tuple[float, float]:
     return up * UM, lo * UM
 
 
+def hub_keyway_depth(b: float) -> tuple[float, float]:
+    """毂槽 d + t2 的极限偏差（GB/T 1095-2003）：键宽 ≤ 6 mm 时 +0.1/0，否则 +0.2/0。"""
+    return (0.1 * MM if b <= 6 * MM + 1e-9 else 0.2 * MM), 0.0
+
+
+def shaft_keyway_depth(b: float) -> tuple[float, float]:
+    """轴槽 d − t1 的极限偏差（GB/T 1095-2003）：键宽 ≤ 6 mm 时 0/−0.1，否则 0/−0.2。"""
+    return 0.0, -(0.1 * MM if b <= 6 * MM + 1e-9 else 0.2 * MM)
+
+
 def fmt_dev(v: float) -> str:
     """极限偏差的图样写法（mm）：+0.018、−0.036、0。"""
     um = round(v / UM)

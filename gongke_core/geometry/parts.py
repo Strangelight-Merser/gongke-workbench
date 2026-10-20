@@ -235,6 +235,15 @@ def housing_base(h: Housing, shaft_x: list[float], bearing_D: list[float], side=
     b2 = _mm(h.flange_foot)
     foot = bd.Solid.make_box(x1 - x0 + 2 * d + 2 * flange_w, b2, w + 2 * d + 2 * flange_w).moved(
         bd.Location((x0 - d - flange_w, y0 - d, -d - flange_w)))
+    foot = foot.cut(inner)  # 油池底面在 y0，底座凸缘只在箱壁外
+    if t is not None:  # 放油螺塞处凸缘留缺口
+        n = _mm(t.drain_notch)
+        dx = _mm(t.drain[0])
+        if t.accessory_wall == "z":
+            notch = bd.Solid.make_box(2 * n, b2 + 2, flange_w + 1).moved(bd.Location((dx - n, y0 - d - 1, w + d)))
+        else:
+            notch = bd.Solid.make_box(flange_w + 1, b2 + 2, 2 * n).moved(bd.Location((x1 + d, y0 - d - 1, w / 2 - n)))
+        foot = foot.cut(notch)
     body = body.fuse(foot)
     # 轴承座：两侧壁上的凸台，长度 L1 从内壁算起
     for x, D in zip(shaft_x, bearing_D):

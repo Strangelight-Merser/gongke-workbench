@@ -743,19 +743,33 @@ def _left(d, t: HousingDetail, v: View, sh: Sheet, add, next_angle):
     nx, ny = -uy, ux
     P = lambda s_, n_: (zw + ux * s_ + nx * n_, oy_ + uy * s_ + ny * n_)  # noqa: E731
     v.poly([P(0, -11), P(14, -11), P(14, 11), P(0, 11)])
-    v.poly([P(14, -6), P(34, -6), P(34, 6), P(14, 6)])
-    v.poly([P(34, -10), P(42, -10), P(42, 10), P(34, 10)], close=True)
-    v.line(P(-6, 0), P(46, 0), "点画线")
-    ladd("杆式油标 M12", "1", "Q235", "组合件", P(38, 4))
+    v.poly([P(14, -6), P(26, -6), P(26, 6), P(14, 6)])
+    v.poly([P(26, -10), P(34, -10), P(34, 10), P(26, 10)], close=True)
+    v.line(P(-6, 0), P(38, 0), "点画线")
+    ladd("杆式油标 M12", "1", "Q235", "组合件", P(30, 4))
     dy = t.drain[1] * MM
     ddr = t.drain_d * MM
-    v.rect(zw, dy - 0.9 * ddr, zw + 4, dy + 0.9 * ddr)
-    v.rect(zw + 4, dy - 0.8 * ddr, zw + 14, dy + 0.8 * ddr)
-    v.line((zw + 4, dy - 0.4 * ddr), (zw + 14, dy - 0.4 * ddr))
-    v.line((zw + 4, dy + 0.4 * ddr), (zw + 14, dy + 0.4 * ddr))
+    # 螺塞在剖切面后方，低于底座凸缘上表面的部分被剖开的凸缘挡住
+    yf = yb + b2
+
+    def crect(x0, y0, x1, y1):
+        if y1 <= yf:
+            return
+        y0c = max(y0, yf)
+        v.line((x0, y1), (x1, y1))
+        v.line((x0, y0c), (x0, y1))
+        v.line((x1, y0c), (x1, y1))
+        if y0 >= yf:
+            v.line((x0, y0), (x1, y0))
+
+    crect(zw, dy - 0.9 * ddr, zw + 4, dy + 0.9 * ddr)
+    crect(zw + 4, dy - 0.8 * ddr, zw + 14, dy + 0.8 * ddr)
+    for yy in (dy - 0.4 * ddr, dy + 0.4 * ddr):
+        if yy > yf:
+            v.line((zw + 4, yy), (zw + 14, yy))
     v.line((zw - 4, dy), (zw + 18, dy), "点画线")
     ladd(f"放油螺塞 M{ddr:g}×1.5", "1", "Q235", "JB/ZQ 4450-2006", (zw + 9, dy + 0.6 * ddr))
-    ladd(f"封油垫 {ddr:g}", "1", "石棉橡胶纸", "", (zw + 2, dy - 0.6 * ddr))
+    ladd(f"封油垫 {ddr:g}", "1", "石棉橡胶纸", "", (zw + 2, dy + 0.8 * ddr))
 
     # ---------------- 键（数量汇总）
     keys: dict[str, int] = {}

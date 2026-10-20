@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+from gongke_core.calc import tolerance as tol
 from gongke_core.calc.worm import WormPair
 from gongke_core.drawing.gear import dms
 from gongke_core.drawing.sheet import Sheet, TitleInfo, View, pick_scale
@@ -22,6 +23,10 @@ MM = 1e3
 def _f(v: float, nd: int = 3) -> str:
     t = f"{v * MM:.{nd}f}"
     return t.rstrip("0").rstrip(".") if "." in t else t
+
+
+# 检验项目的公差需按 GB/T 10089 查表，本项目未录入，图上留栏由使用者填写
+TO_FILL = "按 GB/T 10089 填写"
 
 
 def param_rows(w: WormPair, member: int) -> list[list[str]]:
@@ -42,6 +47,13 @@ def param_rows(w: WormPair, member: int) -> list[list[str]]:
             ["精度等级", "", grade],
             ["配对蜗轮齿数", "z2", str(w.z2)],
             ["中心距", "a", _f(w.a)],
+            # 法向弦齿厚 s̄n1 = (πm/2) cos γ，测量高度 h̄a1 = ha* m
+            ["法向弦齿厚", "sn1", _f(math.pi * w.m / 2 * math.cos(w.gamma))],
+            ["弦齿高", "ha1", _f(w.m)],
+            ["弦齿厚偏差", "Ess1/Esi1", TO_FILL],
+            ["轴向齿距偏差", "±fpx", TO_FILL],
+            ["齿廓总偏差", "Fα1", TO_FILL],
+            ["径向跳动公差", "Fr1", TO_FILL],
         ]
     return [
         *common,
@@ -53,13 +65,17 @@ def param_rows(w: WormPair, member: int) -> list[list[str]]:
         ["精度等级", "", grade],
         ["配对蜗杆头数", "z1", str(w.z1)],
         ["中心距", "a", _f(w.a)],
+        ["齿距累积总偏差", "Fp2", TO_FILL],
+        ["单个齿距偏差", "±fp2", TO_FILL],
+        ["齿廓总偏差", "Fα2", TO_FILL],
+        ["径向跳动公差", "Fr2", TO_FILL],
     ]
 
 
 def param_table(sh: Sheet, w: WormPair, member: int):
     x1, y1 = sh.inner[2], sh.inner[3]
     widths = [32, 14, 34]
-    sh.table(x1 - sum(widths), y1, param_rows(w, member), widths, 7)
+    sh.table(x1 - sum(widths), y1, param_rows(w, member), widths, 6)
 
 
 def _arc_pts(g: WheelBlank, R: float, z_max: float, n: int = 24) -> list[tuple[float, float]]:
@@ -147,8 +163,8 @@ def draw(w: WormPair, bore: float, hub_length: float, path: str | Path, title: s
     mv.dim((-h, de / 2), (h, de / 2), (-h, de / 2 + 10 / s), 0, "<>", 0)
     xd = zw + 12 / s
     mv.dim((h, -de / 2), (h, de / 2), (xd, 0), 90, "%%c<>", 0)
-    mv.dim((0, -da / 2), (0, da / 2), (xd + 13 / s, 0), 90, "%%c<>h11", 2)
-    mv.dim((-L, -rb), (-L, rb), (-zw - 8 / s, 0), 90, "%%c<>H7", 0)
+    mv.dim((0, -da / 2), (0, da / 2), (xd + 13 / s, 0), 90, "%%c<>", 2, tol=tol.deviations("h11", da / MM))
+    mv.dim((-L, -rb), (-L, rb), (-zw - 8 / s, 0), 90, "%%c<>", 0, tol=tol.deviations("H7", 2 * rb / MM))
     mv.dim((-L, -rh), (-L, rh), (-zw - 20 / s, 0), 90, "%%c<>", 0)
     mv.dim((-h, -ro), (-h, ro), (-zw - 32 / s, 0), 90, "%%c<>H7/r6", 0)
     mv.dim((-L, -rh), (L, -rh), (-L, -de / 2 - 10 / s), 0, "<>", 0)
@@ -196,8 +212,8 @@ def draw(w: WormPair, bore: float, hub_length: float, path: str | Path, title: s
     lv.line((hb, yb), (hb, rb + t2))
     lv.line((-hb, rb + t2), (hb, rb + t2))
     sh.cross(lv.P(0, 0), de / 2 * s, 4)
-    lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, rb + t2 + 8 / s), 0, "<>JS9", 0)
-    lv.dim((hb, -rb), (hb, rb + t2), (rh + 8 / s, 0), 90, "<>", 1)
+    lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, rb + t2 + 8 / s), 0, "<>", 0, tol=tol.deviations("JS9", kb / MM))
+    lv.dim((hb, -rb), (hb, rb + t2), (rh + 8 / s, 0), 90, "<>", 1, tol=tol.hub_keyway_depth(kb / MM))
     sh.roughness(*lv.P(hb, rb + t2), "Ra 3.2", 0, 2.5)
 
     # ------------------------------------------------ 参数表、图框

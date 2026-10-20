@@ -215,8 +215,7 @@ def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str,
     sh.cross(lv.P(0, 0), da / 2 * s, 4)
     yd = rb + t2 + 8 / s
     lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, yd), 0, "<>", 0, tol=tol.deviations("JS9", kb / 1e3))
-    # 槽底尺寸 d + t2 的偏差（GB/T 1095-2003）：+0.1（键宽 ≤ 6）或 +0.2
-    lv.dim((hb, -rb), (hb, rb + t2), (rb + 10 / s, 0), 90, "<>", 1, tol=(0.1e-3 if kb <= 6 else 0.2e-3, 0.0))
+    lv.dim((hb, -rb), (hb, rb + t2), (rb + 10 / s, 0), 90, "<>", 1, tol=tol.hub_keyway_depth(kb / 1e3))
     sh.roughness(*lv.P(hb, rb + t2), "Ra 3.2", 0, 2.5)
     # 键槽对称度（对基准 A），指引线箭头与键宽尺寸线对齐
     val = tol.fmt_mm(tol.keyway_symmetry(kb / 1e3))

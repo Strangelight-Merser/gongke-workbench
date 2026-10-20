@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+from gongke_core.calc import tolerance as tol
 from gongke_core.drawing.sheet import Sheet, TitleInfo, View, pick_scale
 from gongke_core.layout.pulley import PulleyBlank
 
@@ -104,7 +105,7 @@ def draw(p: PulleyBlank, path: str | Path, title: str = "大带轮", drawing_no:
     mv.dim((xr, -da / 2), (xr, da / 2), (xr + 14 / s, 0), 90, "%%c<>", 1)
     xg = (p.groove_centers()[-1] - p.z_center) * 1e3
     mv.dim((xg, -dd / 2), (xg, dd / 2), (xr + 26 / s, 0), 90, "%%c<>", 0)
-    mv.dim((-L / 2, -rd), (-L / 2, rd), (-L / 2 - 8 / s, 0), 90, "%%c<>H7", 0)
+    mv.dim((-L / 2, -rd), (-L / 2, rd), (-L / 2 - 8 / s, 0), 90, "%%c<>", 0, tol=tol.deviations("H7", 2 * rd * 1e-3))
     if p.kind != "实心式":
         mv.dim((-L / 2, -rh), (-L / 2, rh), (-L / 2 - 20 / s, 0), 90, "%%c<>", 0)
         mv.dim((-B / 2, -ri), (-B / 2, ri), (-L / 2 - 32 / s, 0), 90, "%%c<>", 0)
@@ -148,8 +149,8 @@ def draw(p: PulleyBlank, path: str | Path, title: str = "大带轮", drawing_no:
     lv.line((hb, yb), (hb, rd + t2))
     lv.line((-hb, rd + t2), (hb, rd + t2))
     sh.cross(lv.P(0, 0), da / 2 * s, 4)
-    lv.dim((-hb, rd + t2), (hb, rd + t2), (-hb, rd + t2 + 8 / s), 0, "<>JS9", 0)
-    lv.dim((hb, -rd), (hb, rd + t2), (rd + 10 / s, 0), 90, "<>", 1)
+    lv.dim((-hb, rd + t2), (hb, rd + t2), (-hb, rd + t2 + 8 / s), 0, "<>", 0, tol=tol.deviations("JS9", 2 * hb * 1e-3))
+    lv.dim((hb, -rd), (hb, rd + t2), (rd + 10 / s, 0), 90, "<>", 1, tol=tol.hub_keyway_depth(2 * hb * 1e-3))
 
     # ------------------------------------------------ 参数表、图框
     widths = [32, 14, 30]

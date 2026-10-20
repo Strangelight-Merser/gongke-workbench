@@ -30,6 +30,9 @@ from gongke_core.layout.housing_detail import Arc, HousingDetail, detail, envelo
 MM = 1e3  # m → mm
 
 PIN_D = [6, 8, 10, 12, 16]
+MINOR = {12: 10.106, 16: 14.376}  # 螺纹小径：M12（粗牙）、M16×1.5
+CLEARANCE = {6: 6.6, 8: 9, 10: 11, 12: 13.5, 16: 17.5, 20: 22, 24: 26, 30: 33}  # 螺栓通孔（GB/T 5277 中等装配）
+SPOT_FACE = {6: 13, 8: 18, 10: 22, 12: 26, 16: 33, 20: 40, 24: 48, 30: 61}  # 沉孔锪平直径
 # 课程设计装配图技术要求的最后两条：试运转
 TRIAL_RUN = ["装配后作空载试运转，正、反转各 1 h，运转平稳、无冲击和异常噪声，各连接处不松动。",
              "负载试运转时油池温升不超过 35 ℃，轴承温升不超过 40 ℃。"]
@@ -787,19 +790,27 @@ def _front_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
         for p, q in (((x0_, y0_), (x1_, y0_)), ((x1_, y0_), (x1_, y1_)), ((x1_, y1_), (x0_, y1_)), ((x0_, y1_), (x0_, y0_))):
             seg(p, q, rects=[])
         seg((x0_, 0), (x1_, 0), circles=caps, rects=[])  # 剖分面
+    # 右端壁下部的局部剖视（过中间平面 z = W/2，剖出放油螺塞和油标）范围：x ≥ xw0，y ≤ y_sec
+    xi1 = h.x_range[1] * MM
+    xw0 = xi1 - 2 * h.delta * MM
+    (_, dip_y), _ = t.dipstick
+    y_sec = dip_y * MM + 11 * math.sqrt(2) + 3
     # 箱座侧壁外的加强肋（轴承座正下方）
     m = t.rib_t * MM
     for x, rb in zip(xs, t.boss_r):
         y_top = -math.sqrt((rb * MM) ** 2 - (m / 2) ** 2)
         for sx in (-1, 1):
-            seg((x + sx * m / 2, y_top), (x + sx * m / 2, yb + b2))
+            xr = x + sx * m / 2
+            seg((xr, y_top), (xr, yb + b2 if xr < xw0 else max(y_sec, yb + b2)))
 
     # ---------------- 凸缘、箱壁、底座
     rect(xo0 - fw, -b, xo1 + fw, 0)
     rect(xo0 - fw, 0, xo1 + fw, b1)
     seg((xo0, yb + b2), (xo0, -b))
-    seg((xo1, yb + b2), (xo1, -b))
-    rect(xo0 - fw, yb, xo1 + fw, yb + b2)
+    seg((xo1, y_sec), (xo1, -b))
+    seg((xo0 - fw, yb), (xw0, yb))
+    seg((xo0 - fw, yb + b2), (xw0, yb + b2))
+    seg((xo0 - fw, yb), (xo0 - fw, yb + b2))
     # 箱盖外形：凸缘以上部分
     for e in t.cover_outer:
         if isinstance(e, Arc):
@@ -809,20 +820,28 @@ def _front_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
             if a1 > a0:
                 arc(e.cx * MM, 0, r, a0, a1)
         else:
-            seg((e.p[0] * MM, e.p[1] * MM), (e.q[0] * MM, e.q[1] * MM))
+            p_, q_ = (e.p[0] * MM, e.p[1] * MM), (e.q[0] * MM, e.q[1] * MM)
+            gap = _inspection_gap(t, p_, q_)
+            if gap:
+                seg(p_, gap[0])
+                seg(gap[1], q_)
+            else:
+                seg(p_, q_)
     xc = (xs[-2] + t.caps[-2].D2 * MM / 2 + xs[-1] - t.caps[-1].D2 * MM / 2) / 2
     fadd("箱盖", "1", "HT200", "", (xc, 0.55 * envelope_height(t.cover_outer, xc / MM) * MM))
 
     if t.side_bore is not None:
         _front_pinion_side(d, t, v, fadd)
 
-    # ---------------- 吊钩（箱座两端铸出）
+    # ---------------- 吊钩（箱座两端铸出，在中间平面上；前侧凸缘下的螺母、垫圈在它前面）
+    dn = h.bolt_flange * MM
+    nuts = blocks + [(xb * MM - dn, -b - 1.05 * dn, xb * MM + dn, -b) for xb in t.flange_bolts]
     for xe in t.hooks:
         pts, (hx, hy), hr = t.hook_shape(xe)
         pts = [(px * MM, py * MM) for px, py in pts]
         for p, q in zip(pts, pts[1:]):
-            seg(p, q)
-        arc(hx * MM, hy * MM, hr * MM, 0, 360)
+            seg(p, q, rects=nuts)
+        arc(hx * MM, hy * MM, hr * MM, 0, 360, rects=nuts)
 
     # ---------------- 连接螺栓（前侧凸缘一排）、起盖螺钉
     def bolt(x, dd, length, head_only=False, top=b1, bot=b):  # 螺栓头支承面 y = top，螺母支承面 y = −bot
@@ -863,29 +882,15 @@ def _front_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
         fadd(f"螺母 M{d2:g}", n2, "Q235", "GB/T 6170-2015", (xb2 + d2 * 0.6, -b - 0.65 * d2))
         fadd(f"弹簧垫圈 {d2:g}", n2, "65Mn", "GB/T 93-1987", (xb2 - d2 * 0.5, -b - 0.12 * d2))
     fadd(f"起盖螺钉 M{d2:g}×{lj}", 1, "Q235", "GB/T 5783-2016", (xj, b1 + 0.35 * d2))
+    # 选一个两侧最空的连接螺栓，作局部剖视表示箱盖、箱座凸缘和螺栓连接
+    half = 2.4 * d2
+    keep = [(x, r) for x, _, r in caps] + [((a_ + b_) / 2, (b_ - a_) / 2) for a_, _, b_, _ in blocks] + [(xj, d2)]
+    best = max(t.flange_bolts, key=lambda xb: min(abs(xb * MM - x) - r for x, r in keep), default=None)
+    if best is not None and min(abs(best * MM - x) - r for x, r in keep) > half:
+        _bolt_section(v, best * MM, d2, b, b1, half, (xo0 - fw, xo1 + fw))
 
-    # ---------------- 视孔盖、通气器
-    ins = t.inspection
-    cx, cy = ins.center[0] * MM, ins.center[1] * MM
-    a = math.radians(ins.angle)
-    ux, uy = math.cos(a), math.sin(a)
-    nx, ny = -uy, ux
-    L, th = ins.length * MM, ins.thickness * MM
-    P = lambda s_, n_: (cx + ux * s_ + nx * n_, cy + uy * s_ + ny * n_)
-    v.poly([P(-L / 2, 0), P(L / 2, 0), P(L / 2, th), P(-L / 2, th)], close=True)
-    v.poly([P(-L / 2, -1.5), P(L / 2, -1.5)])  # 垫片
-    sd = ins.screw_d * MM
-    for s_ in (-L / 2 + 10, L / 2 - 10):
-        v.poly([P(s_ - 0.85 * sd, th), P(s_ + 0.85 * sd, th), P(s_ + 0.85 * sd, th + 0.7 * sd), P(s_ - 0.85 * sd, th + 0.7 * sd)], close=True)
-    vd = ins.vent_d * MM
-    stack = [(0.6 * vd, th, th + 0.5 * vd), (0.9 * vd, th + 0.5 * vd, th + 0.9 * vd), (0.45 * vd, th + 0.9 * vd, th + 1.4 * vd)]
-    for hw, n0, n1_ in stack:
-        v.poly([P(-hw, n0), P(hw, n0), P(hw, n1_), P(-hw, n1_)], close=True)
-    v.line(P(0, -3), P(0, th + 1.4 * vd + 3), "点画线")
-    fadd("视孔盖", "1", "Q235", "", P(-L / 2 + 22, th / 2))
-    fadd("视孔盖垫片", "1", "石棉橡胶纸", "", P(-L / 2 + 30, -0.8))
-    fadd(f"螺钉 M{sd:g}×16", "4", "Q235", "GB/T 5783-2016", P(L / 2 - 10, th + 0.35 * sd))
-    fadd(f"通气器 M{vd:g}×1.5", "1", "Q235", "", P(0.3 * vd, th + 1.15 * vd))
+    # ---------------- 视孔盖、通气器（视孔处局部剖视）
+    _inspection_section(t, v, fadd)
 
     # ---------------- 吊环螺钉
     ed = t.eyebolt_d * MM
@@ -901,29 +906,189 @@ def _front_view(d: ReducerDesign, t: HousingDetail, v: View, sh: Sheet, add):
         if k == 0:
             fadd(f"吊环螺钉 M{ed:g}", len(t.eyebolts), "20", "GB/T 825-1988", (xe - 1.2 * ed, rc))
 
-    # ---------------- 油标（杆式，45° 斜插）、放油螺塞
+    # ---------------- 右端壁局部剖视：油标（杆式，45° 斜插）、放油螺塞
+    _drain_dipstick_section(t, v, fadd, xw0, y_sec)
+
+
+def _bolt_section(v: View, xb: float, dd: float, b: float, b1: float, half: float, lim: tuple[float, float]):
+    """连接螺栓处的局部剖视：箱盖、箱座凸缘剖开（剖面线方向相反），螺栓按不剖画出穿过通孔的杆部。
+    lim 为凸缘两端，剖视范围到凸缘端面为止（端面处不画波浪线）。"""
+    r0 = CLEARANCE.get(round(dd), 1.1 * dd) / 2
+    xl, xr = max(xb - half, lim[0]), min(xb + half, lim[1])
+    cover = [[(xl, 0), (xb - r0, 0), (xb - r0, b1), (xl, b1)], [(xb + r0, 0), (xr, 0), (xr, b1), (xb + r0, b1)]]
+    base = [[(xl, -b), (xb - r0, -b), (xb - r0, 0), (xl, 0)], [(xb + r0, -b), (xr, -b), (xr, 0), (xb + r0, 0)]]
+    for lp in cover + base:
+        v.poly(lp, close=True)
+    v.hatch(cover, 135)
+    v.hatch(base, 45)
+    for x in (xb - dd / 2, xb + dd / 2):
+        v.line((x, -b), (x, b1))
+    for x in (xl, xr):
+        if lim[0] < x < lim[1]:
+            v.wavy((x, -b), (x, b1))
+
+
+def _inspection_gap(t: HousingDetail, p, q):
+    """箱盖外形线 p–q 若是视孔所在的那段公切线，返回视孔两端（局部剖视里那段外形线断开）。"""
+    ins = t.inspection
+    if ins.pad > 0:
+        return None
+    cx, cy = ins.center[0] * MM, ins.center[1] * MM
+    L = math.dist(p, q)
+    ux, uy = (q[0] - p[0]) / L, (q[1] - p[1]) / L
+    s0 = (cx - p[0]) * ux + (cy - p[1]) * uy
+    if abs((cx - p[0]) * uy - (cy - p[1]) * ux) > 0.5 or not 0 < s0 < L:
+        return None
+    hl = ins.hole_length * MM / 2
+    return (p[0] + ux * (s0 - hl), p[1] + uy * (s0 - hl)), (p[0] + ux * (s0 + hl), p[1] + uy * (s0 + hl))
+
+
+def _inspection_section(t: HousingDetail, v: View, fadd):
+    """视孔处的局部剖视（剖切面 z = W/2）：箱盖壁、视孔盖、垫片剖开，螺钉和通气器按不剖画外形。
+    视孔盖在圆弧顶部的平台上时（蜗杆减速器，主视图另有画法）只画外形。"""
+    h = t.h
+    ins = t.inspection
+    cx, cy = ins.center[0] * MM, ins.center[1] * MM
+    a = math.radians(ins.angle)
+    ux, uy = math.cos(a), math.sin(a)
+    nx, ny = -uy, ux
+    L, th = ins.length * MM, ins.thickness * MM
+    hl = ins.hole_length * MM / 2
+    g = 1.5  # 垫片厚
+    d1 = h.delta1 * MM
+    sd, vd = ins.screw_d * MM, ins.vent_d * MM
+    P = lambda s_, n_: (cx + ux * s_ + nx * n_, cy + uy * s_ + ny * n_)  # noqa: E731
+    rect = lambda s0, n0, s1, n1: [P(s0, n0), P(s1, n0), P(s1, n1), P(s0, n1)]  # noqa: E731
+    screws = (-L / 2 + 10, L / 2 - 10)
+    rs = sd / 2  # 螺钉大径（箱盖上的螺孔按旋合画到大径）
+    rc = rs + 0.6  # 盖板上的通孔
+    t0, t1 = g, g + th  # 盖板上下表面
+    section = ins.pad == 0
+    if section:
+        Ls = L / 2 + 12
+        wall, plate = [], []
+        for (s0, s1) in ((-Ls, screws[0] - rs), (screws[0] + rs, -hl), (hl, screws[1] - rs), (screws[1] + rs, Ls)):
+            wall.append(rect(s0, -d1, s1, 0))
+        cuts = [(-L / 2, screws[0] - rc), (screws[0] + rc, -vd / 2), (vd / 2, screws[1] - rc), (screws[1] + rc, L / 2)]
+        for s0, s1 in cuts:
+            plate.append(rect(s0, t0, s1, t1))
+        # 垫片只在视孔四周（视孔范围内没有），按螺钉孔分段
+        gasket = [rect(-L / 2, 0, screws[0] - rc, g), rect(screws[0] + rc, 0, -hl, g),
+                  rect(hl, 0, screws[1] - rc, g), rect(screws[1] + rc, 0, L / 2, g)]
+        for lp in wall + plate + gasket:
+            v.poly(lp, close=True)
+        v.hatch(wall, 45)
+        v.hatch(plate, 135, 2.0)
+        v.hatch(gasket, 45, 0.5)
+        for s_ in (-Ls, Ls):
+            v.wavy(P(s_, -d1), P(s_, 0))
+    else:
+        v.poly(rect(-L / 2, t0, L / 2, t1), close=True)
+        v.poly(rect(-L / 2, 0, L / 2, g), close=True)
+    # 螺钉（不剖）：头部、穿过盖板和垫片旋入箱盖的杆部
+    for s_ in screws:
+        v.poly(rect(s_ - 0.85 * sd, t1, s_ + 0.85 * sd, t1 + 0.7 * sd), close=True)
+        if section:
+            n_end = t1 - 16
+            v.poly(rect(s_ - rs, n_end, s_ + rs, t1), close=True)
+            for k in (-1, 1):
+                v.line(P(s_ + k * 0.85 * rs, n_end), P(s_ + k * 0.85 * rs, 0), "细实线")
+        v.line(P(s_, -d1 - 2 if section else t1 - 2), P(s_, t1 + 0.7 * sd + 2), "点画线")
+    # 通气器（不剖）：旋在盖板上
+    stack = [(0.6 * vd, t1, t1 + 0.5 * vd), (0.9 * vd, t1 + 0.5 * vd, t1 + 0.9 * vd), (0.45 * vd, t1 + 0.9 * vd, t1 + 1.4 * vd)]
+    if section:
+        stack.insert(0, (vd / 2, t0 - 2, t1))
+    for hw, n0, n1_ in stack:
+        v.poly(rect(-hw, n0, hw, n1_), close=True)
+    v.line(P(0, -3), P(0, t1 + 1.4 * vd + 3), "点画线")
+    fadd("视孔盖", "1", "Q235", "", P(-L / 2 + 22, (t0 + t1) / 2))
+    fadd("视孔盖垫片", "1", "石棉橡胶纸", "", P(-L / 2 + 30, g / 2))
+    fadd(f"螺钉 M{sd:g}×16", "4", "Q235", "GB/T 5783-2016", P(L / 2 - 10, t1 + 0.35 * sd))
+    fadd(f"通气器 M{vd:g}×1.5", "1", "Q235", "", P(0.3 * vd, t1 + 1.15 * vd))
+
+
+def _drain_dipstick_section(t: HousingDetail, v: View, fadd, xw0: float, y_sec: float):
+    """主视图右下角的局部剖视（剖切面为中间平面 z = W/2，波浪线为界）：右端壁、箱底和油标座剖开，
+    螺塞、油标按不剖画外形；剖切面正好通过底座凸缘的缺口，凸缘只剩缺口侧面的外形。"""
+    h = t.h
+    fw = t.flange_w * MM
+    b2 = h.flange_foot * MM
+    yb = t.y_bottom * MM
+    y_floor = h.y_range[0] * MM
+    xo1 = t.x_outer[1] * MM
+    xi1 = h.x_range[1] * MM
     (ox_, oy_), ang = t.dipstick
     ox_, oy_ = ox_ * MM, oy_ * MM
     a = math.radians(ang)
-    ux, uy = math.cos(a), math.sin(a)
-    nx, ny = -uy, ux
-    P = lambda s_, n_: (ox_ + ux * s_ + nx * n_, oy_ + uy * s_ + ny * n_)
-    v.poly([P(0, -11), P(14, -11), P(14, 11), P(0, 11)])  # 油标座
-    v.poly([P(14, -6), P(34, -6), P(34, 6), P(14, 6)])
-    v.poly([P(34, -10), P(42, -10), P(42, 10), P(34, 10)], close=True)
-    v.line(P(-6, 0), P(46, 0), "点画线")
-    fadd("杆式油标 M12", "1", "Q235", "组合件", P(38, 4))
-    dx, dy = t.drain[0] * MM, t.drain[1] * MM
-    ddr = t.drain_d * MM
-    v.rect(dx, dy - 0.9 * ddr, dx + 4, dy + 0.9 * ddr)  # 封油垫
-    v.rect(dx + 4, dy - 0.8 * ddr, dx + 14, dy + 0.8 * ddr)  # 六角头
-    v.line((dx + 4, dy - 0.4 * ddr), (dx + 14, dy - 0.4 * ddr))
-    v.line((dx + 4, dy + 0.4 * ddr), (dx + 14, dy + 0.4 * ddr))
-    v.line((dx - 4, dy), (dx + 18, dy), "点画线")
-    fadd(f"放油螺塞 M{ddr:g}×1.5", "1", "Q235", "JB/ZQ 4450-2006", (dx + 9, dy + 0.6 * ddr))
-    fadd(f"封油垫 {ddr:g}", "1", "石棉橡胶纸", "", (dx + 2, dy - 0.6 * ddr))
-    # 油面（点画线示意，看不见的内部，用细点画线在油标处标出高度）
-    v.line((xo1 - 12, t.oil_level * MM), (xo1 + 30, t.oil_level * MM), "点画线")
+    c, sn = math.cos(a), math.sin(a)
+    dy, ddr = t.drain[1] * MM, t.drain_d * MM
+    rd = ddr / 2  # 螺塞大径（旋合部分按外螺纹画，箱体剖面线画到大径）
+    ri = 6.0  # 油标 M12 大径
+    r_dip = 11.0  # 油标座半径
+    boss_s = 14.0
+
+    def P(s_, n_):  # 油标局部坐标：s 沿孔轴向外，n 垂直于孔轴
+        return (ox_ + c * s_ - sn * n_, oy_ + sn * s_ + c * n_)
+
+    def s_at_x(x, n_):
+        return (x - ox_ + sn * n_) / c
+
+    # 箱体剖面
+    p1 = [(xw0, yb), (xo1, yb), (xo1, dy - rd), (xi1, dy - rd), (xi1, y_floor), (xw0, y_floor)]
+    p2 = [(xi1, dy + rd), (xo1, dy + rd), P(s_at_x(xo1, -r_dip), -r_dip), P(boss_s, -r_dip), P(boss_s, -ri),
+          P(s_at_x(xi1, -ri), -ri)]
+    p3 = [P(s_at_x(xi1, ri), ri), P(boss_s, ri), P(boss_s, r_dip), P(s_at_x(xo1, r_dip), r_dip),
+          (xo1, y_sec), (xi1, y_sec)]
+    for lp in (p1, p2, p3):
+        v.poly(lp, close=True)
+    v.hatch([p1, p2, p3], 135)  # 与 45° 油标孔垂直，剖面线不与孔壁平行
+    v.wavy((xw0, yb), (xw0, max(y_floor, yb + b2)))
+    v.wavy((xi1, y_sec), (xo1, y_sec))
+    # 底座凸缘缺口的侧面（在剖切面后方），被螺塞挡住的一段不画
+    head = 14.0
+    v.line((xo1, yb), (xo1 + fw, yb))
+    v.line((xo1 + fw, yb), (xo1 + fw, yb + b2))
+    top_hidden = dy - 0.9 * ddr < yb + b2
+    v.line((xo1 + head if top_hidden else xo1, yb + b2), (xo1 + fw, yb + b2))
+
+    # 放油螺塞（不剖）：螺纹杆伸入箱内，封油垫剖开（涂黑画成密剖面线），六角头
+    L_th = 14.0
+    v.rect(xo1 - L_th, dy - rd, xo1, dy + rd)
+    for n_ in (-1, 1):
+        v.line((xo1 - L_th, dy + n_ * 0.45 * ddr), (xo1, dy + n_ * 0.45 * ddr), "细实线")
+    gasket = [(xo1, dy - 0.9 * ddr), (xo1 + 4, dy - 0.9 * ddr), (xo1 + 4, dy + 0.9 * ddr), (xo1, dy + 0.9 * ddr)]
+    gasket_hi, gasket_lo = gasket[:], gasket[:]
+    gasket_hi[0], gasket_hi[1] = (xo1, dy + rd), (xo1 + 4, dy + rd)
+    gasket_lo[2], gasket_lo[3] = (xo1 + 4, dy - rd), (xo1, dy - rd)
+    v.poly(gasket, close=True)
+    v.hatch([gasket_hi, gasket_lo], 45, 1.0)
+    v.rect(xo1 + 4, dy - 0.8 * ddr, xo1 + head, dy + 0.8 * ddr)
+    v.line((xo1 + 4, dy - 0.4 * ddr), (xo1 + head, dy - 0.4 * ddr))
+    v.line((xo1 + 4, dy + 0.4 * ddr), (xo1 + head, dy + 0.4 * ddr))
+    v.line((xo1 - L_th - 3, dy), (xo1 + head + 4, dy), "点画线")
+    fadd(f"放油螺塞 M{ddr:g}×1.5", "1", "Q235", "JB/ZQ 4450-2006", (xo1 + 9, dy + 0.6 * ddr))
+    fadd(f"封油垫 {ddr:g}", "1", "石棉橡胶纸", "", (xo1 + 2, dy + 0.75 * ddr))
+
+    # 杆式油标（不剖）：螺纹段旋在油标座里，油标杆斜插到油面以下，杆上刻最高、最低油面线
+    s_in = s_at_x(xi1, 0) - 2
+    v.poly([P(s_in, -ri), P(boss_s, -ri), P(boss_s, ri), P(s_in, ri)], close=True)
+    for n_ in (-1, 1):
+        v.line(P(s_in, n_ * 0.84 * ri), P(boss_s, n_ * 0.84 * ri), "细实线")
+    oil = t.oil_level * MM
+    s_tip = (oil - 12 - oy_) / sn
+    rr = 3.0
+    v.poly([P(s_in, -rr), P(s_tip, -rr), P(s_tip, rr), P(s_in, rr)])
+    for dy_mark in (-8.0, 8.0):  # 最低、最高油面刻线
+        s_m = (oil + dy_mark - oy_) / sn
+        v.line(P(s_m, -rr - 1.5), P(s_m, rr + 1.5), "细实线")
+    v.poly([P(boss_s, -6), P(26, -6), P(26, 6), P(boss_s, 6)])
+    v.poly([P(26, -10), P(34, -10), P(34, 10), P(26, 10)], close=True)
+    v.line(P(s_tip - 4, 0), P(38, 0), "点画线")
+    fadd("杆式油标 M12", "1", "Q235", "组合件", P(30, 4))
+    # 油面（细实线），在油标杆处断开
+    x_rod = ox_ + (oil - oy_) / sn * c
+    v.line((xw0 + 3, oil), (x_rod - rr / sn - 1, oil), "细实线")
+    v.line((x_rod + rr / sn + 1, oil), (xi1, oil), "细实线")
 
 
 def _front_pinion_side(d, t: HousingDetail, v: View, fadd):

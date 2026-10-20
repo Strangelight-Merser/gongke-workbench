@@ -172,9 +172,8 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         sh.section_label(c[0], c[1] + rs + 13, letter)
         sh.dim((c[0] - hb, c[1] + top), (c[0] + hb, c[1] + top), (c[0], c[1] + rs + 3.5), 0,
                "<>", s, 0, tol=tol.deviations("N9", kb / 1e3))
-        # 槽底尺寸 d − t1 的偏差（GB/T 1095-2003）：t1 偏差 +0.1（键宽 ≤ 6）或 +0.2
         sh.dim((c[0], c[1] - rs), (c[0], c[1] + top), (c[0] + rs + 6, c[1]), 90, "<>", s, 1,
-               tol=(0.0, -0.1e-3 if kb <= 6 else -0.2e-3))
+               tol=tol.shaft_keyway_depth(kb / 1e3))
         sh.roughness(c[0] + hb, c[1] + top + 1, "Ra 3.2", h=2.5)
         # 键槽对称度（对公共轴线 A-B）：被测要素是中心平面，指引线箭头与键宽尺寸线对齐
         yd = c[1] + rs + 3.5

@@ -162,6 +162,24 @@ def test_assembly_has_installation_dimensions_and_trial_run(drawings):
     assert len(msp.query('CIRCLE[layer=="虚线"]')) >= len(t.foot_bolts)
 
 
+def test_assembly_front_view_local_sections(drawings):
+    """主视图对放油螺塞和油标、视孔、连接螺栓作局部剖：有波浪线（细实线多段线）和多组剖面线；
+    放油孔小径下缘与油池底面平齐（课程设计指导书：放油孔设在油池最低处），吊钩不碰油标。"""
+    from gongke_core.drawing.assembly import MINOR
+    from gongke_core.layout.housing_detail import _hook_hits_dipstick, detail
+
+    d, files = drawings
+    t = detail(d)
+    assert abs(t.drain[1] - MINOR[16] / 2 * 1e-3 - d.housing.y_range[0]) < 0.1e-3
+    yt = t.hook_top or -d.housing.flange_base - 1.6 * d.housing.bolt_bearing
+    assert not _hook_hits_dipstick(t.dipstick, t.flange_w, yt, t.hook_drop, gap=2e-3)
+    f = next(f for f in files if f.dxf.stem == "assembly")
+    msp = ezdxf.readfile(f.dxf).modelspace()
+    wavy = [p for p in msp.query('LWPOLYLINE[layer=="细实线"]') if len(p) > 8]
+    assert len(wavy) >= 5  # 放油处 2 条、视孔 2 条、螺栓 1～2 条
+    assert len(msp.query("HATCH")) >= 8
+
+
 def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
     vb = EXAMPLE.parent / "conveyor_vbelt.yaml"
     d = design.run(design.ReducerTask.from_yaml(vb))

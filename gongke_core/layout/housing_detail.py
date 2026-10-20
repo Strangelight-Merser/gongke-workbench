@@ -256,6 +256,7 @@ class HousingDetail:
     worm_bore: WormBore | None = None
     accessory_wall: str = "x"  # 油标和放油螺塞所在的壁："x" 为右端壁，"z" 为前侧壁（z = W + δ）
     hook_drop: float = 0.0  # 吊钩自上缘向下的高度
+    hook_top: float = 0.0  # 吊钩上缘 y（0 表示默认：凸缘下螺母以下）
     boss_h: float = 0.0  # 轴承旁凸台高度 h（剖分面到凸台下表面 / 上表面）
     side_bosses: list[tuple[float, float]] = field(default_factory=list)  # 两侧壁轴承旁凸台的 x 范围
     ribs: list[float] = field(default_factory=list)  # 箱座两侧壁外加强肋的 x 位置（在轴承座正下方）
@@ -267,12 +268,22 @@ class HousingDetail:
         上缘让开凸缘下的螺母，下方不碰端壁上的油标座。"""
         fw = self.flange_w
         sg = 1 if xe > sum(self.x_outer) / 2 else -1
-        yt = -self.h.flange_base - 1.6 * self.h.bolt_bearing
+        yt = self.hook_top or -self.h.flange_base - 1.6 * self.h.bolt_bearing
         drop = self.hook_drop or 2 * fw
         y2 = yt - max(0.35 * drop, 0.5 * fw)
         r = 0.18 * fw
         pts = [(xe, yt), (xe + sg * 0.9 * fw, yt), (xe + sg * 0.9 * fw, y2), (xe, yt - drop)]
-        return pts, (xe + sg * 0.45 * fw, yt - max(r + 3e-3, 0.2 * min(drop, 2 * fw))), r
+        hy = yt - max(r + 3e-3, 0.2 * min(drop, 2 * fw))
+        if self.hook_top:  # 吊钩紧贴凸缘时，吊孔放在凸缘下螺母与吊钩下缘之间
+            nut = -self.h.flange_base - 1.05 * self.h.bolt_flange
+            low = (yt - drop + y2) / 2  # 吊孔中心处的吊钩下缘
+            hy = min((nut + low) / 2, yt - r - 3e-3)
+        return pts, (xe + sg * 0.45 * fw, hy), r
+
+    @property
+    def drain_notch(self) -> float:
+        """底座凸缘在放油螺塞处缺口的半宽（让开封油垫和扳手）。"""
+        return 0.9 * self.drain_d + 4 * MM
 
     @property
     def z_range(self) -> tuple[float, float]:
@@ -281,6 +292,24 @@ class HousingDetail:
     @property
     def cover_top(self) -> float:
         return max(self.cover_r)
+
+
+# 杆式油标 M12 的外形（沿孔轴 s、垂直孔轴 n，mm，s 从端壁外表面算起）：油标座、杆身、手柄
+DIP_OUTLINE_MM = [(0, -11), (14, -11), (14, 11), (0, 11), (26, -10), (34, -10), (34, 10), (26, 10)]
+
+
+def _hook_hits_dipstick(dip, fw: float, yt: float, drop: float, gap: float = 3 * MM) -> bool:
+    """右端壁的吊钩下缘（从端壁处 yt − drop 斜向上到外端）是否离油标外形不足 gap。"""
+    (x0, y0), ang = dip
+    c, sn = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+    w = 0.9 * fw
+    y2 = yt - max(0.35 * drop, 0.5 * fw)
+    for s_, n_ in DIP_OUTLINE_MM:
+        x = (c * s_ - sn * n_) * MM
+        y = y0 + (sn * s_ + c * n_) * MM
+        if 0 <= x <= w and y > (yt - drop) + (y2 - yt + drop) * x / w - gap:
+            return True
+    return False
 
 
 BOLT_LENGTHS_MM = [20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 80, 90, 100, 110, 120, 130, 140, 150]  # GB/T 5782 常用长度
@@ -465,19 +494,29 @@ def detail(d) -> HousingDetail:
     else:
         oil = max(-d.low.da2 / 2 + immerse, -d.high.da2 / 2 + 2.25 * d.high.mn)
     dip = ((xo[1], oil + 20 * MM), 45.0)  # 油标座在油面以上，油标杆斜插入油池
-    drain = (xo[1], y_bottom + h.flange_foot + 0.9 * 16 * MM + 3 * MM)  # 紧贴底座凸缘上方，尽量低
+    # 放油孔设在油池最低处：M16×1.5 螺孔小径（14.38 mm）下缘与箱底内表面平齐，油能放净；
+    # 螺塞头低于底座凸缘上表面，凸缘在螺塞处留出缺口（见 drain_notch）
+    drain = (xo[1], h.y_range[0] + 7.2 * MM)
     wall = "x"
     if ws:  # 端壁被蜗杆轴承座占满，油标和放油螺塞装在前侧壁上，避开中间的蜗杆
         wall = "z"
         xa = 0.5 * (xo[1] + max(w.b1 / 2, 0.0))
         dip = ((xa, oil + 20 * MM), 45.0)
         drain = (xa, drain[1])
-    # 吊钩高度：下端离端壁上的油标座至少 5 mm
+    # 吊钩高度：下端离端壁上的油标座至少 5 mm；油标头部伸到吊钩下方时，吊钩上缘改为紧贴凸缘下表面
+    # （吊钩在中间平面上，与两侧凸缘下的螺母不在同一处），并减小吊钩高度，直到让开油标
     drop = 2 * fw
+    hook_top = 0.0
     if wall == "x":
         dip_top = dip[0][1] + 11 * MM * math.sqrt(2)
         yt = -h.flange_base - 1.6 * h.bolt_bearing
         drop = max(min(drop, yt - dip_top - 5 * MM), 0.8 * fw)
+        if _hook_hits_dipstick(dip, fw, yt, drop):
+            yt = -h.flange_base - 2 * MM
+            drop = max(min(2 * fw, yt - dip_top - 5 * MM), 0.8 * fw)
+            while drop > 0.8 * fw and _hook_hits_dipstick(dip, fw, yt, drop):
+                drop -= 1 * MM
+            hook_top = yt
     if worm_bore is not None:  # 吊钩下端在蜗杆轴承座凸台以上，并让出主视图局部剖视的分界线
         yt = -h.flange_base - 1.6 * h.bolt_bearing
         drop = max(min(drop, yt - (worm_bore.y + worm_bore.boss_r) - 14 * MM), 0.8 * fw)
@@ -485,6 +524,6 @@ def detail(d) -> HousingDetail:
         h, xs, caps, boss, cover_r, outer, inner, xo, fw, y_bottom, foot_w,
         merged, fb, bolt_length(h, h.bolt_bearing, 2 * boss_h), bolt_length(h, h.bolt_flange),
         pins, max(0.75 * h.bolt_flange, 6 * MM), jack, foot_bolts, insp, eyebolts, eye_d, oil, dip, drain,
-        16 * MM, [xo[1]] if side else [xo[0], xo[1]], side, worm_bore, wall, drop,
+        16 * MM, [xo[1]] if side else [xo[0], xo[1]], side, worm_bore, wall, drop, hook_top,
         boss_h, side_bosses, list(xs), ceil_to(0.85 * h.delta, MM), min(h.bearing_seat_length, foot_w) - h.delta - 3 * MM,
     )

@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+from gongke_core.calc import tolerance as tol
 from gongke_core.calc.bevel import BevelPair
 from gongke_core.drawing.gear import dms
 from gongke_core.drawing.sheet import Sheet, TitleInfo, View, pick_scale
@@ -19,11 +20,24 @@ from gongke_core.layout.bevel_blank import BevelBlank, blank
 MM = 1e3
 
 
+# 检验项目的公差需按 GB/T 11365 查表，本项目未录入，图上留栏由使用者填写
+TO_FILL = "按 GB/T 11365 填写"
+
+
+def chordal_thickness(m: float, z: int, delta: float) -> tuple[float, float]:
+    """大端分度圆弦齿厚 s̄ 和弦齿高 h̄（标准直齿锥齿轮，按背锥当量齿数 zv = z/cos δ）：
+    s̄ = m zv sin(90°/zv)，h̄ = m + (m zv/2)(1 − cos(90°/zv))。"""
+    zv = z / math.cos(delta)
+    a = math.pi / (2 * zv)
+    return m * zv * math.sin(a), m + m * zv / 2 * (1 - math.cos(a))
+
+
 def param_rows(pair: BevelPair, member: int) -> list[list[str]]:
     z = pair.z1 if member == 1 else pair.z2
     mate = pair.z2 if member == 1 else pair.z1
     delta = pair.delta1 if member == 1 else pair.delta2
     theta_f = math.atan(1.2 * pair.m / pair.cone_distance)
+    sc, hc = chordal_thickness(pair.m, z, delta)
     f = lambda v: f"{v * MM:g}"  # noqa: E731
     return [
         ["大端模数", "m", f(pair.m)],
@@ -38,13 +52,20 @@ def param_rows(pair: BevelPair, member: int) -> list[list[str]]:
         ["轴交角", "Σ", "90°"],
         ["精度等级", "", f"{pair.inp.grade} GB/T 11365"],
         ["配对齿轮齿数", "", str(mate)],
+        ["大端分度圆弦齿厚", "s", f"{sc * MM:.3f}"],
+        ["大端分度圆弦齿高", "h", f"{hc * MM:.3f}"],
+        ["弦齿厚偏差", "Ess/Esi", TO_FILL],
+        ["齿距累积总偏差", "Fp", TO_FILL],
+        ["单个齿距偏差", "±fpt", TO_FILL],
+        ["径向跳动公差", "Fr", TO_FILL],
+        ["最小法向侧隙", "jn min", TO_FILL],
     ]
 
 
 def param_table(sh: Sheet, pair: BevelPair, member: int):
     x1, y1 = sh.inner[2], sh.inner[3]
     widths = [32, 14, 34]
-    sh.table(x1 - sum(widths), y1, param_rows(pair, member), widths, 7)
+    sh.table(x1 - sum(widths), y1, param_rows(pair, member), widths, 6)
 
 
 def reference_face(g: BevelBlank) -> float:
@@ -99,10 +120,10 @@ def draw(pair: BevelPair, member: int, bore: float, path: str | Path, title: str
     top = da / 2
     # 大端齿顶圆直径（竖直，标在右侧）
     xd = t_max + 12 / s
-    mv.dim((tipL[0], -tipL[1]), (tipL[0], tipL[1]), (xd, 0), 90, "%%c<>h11", 2)
+    mv.dim((tipL[0], -tipL[1]), (tipL[0], tipL[1]), (xd, 0), 90, "%%c<>", 2, tol=tol.deviations("h11", 2 * tipL[1] / MM))
     # 轴孔（右视图注键槽）
     t0, t1 = g.hub_span[0] * MM, g.hub_span[1] * MM
-    mv.dim((t0, -rb), (t0, rb), (t0 - 8 / s, 0), 90, "%%c<>H7", 0)
+    mv.dim((t0, -rb), (t0, rb), (t0 - 8 / s, 0), 90, "%%c<>", 0, tol=tol.deviations("H7", 2 * rb / MM))
     rh = g.hub_r * MM
     # 安装距（锥顶到基准端面）、轮冠距（大端齿顶到基准端面）、轮毂长度：标在下方
     yb = -top - 10 / s
@@ -150,8 +171,8 @@ def draw(pair: BevelPair, member: int, bore: float, path: str | Path, title: str
     lv.line((hb, yk), (hb, rb + t2))
     lv.line((-hb, rb + t2), (hb, rb + t2))
     sh.cross(lv.P(0, 0), rb * s, 4)
-    lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, rb + t2 + 8 / s), 0, "<>JS9", 0)
-    lv.dim((hb, -rb), (hb, rb + t2), (rb + 10 / s, 0), 90, "<>", 1)
+    lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, rb + t2 + 8 / s), 0, "<>", 0, tol=tol.deviations("JS9", kb / MM))
+    lv.dim((hb, -rb), (hb, rb + t2), (rb + 10 / s, 0), 90, "<>", 1, tol=tol.hub_keyway_depth(kb / MM))
     sh.roughness(*lv.P(hb, rb + t2), "Ra 3.2", 0, 2.5)
 
     # ------------------------------------------------ 参数表、图框
