@@ -86,7 +86,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 
 1. 请老师或学生评审图纸（四种方案的箱座、箱盖零件图已完成，含轴承旁凸台和加强肋：`drawing/housing_base.py`、`drawing/housing_cover.py`）。
 2. 其他方案已完成：蜗杆减速器（`calc/worm.py`、`layout/worm_reducer.py`、`layout/worm_blank.py`、`worm_design.py`、`geometry/worm.py`、`drawing/worm_wheel.py`、`drawing/worm_assembly.py`）；圆锥-圆柱减速器（`calc/bevel.py`、`layout/bevel_blank.py`、`layout/bevel_reducer.py`、`bevel_design.py`、`geometry/bevel.py`、`drawing/bevel_gear.py`）。
-3. STEP/DWG 互通。
+3. STEP/DWG 互通。DXF 按 R2007 格式输出（AutoCAD 2007 及以后、中望 CAD、浩辰 CAD 都能直接打开），暂不输出 DWG：LibreDWG 写 DWG 的功能本身标为实验性，生成的文件不一定能被 AutoCAD 打开，而 DXF 已能满足提交和修改图纸的需要。
 4. 一键安装包。
 
 ## 7. 有限元复核（`gongke_core/fem/`）

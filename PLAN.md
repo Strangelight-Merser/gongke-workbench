@@ -72,7 +72,8 @@ gongke-workbench/
 > 已完成（续）：工作台默认用 FreeCAD 自带的 Python，首次使用在面板上一键安装依赖包（装到工作台自己的目录，不进 FreeCAD 进程）；e2e 测试从全新 FreeCAD 走这一流程。
 > 已完成（续）：原生 agent 接口：`gongke_core/api.py`（dict 进出）+ MCP 服务器 `python -m gongke_core mcp`（标准库实现，8 个工具），用官方 SDK 客户端和 Claude Code 实测通过（见 `docs/agent-api.md`）。
 > 已完成（续）：对照指导书通行要求自查图纸（`docs/drawing-checklist.md`）：零件图注极限偏差和几何公差、齿轮检验项目，装配图安装尺寸、轴承规定画法、主视图局部剖；放油孔改到油池最低处。
-> 下一步：DWG 读取、STEP 导入（M4 其余部分）；Windows 上验证安装流程。
+> 已完成（续）：图纸自动自查文字重叠和压线（`drawing/lint.py`），图线遇文字自动断开、引出标注自动避让；DXF 改为 R2007 格式，兼容学校机房常见的旧版 AutoCAD。
+> 下一步：一级圆柱齿轮减速器方案（最常见的课程设计题目）；Windows 上验证安装流程。
 
 ### M0 骨架（第 1–2 周）
 - [ ] 仓库、许可证、CI（GitHub Actions，无头 FreeCAD 跑测试）

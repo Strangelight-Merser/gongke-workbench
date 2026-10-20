@@ -94,7 +94,7 @@ class Sheet:
         self.size = size
         b, l = SIZES[size]
         self.w, self.h = (l, b) if landscape else (b, l)
-        self.doc = ezdxf.new("R2018", setup=True, units=4)  # 4 = mm
+        self.doc = ezdxf.new("R2007", setup=True, units=4)  # 4 = mm
         self.msp = self.doc.modelspace()
         # 虚线（GB/T 4457.4）：画长约 4 mm，间隔约 1.5 mm
         self.doc.linetypes.add("GB_DASHED", pattern=[5.5, 4.0, -1.5], description="GB 虚线 ____ ____ ____")
