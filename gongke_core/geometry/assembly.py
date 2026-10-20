@@ -101,7 +101,8 @@ def export(design: ReducerDesign, path: str | Path, with_housing: bool = True, t
         shp.label = name
         children.append(shp)
     label = ("圆锥-圆柱齿轮减速器" if getattr(design, "bevel", None) is not None
-             else "蜗杆减速器" if getattr(design, "worm_shaft", None) is not None else "二级圆柱齿轮减速器")
+             else "蜗杆减速器" if getattr(design, "worm_shaft", None) is not None
+             else "一级圆柱齿轮减速器" if design.low is None else "二级圆柱齿轮减速器")
     asm = bd.Compound(children=children, label=label)
     bd.export_step(asm, str(path))
     return shapes

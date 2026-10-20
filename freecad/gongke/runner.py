@@ -38,7 +38,7 @@ class FormValues:
     grade: int = 8
     title: str = "带式输送机传动装置设计"
     scheme: str = "coupling"  # SCHEMES 之一
-    belt_ratio: float = 2.5
+    belt_ratio: float | None = 2.5  # None：按方案自动确定（single 方案使齿轮传动比约为 4）
 
 
 def task_dict(v: FormValues) -> dict:
@@ -51,9 +51,9 @@ def task_dict(v: FormValues) -> dict:
         "bearing_life_years": v.bearing_life_years,
         "motor_sync_speed_rpm": v.sync_speed_rpm,
         "ratio_split": v.ratio_split,
-        "gears": {"high": dict(gear), "low": dict(gear)},
+        "gears": {"high": dict(gear)} if v.scheme == "single" else {"high": dict(gear), "low": dict(gear)},
         "scheme": v.scheme,
-        "vbelt": {"ratio": v.belt_ratio},
+        "vbelt": {"ratio": v.belt_ratio} if v.belt_ratio else {},
     }
 
 
@@ -150,10 +150,12 @@ def gears_html(gears: dict) -> str:
     """面板上的传动件一行。"""
     if "worm" in gears:
         return f"<b>蜗杆传动</b> {gear_line(gears['worm'])}"
+    if "low" not in gears:
+        return f"<b>齿轮传动</b> {gear_line(gears['high'])}"
     return f"<b>高速级</b> {gear_line(gears['high'])}；<b>低速级</b> {gear_line(gears['low'])}"
 
 
-SCHEMES = ("coupling", "vbelt", "bevel", "worm")
+SCHEMES = ("coupling", "vbelt", "bevel", "worm", "single")
 
 
 def read_outputs(out_dir: Path) -> dict:

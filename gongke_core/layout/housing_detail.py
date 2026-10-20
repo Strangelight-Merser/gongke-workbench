@@ -346,6 +346,8 @@ def detail(d) -> HousingDetail:
         tips = [max(bevel.da2, d.low.da1) / 2, d.low.da2 / 2]
     elif ws:
         tips = [d.worm.de2 / 2]
+    elif d.low is None:  # 一级减速器
+        tips = [d.high.da1 / 2, d.high.da2 / 2]
     else:
         tips = [d.high.da1 / 2, max(d.high.da2, d.low.da1) / 2, d.low.da2 / 2]
     cover_r = [max(t + h.gap_radial + h.delta, b) for t, b in zip(tips, boss)]
@@ -445,7 +447,7 @@ def detail(d) -> HousingDetail:
     foot_bolts = [(x, z) for x in (xo[0] + 0.15 * (xo[1] - xo[0]), xo[1] - 0.1 * (xo[1] - xo[0])) for z in zfoot]
 
     # 视孔盖：放在低速级啮合区上方那段公切线上（没有公切线时放在最高圆顶部）
-    x_mesh = 0.0 if ws else xs[-2] + d.low.d1 / 2
+    x_mesh = 0.0 if ws else xs[-2] + (d.low or d.high).d1 / 2
     seg = None
     for e in outer:
         if isinstance(e, Seg) and e.p[0] - 1e-9 <= x_mesh <= e.q[0] + 1e-9:
@@ -475,6 +477,9 @@ def detail(d) -> HousingDetail:
     elif ws:
         eye_d = 10 * MM if d.worm.a <= 200 * MM else 12 * MM
         eyebolts = [-0.6 * cover_r[0], 0.6 * cover_r[0]]
+    elif d.low is None:  # 一级减速器：小齿轮上方是视孔盖，两个吊环螺钉都装在大齿轮上方的圆弧顶部两侧
+        eye_d = 10 * MM if d.high.a <= 250 * MM else 12 * MM
+        eyebolts = [xs[1] - 0.3 * cover_r[1], xs[1] + 0.3 * cover_r[1]]
     else:
         eye_d = 10 * MM if d.high.a + d.low.a <= 350 * MM else 12 * MM
         eyebolts = [xs[0] + 0.3 * (xs[1] - xs[0]), xs[2]]
@@ -485,12 +490,14 @@ def detail(d) -> HousingDetail:
         oil = max(-w.a - (brg.d + brg.D) / 4, -w.a - w.da1 / 2 + w.m)
     else:
         # 油面：低速级大齿轮浸油 1～2 个齿高且不小于 10 mm
-        immerse = max(10 * MM, 2 * 2.25 * d.low.mn)
+        immerse = max(10 * MM, 2 * 2.25 * (d.low or d.high).mn)
     # 同时保证高速级大齿轮浸到约一个齿高（与 design 中的浸油深度校核一致）
     if ws:
         pass
     elif bevel:  # 大锥齿轮浸入 0.7 倍齿宽（与 bevel_design 的浸油校核一致）
         oil = max(-d.low.da2 / 2 + immerse, -bevel.da2 / 2 + 0.7 * bevel.b * math.sin(bevel.delta2))
+    elif d.low is None:
+        oil = -d.high.da2 / 2 + immerse
     else:
         oil = max(-d.low.da2 / 2 + immerse, -d.high.da2 / 2 + 2.25 * d.high.mn)
     dip = ((xo[1], oil + 20 * MM), 45.0)  # 油标座在油面以上，油标杆斜插入油池

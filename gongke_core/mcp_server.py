@@ -39,7 +39,7 @@ TOOLS = [
           {}, [], lambda: api.task_schema()),
     _tool("get_example_task", "示例任务书",
           "返回某种传动方案的示例任务书，可在其基础上修改参数。scheme：coupling（二级圆柱齿轮）、vbelt（V 带 + 二级圆柱齿轮）、"
-          "bevel（圆锥-圆柱齿轮）、worm（蜗杆）。",
+          "bevel（圆锥-圆柱齿轮）、worm（蜗杆）、single（V 带 + 一级圆柱齿轮）。",
           {"scheme": {"enum": list(api.SCHEMES), "default": "coupling"}}, [],
           lambda scheme="coupling": api.example_task(scheme)),
     _tool("validate_task", "检查任务书", "检查任务书的字段、类型和取值范围，返回错误列表（空表示无误）。",

@@ -84,3 +84,22 @@ def test_vbelt_scheme():
     assert s1.layout.coupling_hub >= d.belt.width - 1e-9
     end = s1.layout.segment("端部")
     assert fp.z == pytest.approx(end.z0 + end.length / 2)
+
+
+def test_single_stage_scheme():
+    # V 带 + 一级圆柱齿轮减速器：两根轴，齿轮在两轴承中间；壁厚按一级减速器 δ = 0.025a + 1 ≥ 8 mm
+    d = design.run(design.ReducerTask.from_yaml(VBELT.parent / "conveyor_single.yaml"))
+    failed = [c for c in d.checks if not c[1]]
+    assert not failed, failed
+    assert d.low is None and len(d.shafts) == 2 and d.stages == [d.high]
+    assert 3 <= d.high.u <= 5 and 2 <= d.belt.ratio <= 4
+    assert d.housing.delta == pytest.approx(max(0.025 * d.high.a * 1e3 + 1, 8) * 1e-3)
+    assert d.shafts[1].layout.x == pytest.approx(d.high.a)
+    w = d.housing.inner_width
+    for s in d.shafts:
+        g = s.layout.gears[0]
+        assert g.z == pytest.approx(w / 2)
+        r = s.strength.reactions
+        assert abs(sum(p.fx for p in s.load_case.loads) + r.ax + r.bx) < 1e-6
+        assert sum(t for _, t in s.load_case.torque_points) == pytest.approx(0)
+    assert [c.location for c in d.couplings] == ["Ⅱ轴—卷筒轴"]

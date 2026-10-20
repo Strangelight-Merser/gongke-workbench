@@ -50,7 +50,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 
 **做：**
 
-- 传动方案：电动机 → 联轴器或普通 V 带传动 → 展开式二级斜齿圆柱齿轮减速器 → 联轴器 → 卷筒（带式输送机），这是最常见的课程设计题目。V 带方案先按预定带传动比设计 V 带，带轮直径圆整后用实际带传动比重新分配减速器传动比（`calc/vbelt.py`、`layout/pulley.py`）。
+- 传动方案：电动机 → 联轴器或普通 V 带传动 → 展开式二级斜齿圆柱齿轮减速器 → 联轴器 → 卷筒（带式输送机），这是最常见的课程设计题目。另一个常见题目“V 带 + 一级圆柱齿轮减速器”（`scheme: single`）复用同一套代码：`ReducerDesign.low` 为 None，`stages` 只有一级，箱体、轴、出图按两根轴处理。V 带方案先按预定带传动比设计 V 带，带轮直径圆整后用实际带传动比重新分配减速器传动比（`calc/vbelt.py`、`layout/pulley.py`）。
 - 电机选择（Y 系列 4 极 / 6 极）、传动比分配 `i₁ = √(1.3 i)`。
 - 斜齿轮按接触强度设计、按弯曲强度确定模数，圆整中心距后反算螺旋角并校核；不满足时自动加大中心距重算。
 - 轴：最小直径估算、阶梯轴结构自动生成、两平面受力和弯矩、弯扭合成校核；判断是否需要做成齿轮轴。
@@ -84,7 +84,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 
 ## 6. 后续路线
 
-1. 请老师或学生评审图纸（四种方案的箱座、箱盖零件图已完成，含轴承旁凸台和加强肋：`drawing/housing_base.py`、`drawing/housing_cover.py`）。
+1. 请老师或学生评审图纸（五种方案的箱座、箱盖零件图已完成，含轴承旁凸台和加强肋：`drawing/housing_base.py`、`drawing/housing_cover.py`）。
 2. 其他方案已完成：蜗杆减速器（`calc/worm.py`、`layout/worm_reducer.py`、`layout/worm_blank.py`、`worm_design.py`、`geometry/worm.py`、`drawing/worm_wheel.py`、`drawing/worm_assembly.py`）；圆锥-圆柱减速器（`calc/bevel.py`、`layout/bevel_blank.py`、`layout/bevel_reducer.py`、`bevel_design.py`、`geometry/bevel.py`、`drawing/bevel_gear.py`）。
 3. STEP/DWG 互通。DXF 按 R2007 格式输出（AutoCAD 2007 及以后、中望 CAD、浩辰 CAD 都能直接打开），暂不输出 DWG：LibreDWG 写 DWG 的功能本身标为实验性，生成的文件不一定能被 AutoCAD 打开，而 DXF 已能满足提交和修改图纸的需要。
 4. 一键安装包。

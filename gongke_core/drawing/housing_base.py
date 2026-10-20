@@ -37,7 +37,7 @@ def tolerances(d) -> dict:
     if worm:
         pairs = []
     else:
-        pairs = [d.low] if getattr(d, "bevel", None) is not None else [d.high, d.low]
+        pairs = [d.low] if getattr(d, "bevel", None) is not None else d.stages
     out = {"fa": [], "parallel": [], "cyl": [], "side": None, "worm": None}
     for k, pair in enumerate(pairs):
         q = pair.inp.grade

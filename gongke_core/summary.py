@@ -33,6 +33,8 @@ def summarize(d: ReducerDesign, fem=None) -> dict:
         }
     pairs = () if d.task.scheme == "worm" else (("high", d.high), ("low", d.low))
     for key, p in pairs:
+        if p is None:  # 一级减速器没有低速级
+            continue
         if not hasattr(p, "mn"):  # 直齿锥齿轮
             gears[key] = {
                 "name": p.inp.name, "type": "bevel", "m": p.m * 1e3, "z1": p.z1, "z2": p.z2,
@@ -43,7 +45,7 @@ def summarize(d: ReducerDesign, fem=None) -> dict:
             }
             continue
         gears[key] = {
-            "name": p.inp.name, "mn": p.mn * 1e3, "z1": p.z1, "z2": p.z2, "beta_deg": math.degrees(p.beta),
+            "name": p.inp.name or "齿轮传动", "mn": p.mn * 1e3, "z1": p.z1, "z2": p.z2, "beta_deg": math.degrees(p.beta),
             "a": p.a * 1e3, "d1": p.d1 * 1e3, "d2": p.d2 * 1e3, "b1": p.b1 * 1e3, "b2": p.b2 * 1e3,
             "sigma_h": p.check.sigma_h / 1e6, "sigma_h_allow": p.check.sigma_h_allow / 1e6,
             "sigma_f": [s / 1e6 for s in p.check.sigma_f], "sigma_f_allow": [s / 1e6 for s in p.check.sigma_f_allow],
@@ -71,7 +73,7 @@ def summarize(d: ReducerDesign, fem=None) -> dict:
         "scheme": d.task.scheme,
         "belt": belt,
         "motor": {"model": k.motor.model, "power_kw": k.motor.power / 1e3, "speed_rpm": k.motor.speed_rpm},
-        "ratios": {"total": k.total_ratio, "belt": k.i_belt, "high": d.high.u, "low": d.low.u if hasattr(d, "low") else None, "speed_error_pct": d.output_speed_error * 100},
+        "ratios": {"total": k.total_ratio, "belt": k.i_belt, "high": d.high.u, "low": d.low.u if getattr(d, "low", None) else None, "speed_error_pct": d.output_speed_error * 100},
         "shaft_states": [{"name": s.name, "power_kw": s.power / 1e3, "speed_rpm": s.speed_rpm, "torque_nm": s.torque}
                          for s in k.shafts],
         "gears": gears,

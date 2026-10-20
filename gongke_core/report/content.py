@@ -49,12 +49,14 @@ def build(d: ReducerDesign, with_diagrams: bool = True, fem=None) -> Doc:
         _worm(doc, d)
     else:
         for p in (d.high, d.low):
+            if p is None:  # 一级减速器
+                continue
             if _is_bevel(p):
                 _bevel(doc, p)
             else:
                 _gear(doc, p)
     for s in d.shafts:
-        _shaft(doc, s, with_diagrams)
+        _shaft(doc, s, with_diagrams, _single_scheme(d))
     _bearings(doc, d)
     _keys(doc, d)
     _couplings(doc, d)
@@ -79,12 +81,16 @@ def _worm_scheme(d) -> bool:
     return d.task.scheme == "worm"
 
 
+def _single_scheme(d) -> bool:
+    return d.task.scheme == "single"
+
+
 def _task(doc: Doc, d: ReducerDesign):
     t = d.task.conveyor
     _h1(doc, "设计任务")
     first = "普通 V 带传动" if d.belt else "弹性联轴器"
     red = ("圆锥-圆柱齿轮减速器" if _bevel_scheme(d) else "单级蜗杆减速器（蜗杆下置）" if _worm_scheme(d)
-           else "展开式二级斜齿圆柱齿轮减速器")
+           else "一级斜齿圆柱齿轮减速器" if _single_scheme(d) else "展开式二级斜齿圆柱齿轮减速器")
     doc.p(f"设计带式输送机的传动装置。传动方案为：电动机 → {first} → {red} → "
           "弹性联轴器 → 卷筒。原始数据如下：")
     doc.table(["参数", "数值"], [
@@ -106,6 +112,10 @@ def _task(doc: Doc, d: ReducerDesign):
               "缺点是齿面滑动大、效率低、发热多，需要进行热平衡计算。蜗杆圆周速度不大（vs ≤ 4～5 m/s），"
               "采用蜗杆下置，蜗杆浸在油中，啮合处润滑和冷却条件好。")
         return
+    if _single_scheme(d):
+        doc.p("一级圆柱齿轮减速器结构简单、制造方便，传动比一般不超过 5，总传动比较大的部分由 V 带承担。"
+              "齿轮相对两轴承对称布置，轴的受力和变形对称，载荷沿齿宽分布较均匀。")
+        return
     inp = "带轮" if d.belt else "输入联轴器"
     doc.p(f"展开式布置中，高速级齿轮布置在远离{inp}的一侧，低速级齿轮布置在远离输出联轴器的一侧，"
           "使轴的扭转变形部分抵消弯曲变形引起的载荷沿齿宽分布不均。")
@@ -117,7 +127,10 @@ def _motor(doc: Doc, d: ReducerDesign):
     e = t.efficiencies
     _h1(doc, "电动机的选择")
     doc.eq(f"工作机所需功率 Pw = F·v = {t.belt_pull:.0f} × {t.belt_speed:.2f} = {k.work_power/1e3:.3f} kW")
-    if d.belt:
+    if _single_scheme(d):
+        doc.eq(f"传动装置总效率 η = η带 · η联 · η轴承² · η齿轮 · η卷筒 = {e.belt} × {e.coupling} × {e.bearing_pair}² × "
+               f"{e.gear_pair} × {e.drum} = {k.eta_total:.4f}")
+    elif d.belt:
         doc.eq(f"传动装置总效率 η = η带 · η联 · η轴承³ · η齿轮² · η卷筒 = {e.belt} × {e.coupling} × {e.bearing_pair}³ × "
                f"{e.gear_pair}² × {e.drum} = {k.eta_total:.4f}")
     elif _worm_scheme(d):
@@ -151,9 +164,23 @@ def _ratios(doc: Doc, d: ReducerDesign):
         doc.table(["轴", "功率 P / kW", "转速 n / (r/min)", "转矩 T / (N·m)"],
                   [[s.name, f(s.power / 1e3, 3), f(s.speed_rpm, 2), f(s.torque, 2)] for s in k.shafts])
         return
+    if _single_scheme(d):
+        b = d.belt
+        how = (f"按任务书取 {t.belt_ratio:g}" if t.belt_ratio else
+               f"取 i / 4 = {k.total_ratio / 4:.3f} 并限制在 2～4 之间，为 {kinematics.belt_ratio_single(k.total_ratio):.3f}")
+        doc.p(f"V 带传动比推荐 2～4，一级圆柱齿轮传动比推荐 3～5，且带传动比宜小于齿轮传动比。V 带传动比初值{how}，"
+              f"使齿轮传动比约为 4。带轮直径圆整后实际传动比 i带 = dd2/dd1 = {mm(b.dd2,0)}/{mm(b.dd1,0)} = {b.ratio:.3f}"
+              "（不计弹性滑动），据此确定齿轮传动比：")
+        doc.eq(f"齿轮传动比 i齿 = i / i带 = {k.total_ratio:.3f} / {b.ratio:.3f} = {k.i_high:.3f}")
+        doc.p(f"齿数圆整后实际齿数比 u = {d.high.z2}/{d.high.z1} = {d.high.u:.3f}，总传动比 i带 u = {d.actual_ratio:.3f}，"
+              f"输送带速度误差 {d.output_speed_error*100:+.2f}%（允许 ±5%）。")
+        doc.p("各轴功率按电动机所需功率 Pd 逐级乘以效率计算，转矩 T = 9550 P / n。")
+        doc.table(["轴", "功率 P / kW", "转速 n / (r/min)", "转矩 T / (N·m)"],
+                  [[s.name, f(s.power / 1e3, 3), f(s.speed_rpm, 2), f(s.torque, 2)] for s in k.shafts])
+        return
     if d.belt:
         b = d.belt
-        doc.p(f"V 带传动比初取 i带 = {t.belt_ratio:g}（推荐 2～4，宜小于齿轮传动比）。带轮直径圆整后实际传动比 "
+        doc.p(f"V 带传动比初取 i带 = {k.i_belt if t.belt_ratio is None else t.belt_ratio:g}（推荐 2～4，宜小于齿轮传动比）。带轮直径圆整后实际传动比 "
               f"i带 = dd2/dd1 = {mm(b.dd2,0)}/{mm(b.dd1,0)} = {b.ratio:.3f}（不计弹性滑动），据此分配减速器传动比：")
         doc.eq(f"减速器传动比 i减 = i / i带 = {k.total_ratio:.3f} / {b.ratio:.3f} = {k.reducer_ratio:.3f}")
         doc.eq(f"高速级 i1 = √({t.ratio_split} i减) = {k.i_high:.3f}，低速级 i2 = i减 / i1 = {k.i_low:.3f}")
@@ -180,7 +207,7 @@ def _gear(doc: Doc, p: GearPair):
     i = p.inp
     c = p.check
     m1, m2 = standards.gear_material(i.material1), standards.gear_material(i.material2)
-    _h1(doc, f"{i.name}斜齿圆柱齿轮传动设计")
+    _h1(doc, f"{i.name}斜齿圆柱齿轮传动设计" if i.name else "斜齿圆柱齿轮传动设计")
     doc.h2("1. 选择材料、精度和齿数")
     doc.p(f"小齿轮 {m1.name}，{m1.hardness_hb:.0f} HBW；大齿轮 {m2.name}，{m2.hardness_hb:.0f} HBW；软齿面闭式传动。"
           f"精度等级 {i.grade} 级（GB/T 10095）。初选 z1 = {i.z1}，螺旋角 β = {i.beta_deg}°，齿宽系数 φd = {i.phi_d}。")
@@ -404,7 +431,7 @@ def _dms(rad: float) -> str:
     return f"{d}°{m:02d}′{s:02d}″"
 
 
-def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
+def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool, single: bool = False):
     lay = s.layout
     _h1(doc, f"{lay.name}的设计")
     doc.h2("1. 估算最小直径")
@@ -424,7 +451,8 @@ def _shaft(doc: Doc, s: ShaftResult, with_diagrams: bool):
                 continue
             nm = "蜗轮"
         else:
-            nm = f"{'高速级' if g.pair == 'high' else '低速级'}{'小' if g.member == 1 else '大'}齿轮"
+            stage = "" if single else "高速级" if g.pair == "high" else "低速级"
+            nm = f"{stage}{'小' if g.member == 1 else '大'}齿轮"
         if g.integral:
             rule = "小端齿根圆到键槽底部的距离小于 1.6m" if g.pair == "bevel" else "齿根圆到键槽底部的距离小于 2.5mn"
             gear_note.append(f"{nm}{rule}，做成齿轮轴")
@@ -557,10 +585,11 @@ def _couplings(doc: Doc, d: ReducerDesign):
 def _housing(doc: Doc, d: ReducerDesign):
     h = d.housing
     worm = _worm_scheme(d)
+    single = _single_scheme(d)
     _h1(doc, "箱体主要结构尺寸")
     doc.table(["名称", "公式", "取值 / mm"], [
-        ["箱座壁厚 δ", "0.04a + 3 ≥ 8" if worm else "0.025a + 3 ≥ 8", mm(h.delta, 1)],
-        ["箱盖壁厚 δ1", "0.85δ ≥ 8" if worm else "0.02a + 3 ≥ 8", mm(h.delta1, 1)],
+        ["箱座壁厚 δ", "0.04a + 3 ≥ 8" if worm else "0.025a + 1 ≥ 8" if single else "0.025a + 3 ≥ 8", mm(h.delta, 1)],
+        ["箱盖壁厚 δ1", "0.85δ ≥ 8" if worm else "0.02a + 1 ≥ 8" if single else "0.02a + 3 ≥ 8", mm(h.delta1, 1)],
         ["箱座凸缘厚度 b", "1.5δ", mm(h.flange_base, 1)],
         ["箱盖凸缘厚度 b1", "1.5δ1", mm(h.flange_cover, 1)],
         ["箱座底凸缘厚度 b2", "2.5δ", mm(h.flange_foot, 1)],
@@ -572,11 +601,13 @@ def _housing(doc: Doc, d: ReducerDesign):
         ["大齿轮齿顶圆与内壁距离 Δ1", "≥ 1.2δ", mm(h.gap_radial, 0)],
         ["轴承端面与内壁距离 Δ3", "油润滑 3–5，脂润滑 8–12", mm(h.gap_bearing, 0)],
         ["箱体内壁宽度", "2Δ2 + L大锥齿轮 + c + b低速小" if _bevel_scheme(d)
-         else "max(L蜗轮毂 + 2Δ2, da1 + 2Δ1)" if worm else "2Δ2 + b低速小 + c + b高速小",
+         else "max(L蜗轮毂 + 2Δ2, da1 + 2Δ1)" if worm else "2Δ2 + b1" if single else "2Δ2 + b低速小 + c + b高速小",
          mm(h.inner_width, 1)],
     ])
     if worm:
         doc.p(f"表中 a 为蜗杆传动中心距 {mm(d.worm.a,0)} mm。蜗杆下置，蜗杆齿顶到箱底的油池深度取 40 mm。")
+    elif single:
+        doc.p(f"表中 a 为齿轮传动中心距 {mm(d.high.a,0)} mm。")
     else:
         doc.p(f"表中 a 取低速级中心距 {mm(d.low.a,0)} mm。")
 
@@ -590,9 +621,10 @@ def _lubrication(doc: Doc, d: ReducerDesign):
               "蜗杆轴承靠蜗杆搅起的油润滑，内侧装挡油盘防止过多的油冲入轴承；蜗轮轴轴承转速低，用润滑脂润滑，"
               "内侧加挡油环。伸出轴处采用唇形密封圈。")
         return
-    v = max(d.high.pitch_velocity, d.low.pitch_velocity)
+    v = max(p.pitch_velocity for p in (d.high, d.low) if p is not None)
     _h1(doc, "润滑与密封")
-    dip = "大锥齿轮整个齿宽浸入油中" if _bevel_scheme(d) else "高速级大齿轮浸入油中约一个齿高"
+    dip = ("大锥齿轮整个齿宽浸入油中" if _bevel_scheme(d) else "大齿轮浸入油中 1～2 个齿高（不少于 10 mm）" if _single_scheme(d)
+           else "高速级大齿轮浸入油中约一个齿高")
     doc.p(f"齿轮最大圆周速度 {v:.2f} m/s < 12 m/s，齿轮采用浸油润滑，{dip}。"
           + ("轴承利用齿轮飞溅的油润滑（v ≥ 2 m/s）。" if v >= 2 else "圆周速度小于 2 m/s，轴承采用润滑脂润滑，内侧加挡油环。")
           + "伸出轴处采用毡圈油封或唇形密封圈。")

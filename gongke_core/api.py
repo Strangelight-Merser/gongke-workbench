@@ -27,6 +27,7 @@ SCHEMES = {
     "vbelt": "电动机 → V 带 → 展开式二级圆柱齿轮减速器 → 联轴器 → 卷筒",
     "bevel": "电动机 → 联轴器 → 圆锥-圆柱齿轮减速器 → 联轴器 → 卷筒",
     "worm": "电动机 → 联轴器 → 单级蜗杆减速器（蜗杆下置） → 联轴器 → 卷筒",
+    "single": "电动机 → V 带 → 一级圆柱齿轮减速器 → 联轴器 → 卷筒（齿轮参数写在 gears.high）",
 }
 
 GEAR_MATERIALS = [r[0] for r in standards.load("textbook/gear_materials.yaml")["materials"]]
@@ -132,9 +133,10 @@ TASK_SCHEMA: dict[str, Any] = {
                         "description": "二级圆柱齿轮减速器高速级传动比 i1 = √(ratio_split·i)"},
         "vbelt": {
             "type": "object",
-            "description": "V 带参数（vbelt 方案）",
+            "description": "V 带参数（vbelt、single 方案）",
             "properties": {
-                "ratio": {"type": "number", "minimum": 1.5, "maximum": 4, "default": 2.5, "description": "V 带传动比"},
+                "ratio": {"type": "number", "minimum": 1.5, "maximum": 4,
+                          "description": "V 带传动比（不给出时 vbelt 取 2.5；single 取 i/4 并限制在 2～4，使齿轮传动比约为 4）"},
                 "section": {"enum": ["A", "B"], "description": "带型（不给出时自动选）"},
                 "dd1_mm": {"type": "number", "description": "小带轮基准直径，mm（不给出时自动选）"},
                 "a0_mm": {"type": "number", "description": "初定中心距，mm"},
@@ -248,7 +250,9 @@ def validate(task: dict) -> list[str]:
         errors.append("task.gears.worm：只用于 worm 方案")
     if scheme == "bevel" and "high" in gears and any(k in gears["high"] for k in ("beta_deg", "phi_d")):
         errors.append("task.gears.high：bevel 方案的高速级是直齿锥齿轮，没有 beta_deg、phi_d（用 phi_r）")
-    if scheme in ("coupling", "vbelt") and "high" in gears and "phi_r" in gears["high"]:
+    if scheme == "single" and "low" in gears:
+        errors.append("task.gears.low：single 方案只有一级齿轮，用 gears.high")
+    if scheme in ("coupling", "vbelt", "single") and "high" in gears and "phi_r" in gears["high"]:
         errors.append("task.gears.high.phi_r：只用于 bevel 方案")
     return errors
 

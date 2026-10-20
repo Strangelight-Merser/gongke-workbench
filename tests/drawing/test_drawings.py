@@ -200,6 +200,17 @@ def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
     _assert_no_overlaps(files)
 
 
+def test_single_stage_scheme_drawings(tmp_path):
+    d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_single.yaml"))
+    files = drawing.build_all(d, tmp_path, svg=False, pdf=False)
+    assert [f.number for f in files] == ["GK-00", "GK-01-01", "GK-01-02", "GK-02-01", "GK-02-02", "GK-03-01",
+                                         "GK-04-01", "GK-04-02"]
+    msp = ezdxf.readfile(files[0].dxf).modelspace()
+    texts = " ".join(e.dxf.text for e in msp.query("TEXT"))
+    assert "一级圆柱齿轮减速器" in texts and "高速级" not in texts
+    _assert_no_overlaps(files)
+
+
 def test_bevel_scheme_drawings(tmp_path):
     d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_bevel.yaml"))
     files = drawing.build_all(d, tmp_path, svg=False, pdf=False)

@@ -42,7 +42,7 @@ Windows 上 `command` 可以写 FreeCAD 自带的 Python，如 `C:\\Program File
 | 工具 | 作用 |
 |---|---|
 | `get_task_schema` | 任务书的 JSON Schema：字段含义、单位、默认值、可选值 |
-| `get_example_task` | 某种传动方案（coupling / vbelt / bevel / worm）的示例任务书 |
+| `get_example_task` | 某种传动方案（coupling / vbelt / bevel / worm / single）的示例任务书 |
 | `validate_task` | 检查任务书，列出全部错误 |
 | `run_design` | 完成全部设计计算，返回结果摘要、全部校核项和未通过项 |
 | `explore_parameter` | 一个参数取多个值分别设计，返回各方案的主要指标，用于选参数 |

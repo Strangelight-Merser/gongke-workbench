@@ -24,7 +24,7 @@
 ## 测试
 
 - `pytest tests/calc tests/standards`：纯 Python，不需要 FreeCAD。
-- `pytest tests/drawing`：工程图（需要 ezdxf），四个方案的图纸都用 `drawing/lint.py` 自动检查文字重叠和压线（必须为 0）；改图后仍要渲染 `drawings.pdf` 目视检查，并按 `docs/drawing-checklist.md` 复查。
+- `pytest tests/drawing`：工程图（需要 ezdxf），五个方案的图纸都用 `drawing/lint.py` 自动检查文字重叠和压线（必须为 0）；改图后仍要渲染 `drawings.pdf` 目视检查，并按 `docs/drawing-checklist.md` 复查。
 - `pytest tests/fem`：CalculiX 有限元复核（需要 ccx ≥ 2.21 和 gmsh，可用 `GONGKE_CCX`、`GONGKE_GMSH` 指定路径；没有时自动跳过）。
 - `pytest tests/geometry`：需要 build123d（约 2 分钟）。
 - `tests/e2e/run_freecad_e2e.sh`：下载 FreeCAD AppImage，在 Xvfb 下跑界面端到端测试，CI 中运行。

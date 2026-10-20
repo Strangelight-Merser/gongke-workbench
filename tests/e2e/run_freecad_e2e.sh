@@ -13,9 +13,9 @@ fi
 mkdir -p "$HOME/.local/share/FreeCAD/Mod"
 ln -sfn "$REPO" "$HOME/.local/share/FreeCAD/Mod/gongke-workbench"
 export GONGKE_E2E_OUT="${GONGKE_E2E_OUT:-/tmp/gongke_e2e}"
-# 四种传动方案各跑一遍；第一次先点面板上的按钮，用 FreeCAD 自带的 Python 安装依赖包（与学生首次使用的流程相同）
+# 五种传动方案各跑一遍；第一次先点面板上的按钮，用 FreeCAD 自带的 Python 安装依赖包（与学生首次使用的流程相同）
 install=1
-for scheme in coupling vbelt bevel worm; do
+for scheme in coupling vbelt bevel worm single; do
   rm -f "$GONGKE_E2E_OUT/ok"
   (cd "$WORK/squashfs-root" && GONGKE_E2E_INSTALL=$install GONGKE_E2E_SCHEME=$scheme xvfb-run -a -s "-screen 0 1600x1000x24" ./usr/bin/freecad "$REPO/tests/e2e/freecad_gui_macro.py" >/dev/null 2>&1 || true)
   cat "$GONGKE_E2E_OUT/log.txt"

@@ -31,8 +31,8 @@ try:
         P("install", ok, p.proc.exitCode(), p.result.toPlainText()[-300:])
         assert ok and p.proc.exitCode() == 0, "依赖包安装失败"
     scheme = os.environ.get("GONGKE_E2E_SCHEME")
-    if scheme in ("vbelt", "bevel", "worm"):
-        p.scheme.setCurrentIndex(("coupling", "vbelt", "bevel", "worm").index(scheme))
+    if scheme in ("vbelt", "bevel", "worm", "single"):
+        p.scheme.setCurrentIndex(("coupling", "vbelt", "bevel", "worm", "single").index(scheme))
     p.with_fem.setChecked(True)  # 用 FreeCAD 自带的 ccx
     p.run()
     ok = p.proc.waitForFinished(600000)
@@ -48,7 +48,7 @@ try:
     assert "有限元复核" in p.result.toPlainText(), "未找到 FreeCAD 自带的 ccx 或有限元复核失败"
     if scheme != "worm":
         assert list((p.out_dir / "fem").glob("tooth_zv*.inp")), "未找到 FreeCAD 自带的 gmsh，齿根应力未复核"
-    if os.environ.get("GONGKE_E2E_SCHEME") == "vbelt":
+    if os.environ.get("GONGKE_E2E_SCHEME") in ("vbelt", "single"):
         assert "GK-03-01" in p.result.toPlainText(), "大带轮零件图未生成"
     if os.environ.get("GONGKE_E2E_SCHEME") == "bevel":
         assert "锥齿轮" in p.result.toPlainText(), "锥齿轮零件图未生成"

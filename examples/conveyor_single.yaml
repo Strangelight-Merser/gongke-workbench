@@ -1,0 +1,23 @@
+# 带式输送机传动装置设计任务书（示例五：V 带 + 一级圆柱齿轮减速器）
+title: 带式输送机传动装置设计
+scheme: single             # 电动机 → V 带 → 一级斜齿圆柱齿轮减速器 → 联轴器 → 卷筒
+conveyor:
+  belt_pull_N: 2300        # 输送带工作拉力 F
+  belt_speed_m_s: 1.5      # 输送带速度 v
+  drum_diameter_mm: 400    # 卷筒直径 D
+life:
+  years: 10
+  days_per_year: 300
+  shifts: 2                # 每班 8 小时
+bearing_life_years: 3      # 轴承按检修期 3 年计
+motor_sync_speed_rpm: 1000
+# vbelt:                   # V 带参数，都可不填
+#   ratio: 3               # V 带传动比（不填时取 i/4 并限制在 2～4，使齿轮传动比约为 4）
+#   section: A             # 指定带型（不填时程序在 A、B 型中自动选择）
+gears:
+  high:                    # 一级减速器的齿轮参数写在 high
+    material1: 40Cr_QT
+    material2: 45_QT
+    grade: 8
+    z1: 24
+    beta_deg: 14

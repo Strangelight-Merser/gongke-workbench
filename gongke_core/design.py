@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -58,10 +59,10 @@ class ReducerTask:
             sync_speed_rpm=float(d.get("motor_sync_speed_rpm", 1500)),
             ratio_split=float(d.get("ratio_split", 1.3)),
             scheme=str(d.get("scheme", "coupling")),
-            belt_ratio=float((d.get("vbelt") or {}).get("ratio", 2.5)),
+            belt_ratio=float(r) if (r := (d.get("vbelt") or {}).get("ratio")) else None,
         )
-        if conveyor.scheme not in ("coupling", "vbelt", "bevel", "worm"):
-            raise ValueError(f"未知的传动方案 scheme: {conveyor.scheme}（可选 coupling、vbelt、bevel、worm）")
+        if conveyor.scheme not in ("coupling", "vbelt", "bevel", "worm", "single"):
+            raise ValueError(f"未知的传动方案 scheme: {conveyor.scheme}（可选 coupling、vbelt、bevel、worm、single）")
         gears = d.get("gears", {})
         shaft = d.get("shaft", {}) or {}
         return cls(
@@ -152,8 +153,8 @@ class Coupling:
 class ReducerDesign:
     task: ReducerTask
     kin: kinematics.Kinematics
-    high: gear_calc.GearPair
-    low: gear_calc.GearPair
+    high: gear_calc.GearPair  # 一级减速器（single）的唯一一对齿轮
+    low: gear_calc.GearPair | None  # 一级减速器为 None
     housing: lay.Housing
     shafts: list[ShaftResult]
     couplings: list[Coupling]
@@ -162,8 +163,13 @@ class ReducerDesign:
     belt: vbelt_calc.BeltDrive | None = None
 
     @property
+    def stages(self) -> list[gear_calc.GearPair]:
+        """减速器内的各级圆柱齿轮传动（从高速级到低速级）。"""
+        return [self.high] if self.low is None else [self.high, self.low]
+
+    @property
     def actual_ratio(self) -> float:
-        return (self.belt.ratio if self.belt else 1.0) * self.high.u * self.low.u
+        return (self.belt.ratio if self.belt else 1.0) * math.prod(p.u for p in self.stages)
 
     @property
     def output_speed_error(self) -> float:
@@ -183,11 +189,11 @@ def gear_loads(pair: gear_calc.GearPair, member: int, z: float) -> shaft_calc.Po
     中间轴轴向力相互抵消的要求确定方向（见 docs/architecture.md 受力约定）。
     """
     ft, fr, fa = pair.tangential_force, pair.radial_force, pair.axial_force
-    high = pair.inp.name.startswith("高速")
+    high = not pair.inp.name.startswith("低速")  # 一级减速器的齿轮与高速级相同
     if high and member == 1:  # Ⅰ轴小齿轮，主动，啮合点在 +x 侧
-        return shaft_calc.PointLoad(z, fx=-fr, fy=-ft, fz=+fa, x0=+pair.d1 / 2, label="高速级小齿轮")
+        return shaft_calc.PointLoad(z, fx=-fr, fy=-ft, fz=+fa, x0=+pair.d1 / 2, label=f"{pair.inp.name}小齿轮")
     if high and member == 2:  # Ⅱ轴大齿轮，从动，啮合点在 −x 侧
-        return shaft_calc.PointLoad(z, fx=+fr, fy=+ft, fz=-fa, x0=-pair.d2 / 2, label="高速级大齿轮")
+        return shaft_calc.PointLoad(z, fx=+fr, fy=+ft, fz=-fa, x0=-pair.d2 / 2, label=f"{pair.inp.name}大齿轮")
     if member == 1:  # Ⅱ轴小齿轮，主动，啮合点在 +x 侧
         return shaft_calc.PointLoad(z, fx=-fr, fy=+ft, fz=+fa, x0=+pair.d1 / 2, label="低速级小齿轮")
     return shaft_calc.PointLoad(z, fx=+fr, fy=-ft, fz=-fa, x0=-pair.d2 / 2, label="低速级大齿轮")
@@ -210,21 +216,24 @@ def pulley_hub_length(d: float, rim_width: float) -> float:
 
 
 def _shaft(idx: int, task: ReducerTask, kin: kinematics.Kinematics, h: lay.Housing,
-           high: gear_calc.GearPair, low: gear_calc.GearPair, z_high: float, z_low: float,
+           high: gear_calc.GearPair, low: gear_calc.GearPair | None, z_high: float, z_low: float,
            belt: vbelt_calc.BeltDrive | None = None) -> ShaftResult:
+    """low 为 None 时是一级减速器：idx 1 为高速轴，idx 2 为低速轴（输出轴）。"""
     st = kin.shafts[idx]
     d_min = shaft_calc.min_diameter(st.power, st.speed_rpm)
     name = st.name
-    ext = {1: "left", 2: None, 3: "right"}[idx]
+    single = low is None
+    out = 2 if single else 3  # 输出轴
+    ext = {1: "left", 2: None, 3: "right"}[idx] if not single else {1: "left", 2: "right"}[idx]
     on_belt = idx == 1 and belt is not None
     if idx == 1 and not on_belt:
         d_end0 = lay.std_diameter(max(1.05 * d_min, 0.8 * kin.motor.shaft_d))
-    elif idx in (1, 3):
+    elif idx in (1, out):
         d_end0 = lay.std_diameter(1.05 * d_min)
     else:
         d_end0 = None
 
-    gear_specs = {
+    gear_specs = {1: [(high, 1, z_high)], 2: [(high, 2, z_high)]}[idx] if single else {
         1: [(high, 1, z_high)],
         2: [(low, 1, z_low), (high, 2, z_high)],
         3: [(low, 2, z_low)],
@@ -264,6 +273,8 @@ def _shaft(idx: int, task: ReducerTask, kin: kinematics.Kinematics, h: lay.Housi
                     loads.append(shaft_calc.PointLoad(z_ext, fx=-belt.fp, label="带轮压轴力"))
                 if idx == 1:
                     tp = [(z_ext, st.torque), (z_high, -st.torque)]
+                elif single:
+                    tp = [(z_high, st.torque), (z_ext, -st.torque)]
                 elif idx == 2:
                     tp = [(z_high, st.torque), (z_low, -st.torque)]
                 else:
@@ -289,12 +300,12 @@ def _shaft(idx: int, task: ReducerTask, kin: kinematics.Kinematics, h: lay.Housi
                 r = strength.reactions
                 bc = bearing_calc.check_pair(brg, r.radial_a, r.radial_b, r.axial, st.speed_rpm,
                                              task.bearing_life_hours, task.load_factor_bearing)
-                sl = lay.ShaftLayout(idx, name, [0.0, high.a, high.a + low.a][idx - 1], d_min, brg, (za, zb),
+                sl = lay.ShaftLayout(idx, name, [0.0, high.a, high.a + (low.a if low else 0)][idx - 1], d_min, brg, (za, zb),
                                      gears, segs, ext, hub,
                                      {"端部": d_end, "密封": d_seal, "轴承": d_b, "齿轮": dia.seat,
                                       "轴环": dia.collar, "轴肩": dia.shoulder})
                 integral = any(g.integral for g in gears)
-                mat_key = (high.inp.material1 if idx == 1 else low.inp.material1).split("_")[0] if integral else "45"
+                mat_key = (high.inp.material1 if idx == 1 else low.inp.material1).split("_")[0] if integral else "45"  # 只有小齿轮会做成齿轮轴
                 fat = fatigue_calc.check(segs, case, fatigue_calc.MATERIALS.get(mat_key, fatigue_calc.MATERIALS["45"]),
                                          task.shaft_S_required, task.shaft_fit_k)
                 last = ShaftResult(sl, case, strength, bc, keys, fat, st.power, st.speed_rpm, st.torque)
@@ -319,8 +330,65 @@ def _belt(task: ReducerTask, kin: kinematics.Kinematics) -> vbelt_calc.BeltDrive
     b = task.belt
     ka = float(b.get("KA") or vbelt_calc.service_factor(task.hours_per_day))
     return vbelt_calc.design(vbelt_calc.BeltInput(
-        kin.required_power, kin.motor.speed_rpm, task.conveyor.belt_ratio, ka, kin.motor.shaft_d,
+        kin.required_power, kin.motor.speed_rpm, kin.i_belt, ka, kin.motor.shaft_d,
         b.get("section"), b["dd1_mm"] * MM if b.get("dd1_mm") else None, b["a0_mm"] * MM if b.get("a0_mm") else None))
+
+
+def _common_checks(kin: kinematics.Kinematics, stages: list[gear_calc.GearPair], shafts: list[ShaftResult],
+                   belt: vbelt_calc.BeltDrive | None) -> list[tuple[str, bool, str]]:
+    """带速误差、V 带、各级齿轮强度、各轴强度/疲劳/轴承/键/刚度。"""
+    checks: list[tuple[str, bool, str]] = []
+    err = (kin.motor.speed_rpm / (kin.i_belt * math.prod(p.u for p in stages)) - kin.drum_speed_rpm) / kin.drum_speed_rpm
+    checks.append(("输送带速度误差", abs(err) <= 0.05, f"{err*100:+.2f}%，允许 ±5%"))
+    if belt:
+        checks.append(("V 带带速", 5 <= belt.v <= 25, f"v = {belt.v:.2f} m/s，应在 5～25 m/s"))
+        checks.append(("小带轮包角", belt.alpha1 >= 120, f"α1 = {belt.alpha1:.1f}° ≥ 120°"))
+        checks.append(("V 带根数", belt.z <= 5, f"z = {belt.z} ≤ 5"))
+    for p in stages:
+        c = p.check
+        checks.append((f"{p.inp.name}齿面接触疲劳强度", c.sigma_h <= c.sigma_h_allow,
+                       f"σH = {c.sigma_h/1e6:.1f} MPa ≤ [σH] = {c.sigma_h_allow/1e6:.1f} MPa"))
+        for i in (0, 1):
+            checks.append((f"{p.inp.name}{'小' if i == 0 else '大'}齿轮齿根弯曲疲劳强度",
+                           c.sigma_f[i] <= c.sigma_f_allow[i],
+                           f"σF = {c.sigma_f[i]/1e6:.1f} MPa ≤ [σF] = {c.sigma_f_allow[i]/1e6:.1f} MPa"))
+    for s in shafts:
+        sc = s.strength
+        checks.append((f"{s.layout.name}弯扭合成强度", sc.ok,
+                       f"σca = {sc.critical.sigma_ca/1e6:.1f} MPa ≤ [σ−1b] = {sc.sigma_allow/1e6:.0f} MPa"))
+        fc = s.fatigue
+        if fc.critical is not None:
+            c = fc.critical
+            checks.append((f"{s.layout.name}疲劳强度安全系数", fc.ok,
+                           f"Sca = {c.S_ca:.2f} ≥ [S] = {fc.S_required:g}（{c.label}，近似）"))
+        b = s.bearings
+        checks.append((f"{s.layout.name}轴承 {b.bearing.designation} 寿命", b.ok,
+                       f"L10h = {min(b.life):.0f} h ≥ {b.required:.0f} h"))
+        for k in s.keys:
+            checks.append((f"{k.location}平键挤压强度", k.ok,
+                           f"σp = {k.sigma_p/1e6:.1f} MPa ≤ [σp] = {k.sigma_allow/1e6:.0f} MPa"
+                           + ("（双键）" if k.count == 2 else "")))
+        checks.extend(stiffness_lines(s))
+    return checks
+
+
+def _common_warnings(stages: list[gear_calc.GearPair], belt: vbelt_calc.BeltDrive | None) -> list[str]:
+    warnings = []
+    for p in stages:
+        if p.check.k_v and any(k in p.inp.overrides for k in ("k_v", "k_hn1", "k_fn1")):
+            warnings.append(f"{p.inp.name or '齿轮传动'}使用了手工覆盖的系数：{p.inp.overrides}")
+    warnings.append("Kv、KHN、KFN 采用解析近似代替教材查图，正式提交前可在任务书 overrides 中填入教材查得的值。")
+    if belt:
+        warnings.append("V 带的 P0、KL 数据待人工核对；带型按 z ≤ 4 自动试选，也可在任务书 vbelt 中指定 section、dd1_mm。")
+    warnings.append("联轴器只给出计算转矩和轴孔直径，型号请按 GB/T 5014（LX 型弹性柱销联轴器）核对。")
+    return warnings
+
+
+def _pulley_check(d: ReducerDesign) -> None:
+    from gongke_core.layout import housing_detail
+    H = -housing_detail.detail(d).y_bottom
+    d.checks.append(("大带轮尺寸", d.belt.dd2 / 2 < H,
+                     f"大带轮半径 {d.belt.dd2 / 2 / MM:.0f} mm < 减速器中心高 H = {H / MM:.0f} mm（否则会碰到地基）"))
 
 
 def run(task: ReducerTask) -> ReducerDesign:
@@ -332,6 +400,8 @@ def run(task: ReducerTask) -> ReducerDesign:
         from gongke_core import bevel_design
 
         return bevel_design.run(task)
+    if task.scheme == "single":
+        return _run_single(task)
     kin = kinematics.solve(task.conveyor)
     t = task.conveyor
     belt = None
@@ -358,39 +428,8 @@ def run(task: ReducerTask) -> ReducerDesign:
     ]
 
     apply_stiffness(shafts, {"high": high, "low": low})
-    checks: list[tuple[str, bool, str]] = []
+    checks = _common_checks(kin, [high, low], shafts, belt)
     warnings: list[str] = []
-    err = (kin.motor.speed_rpm / (kin.i_belt * high.u * low.u) - kin.drum_speed_rpm) / kin.drum_speed_rpm
-    checks.append(("输送带速度误差", abs(err) <= 0.05, f"{err*100:+.2f}%，允许 ±5%"))
-    if belt:
-        checks.append(("V 带带速", 5 <= belt.v <= 25, f"v = {belt.v:.2f} m/s，应在 5～25 m/s"))
-        checks.append(("小带轮包角", belt.alpha1 >= 120, f"α1 = {belt.alpha1:.1f}° ≥ 120°"))
-        checks.append(("V 带根数", belt.z <= 5, f"z = {belt.z} ≤ 5"))
-    for p in (high, low):
-        c = p.check
-        checks.append((f"{p.inp.name}齿面接触疲劳强度", c.sigma_h <= c.sigma_h_allow,
-                       f"σH = {c.sigma_h/1e6:.1f} MPa ≤ [σH] = {c.sigma_h_allow/1e6:.1f} MPa"))
-        for i in (0, 1):
-            checks.append((f"{p.inp.name}{'小' if i == 0 else '大'}齿轮齿根弯曲疲劳强度",
-                           c.sigma_f[i] <= c.sigma_f_allow[i],
-                           f"σF = {c.sigma_f[i]/1e6:.1f} MPa ≤ [σF] = {c.sigma_f_allow[i]/1e6:.1f} MPa"))
-    for s in shafts:
-        sc = s.strength
-        checks.append((f"{s.layout.name}弯扭合成强度", sc.ok,
-                       f"σca = {sc.critical.sigma_ca/1e6:.1f} MPa ≤ [σ−1b] = {sc.sigma_allow/1e6:.0f} MPa"))
-        fc = s.fatigue
-        if fc.critical is not None:
-            c = fc.critical
-            checks.append((f"{s.layout.name}疲劳强度安全系数", fc.ok,
-                           f"Sca = {c.S_ca:.2f} ≥ [S] = {fc.S_required:g}（{c.label}，近似）"))
-        b = s.bearings
-        checks.append((f"{s.layout.name}轴承 {b.bearing.designation} 寿命", b.ok,
-                       f"L10h = {min(b.life):.0f} h ≥ {b.required:.0f} h"))
-        for k in s.keys:
-            checks.append((f"{k.location}平键挤压强度", k.ok,
-                           f"σp = {k.sigma_p/1e6:.1f} MPa ≤ [σp] = {k.sigma_allow/1e6:.0f} MPa"
-                           + ("（双键）" if k.count == 2 else "")))
-        checks.extend(stiffness_lines(s))
     # 高速级大齿轮不得碰到低速轴
     d3_max = max(seg.d for seg in shafts[2].layout.segments
                  if seg.z0 <= z_high + high.b2 / 2 and seg.z1 >= z_high - high.b2 / 2)
@@ -402,17 +441,36 @@ def run(task: ReducerTask) -> ReducerDesign:
     checks.append(("浸油润滑深度", dip_ok, f"低速级大齿轮浸油 {dip/MM:.0f} mm ≤ R/3 = {low.da2/6/MM:.0f} mm"))
     if not dip_ok:
         warnings.append("两级大齿轮直径相差较大，可适当增大高速级传动比分配系数（ratio_split）或改用带油轮润滑。")
-    for p in (high, low):
-        if p.check.k_v and any(k in p.inp.overrides for k in ("k_v", "k_hn1", "k_fn1")):
-            warnings.append(f"{p.inp.name}使用了手工覆盖的系数：{p.inp.overrides}")
-    warnings.append("Kv、KHN、KFN 采用解析近似代替教材查图，正式提交前可在任务书 overrides 中填入教材查得的值。")
-    if belt:
-        warnings.append("V 带的 P0、KL 数据待人工核对；带型按 z ≤ 4 自动试选，也可在任务书 vbelt 中指定 section、dd1_mm。")
-    warnings.append("联轴器只给出计算转矩和轴孔直径，型号请按 GB/T 5014（LX 型弹性柱销联轴器）核对。")
+    warnings += _common_warnings([high, low], belt)
     d = ReducerDesign(task, kin, high, low, h, shafts, couplings, checks, warnings, belt)
     if belt:
-        from gongke_core.layout import housing_detail
-        H = -housing_detail.detail(d).y_bottom
-        checks.append(("大带轮尺寸", belt.dd2 / 2 < H,
-                       f"大带轮半径 {belt.dd2 / 2 / MM:.0f} mm < 减速器中心高 H = {H / MM:.0f} mm（否则会碰到地基）"))
+        _pulley_check(d)
+    return d
+
+
+def _run_single(task: ReducerTask) -> ReducerDesign:
+    """V 带 + 一级圆柱齿轮减速器。齿轮布置在两轴承中间，Ⅰ轴左端装大带轮，Ⅱ轴右端经联轴器接卷筒。"""
+    kin = kinematics.solve(task.conveyor)
+    belt = _belt(task, kin)
+    kin = kinematics.solve(task.conveyor, belt.ratio)  # 按圆整后带轮直径的实际传动比
+    t = task.conveyor
+    pair = gear_calc.design(gear_calc.GearPairInput(
+        "", kin.shafts[1].torque, kin.shafts[1].speed_rpm, kin.i_high, t.life_hours, **task.high))
+    h = lay.housing(pair, None)
+    z = h.inner_width / 2
+    shafts = [_shaft(i, task, kin, h, pair, None, z, z, belt) for i in (1, 2)]
+    couplings = [Coupling("Ⅱ轴—卷筒轴", task.coupling_service_factor * kin.shafts[2].torque,
+                          (shafts[1].layout.diameters["端部"], shafts[1].layout.diameters["端部"]),
+                          shafts[1].layout.coupling_hub)]
+    apply_stiffness(shafts, {"high": pair})
+    checks = _common_checks(kin, [pair], shafts, belt)
+    # 浸油润滑：大齿轮浸油 1～2 个齿高（不少于 10 mm），且不超过其半径的 1/3
+    dip = max(10 * MM, 2 * 2.25 * pair.mn)  # 与 housing_detail 中的油面高度一致
+    checks.append(("浸油润滑深度", dip <= pair.da2 / 6, f"大齿轮浸油 {dip/MM:.0f} mm ≤ R/3 = {pair.da2/6/MM:.0f} mm"))
+    warnings = _common_warnings([pair], belt)
+    if pair.u > 5:
+        warnings.insert(0, f"齿轮传动比 u = {pair.u:.2f} 超过一级圆柱齿轮的推荐值 5，大齿轮和箱体偏大；"
+                           "可改用 1000 r/min 电动机，或改用二级减速器（vbelt 方案）。")
+    d = ReducerDesign(task, kin, pair, None, h, shafts, couplings, checks, warnings, belt)
+    _pulley_check(d)
     return d

@@ -103,10 +103,14 @@ class ShaftLayout:
         return next(s for s in self.segments if s.role == role)
 
 
-def housing(high: GearPair, low: GearPair) -> Housing:
-    a = low.a / MM
-    delta = max(0.025 * a + 3, 8) * MM
-    delta1 = max(0.02 * a + 3, 8) * MM
+def housing(high: GearPair, low: GearPair | None) -> Housing:
+    """low 为 None 时是一级减速器：壁厚 δ = 0.025a + 1、δ1 = 0.02a + 1（二级为 + 3），a 为该级中心距。"""
+    single = low is None
+    last = high if single else low
+    a = last.a / MM
+    k = 1 if single else 3
+    delta = max(0.025 * a + k, 8) * MM
+    delta1 = max(0.02 * a + k, 8) * MM
     df = bolt((0.036 * a + 12) * MM)
     d1 = bolt(0.75 * df)
     d2 = bolt(0.5 * df)
@@ -114,15 +118,15 @@ def housing(high: GearPair, low: GearPair) -> Housing:
     l1 = delta + c1 + c2 + 6 * MM
     gap_ax = ceil_to(max(delta, 10 * MM), MM)
     gap_rad = ceil_to(1.2 * delta, MM)
-    v_max = max(high.pitch_velocity, low.pitch_velocity)
+    stages = [high] if single else [high, low]
+    v_max = max(p.pitch_velocity for p in stages)
     gap_brg = 5 * MM if v_max >= 2 else 10 * MM  # 油润滑轴承靠近内壁，脂润滑留出挡油环位置
     c = 10 * MM
-    width = gap_ax + low.b1 + c + high.b1 + gap_ax
+    width = gap_ax + high.b1 + gap_ax if single else gap_ax + low.b1 + c + high.b1 + gap_ax
     x2 = high.a
-    x3 = high.a + low.a
     x_min = min(-high.da1 / 2, x2 - high.da2 / 2) - gap_rad
-    x_max = x3 + low.da2 / 2 + gap_rad
-    r_max = max(high.da2, low.da2) / 2
+    x_max = (x2 + high.da2 / 2 if single else x2 + low.a + low.da2 / 2) + gap_rad
+    r_max = max(p.da2 for p in stages) / 2
     y_rng = (-(r_max + 40 * MM), r_max + gap_rad)
     return Housing(
         delta, delta1, 1.5 * delta, 1.5 * delta1, 2.5 * delta, df, d1, d2, c1, c2, l1,

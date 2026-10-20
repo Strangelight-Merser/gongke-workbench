@@ -232,7 +232,7 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
 
     # ------------------------------------------------ 尺寸
     zr = z_min - 5
-    mesh = [d.low] if getattr(d, "bevel", None) is not None else [d.high, d.low]
+    mesh = [d.low] if getattr(d, "bevel", None) is not None else d.stages
     for (xa, xb), pair in zip(zip(xs, xs[1:]), mesh):
         fa = center_distance_fa(pair.inp.grade, pair.a) * MM
         tv.dim((zr, xa), (zr, xb), (zr - 10 / s, xa), 90, f"<>±{fa:.3f}".rstrip("0"), 0)
@@ -272,35 +272,37 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
     rows = [["技术特性", ""],
             ["输入功率", f"{k.shafts[1].power / 1e3:.2f} kW"],
             ["输入转速", f"{k.shafts[1].speed_rpm:.0f} r/min"],
-            ["传动比", f"{d.high.u * d.low.u:.2f}"]]
+            ["传动比", f"{d.high.u * (d.low.u if d.low else 1):.2f}"]]
     ef = k.task.efficiencies
     if bevel is not None:
         rows.append(["效率", f"{ef.bearing_pair ** 3 * ef.bevel_pair * ef.gear_pair:.3f}"])
         rows.append([bevel.inp.name, f"m={bevel.m * MM:g}  z={bevel.z1}/{bevel.z2}  δ1={dms(bevel.delta1)}  {bevel.inp.grade}级"])
+    elif d.low is None:
+        rows.append(["效率", f"{ef.bearing_pair ** 2 * ef.gear_pair:.3f}"])
     else:
         rows.append(["效率", f"{ef.bearing_pair ** 3 * ef.gear_pair ** 2:.3f}"])
-        rows.append([d.high.inp.name, f"mn={d.high.mn * MM:g}  z={d.high.z1}/{d.high.z2}  β={dms(d.high.beta)}  {d.high.inp.grade}级"])
-    p = d.low
-    rows.append([p.inp.name, f"mn={p.mn * MM:g}  z={p.z1}/{p.z2}  β={dms(p.beta)}  {p.inp.grade}级"])
+    for p in d.stages[-1:] if bevel is not None else d.stages:
+        rows.append([p.inp.name or "齿轮", f"mn={p.mn * MM:g}  z={p.z1}/{p.z2}  β={dms(p.beta)}  {p.inp.grade}级"])
     tx = col_tr + 22
     sh.table(tx, front_bottom - 30, rows, [30, 95], 8)
     reqs = [
         "装配前所有零件用煤油清洗，箱体内壁涂耐油油漆。",
-        "啮合侧隙用铅丝检验，高速级不小于 0.14 mm，低速级不小于 0.16 mm。",
+        "啮合侧隙用铅丝检验，不小于 0.16 mm。" if d.low is None else "啮合侧隙用铅丝检验，高速级不小于 0.14 mm，低速级不小于 0.16 mm。",
         "用涂色法检验接触斑点，沿齿高不小于 40%，沿齿长不小于 50%。",
         *(["圆锥滚子轴承用垫片调整轴向游隙（Ⅰ轴 0.04～0.07 mm，Ⅱ轴 0.05～0.10 mm）。",
            "深沟球轴承两端固定，轴向游隙 0.25～0.4 mm。"] if bevel is not None
           else ["深沟球轴承两端固定，用调整垫片调整轴向游隙为 0.25～0.4 mm。"]),
         *(["锥齿轮啮合位置用套杯与轴承座间的垫片调整，使两锥顶重合。"] if bevel is not None else []),
         "剖分面、各接触面及密封处不允许漏油，剖分面允许涂密封胶，不允许使用垫片。",
-        f"箱内装 L-CKC 220 工业闭式齿轮油至油标规定高度（大齿轮浸油约 {(t.oil_level + d.low.da2 / 2) * MM:.0f} mm）。",
+        f"箱内装 L-CKC 220 工业闭式齿轮油至油标规定高度（大齿轮浸油约 {(t.oil_level + d.stages[-1].da2 / 2) * MM:.0f} mm）。",
         "外表面涂灰色油漆。",
         *TRIAL_RUN,
     ]
     sh.tech_requirements(reqs, tx, front_bottom - 30 - 8 * len(rows) - 22 - 0)
     for i, p in enumerate(parts, 1):
         sh.add_part(i, p.name, p.qty, p.material, p.note)
-    sh.frame(TitleInfo("圆锥-圆柱齿轮减速器" if bevel is not None else "二级圆柱齿轮减速器", "", s, "1", drawing_no))
+    sh.frame(TitleInfo("圆锥-圆柱齿轮减速器" if bevel is not None else "一级圆柱齿轮减速器" if d.low is None
+                       else "二级圆柱齿轮减速器", "", s, "1", drawing_no))
     sh.save(path)
     return sh
 

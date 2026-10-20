@@ -33,8 +33,10 @@ class ReducerTaskPanel:
         self.sync.addItems(["1500 r/min（4 极）", "1000 r/min（6 极）"])
         self.scheme = QtGui.QComboBox()
         self.scheme.addItems(["电动机 → 联轴器 → 展开式二级圆柱齿轮减速器", "电动机 → V 带 → 展开式二级圆柱齿轮减速器",
-                              "电动机 → 联轴器 → 圆锥-圆柱齿轮减速器", "电动机 → 联轴器 → 单级蜗杆减速器"])
-        self.belt_ratio = self._spin(1.5, 4, 2.5, 1, "")
+                              "电动机 → 联轴器 → 圆锥-圆柱齿轮减速器", "电动机 → 联轴器 → 单级蜗杆减速器",
+                              "电动机 → V 带 → 一级圆柱齿轮减速器"])
+        self.belt_ratio = self._spin(1.4, 4, 2.5, 1, "")
+        self.belt_ratio.setSpecialValueText("自动")  # 最小值 1.4 显示为“自动”
         self.belt_ratio.setEnabled(False)
         self.scheme.currentIndexChanged.connect(self._scheme_changed)
         fl.addRow("传动方案", self.scheme)
@@ -90,7 +92,10 @@ class ReducerTaskPanel:
         self.out_dir = None
 
     def _scheme_changed(self, i):
-        self.belt_ratio.setEnabled(i == 1)
+        scheme = runner.SCHEMES[i]
+        self.belt_ratio.setEnabled(scheme in ("vbelt", "single"))
+        # 一级减速器默认自动分配 V 带传动比（使齿轮传动比约为 4）
+        self.belt_ratio.setValue(self.belt_ratio.minimum() if scheme == "single" else 2.5)
         # 蜗杆传动的材料按默认（45 钢淬火蜗杆、铸锡青铜蜗轮），齿轮材料选项不适用
         self.gear_box.setEnabled(runner.SCHEMES[i] != "worm")
 
@@ -110,7 +115,8 @@ class ReducerTaskPanel:
             sync_speed_rpm=1500 if self.sync.currentIndex() == 0 else 1000,
             pinion_material=self.mat1.currentData(), gear_material=self.mat2.currentData(),
             grade=int(self.grade.currentText()),
-            scheme=runner.SCHEMES[self.scheme.currentIndex()], belt_ratio=self.belt_ratio.value(),
+            scheme=runner.SCHEMES[self.scheme.currentIndex()],
+            belt_ratio=None if self.belt_ratio.value() <= self.belt_ratio.minimum() else self.belt_ratio.value(),
         )
 
     @staticmethod

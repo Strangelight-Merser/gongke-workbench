@@ -68,3 +68,16 @@ def test_worm_scheme_assembly():
         if "轴承3" in k:
             i = base.intersect(v)
             assert i is None or i.volume < 1.0, k
+
+
+def test_single_stage_scheme_assembly():
+    # 一级减速器：两根轴，大齿轮在箱体内且不碰箱座、箱盖
+    d = design.run(design.ReducerTask.from_yaml(EXAMPLE.parent / "conveyor_single.yaml"))
+    shapes = assembly.build(d, with_housing=True, z_up=False)
+    assert all(s.is_valid for s in shapes.values())
+    gear = shapes["大齿轮"]
+    bb = gear.bounding_box()
+    assert (bb.min.X + bb.max.X) / 2 == pytest.approx(d.high.a * 1e3, abs=0.5)
+    for k in ("箱座", "箱盖"):
+        inter = shapes[k].intersect(gear)
+        assert inter is None or inter.volume < 1e-3, k

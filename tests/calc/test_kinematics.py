@@ -40,3 +40,16 @@ def test_solve_conveyor():
     # 功率逐级降低
     powers = [s.power for s in r.shafts]
     assert powers == sorted(powers, reverse=True)
+
+
+def test_single_stage_scheme():
+    # V 带 + 一级圆柱齿轮：效率链 η = η带 η联 η轴承² η齿轮 η卷筒（《机械设计课程设计》传动装置总效率计算）；
+    # V 带传动比推荐 2～4、一级圆柱齿轮 3～5（指导书常用传动比推荐值），程序取 i带 = i/4 并限制在 2～4
+    e = k.Efficiencies()
+    assert e.total("single") == pytest.approx(0.96 * 0.99 * 0.99**2 * 0.97 * 0.96)
+    assert k.belt_ratio_single(13.4) == pytest.approx(3.35)
+    assert k.belt_ratio_single(6) == 2.0 and k.belt_ratio_single(30) == 4.0
+    r = k.solve(k.ConveyorTask(belt_pull=2300, belt_speed=1.5, drum_diameter=0.4, sync_speed_rpm=1000, scheme="single"))
+    assert len(r.shafts) == 4 and r.i_low == 1.0
+    assert r.i_belt * r.i_high == pytest.approx(r.total_ratio)
+    assert r.shafts[2].speed_rpm == pytest.approx(r.drum_speed_rpm)

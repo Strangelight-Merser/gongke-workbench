@@ -42,7 +42,8 @@ def _pairs(design):
     if getattr(design.task, "scheme", "") == "worm":
         return []
     out = []
-    for key, p in (("高速级", design.high), ("低速级", design.low)):
+    stages = (("", design.high),) if design.low is None else (("高速级", design.high), ("低速级", design.low))
+    for key, p in stages:
         bevel = not hasattr(p, "mn")
         kind = "锥齿轮" if bevel else "齿轮"
         for i, z in enumerate((p.z1, p.z2)):

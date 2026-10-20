@@ -45,6 +45,10 @@ class BevelReducerDesign:
         return self.bevel
 
     @property
+    def stages(self) -> list:
+        return [self.bevel, self.low]
+
+    @property
     def actual_ratio(self) -> float:
         return self.bevel.u * self.low.u
 
