@@ -8,6 +8,7 @@ FreeCAD 工作台也通过这个入口在独立进程中生成模型。
 
     python -m gongke_core mcp       # 以 MCP 服务器方式运行（stdio），供 AI agent 直接调用，见 docs/agent-api.md
     python -m gongke_core schema    # 输出任务书的 JSON Schema
+    python -m gongke_core check-drawings 输出目录/drawings   # 检查图纸文字重叠和压线
 """
 
 from __future__ import annotations
@@ -33,7 +34,17 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--full-teeth", action="store_true", help="建出完整渐开线齿形（文件约 30 MB，生成较慢）")
     sub.add_parser("mcp", help="以 MCP 服务器方式运行（stdio），供 AI agent 调用")
     sub.add_parser("schema", help="输出任务书的 JSON Schema")
+    c = sub.add_parser("check-drawings", help="检查 DXF 图纸中文字重叠和图线压字")
+    c.add_argument("path", help="DXF 文件或图纸目录")
     args = ap.parse_args(argv)
+    if args.cmd == "check-drawings":
+        from gongke_core import api
+        r = api.check_drawings(args.path)
+        for sh in r["sheets"]:
+            for i in sh["issues"]:
+                print(f"{sh['file']}  {i['kind']}  “{i['text']}” 于 ({i['at'][0]}, {i['at'][1]}) {i['other']}")
+        print(f"检查 {r['checked']} 张图，发现 {r['total']} 处问题")
+        return 1 if r["total"] else 0
     if args.cmd == "mcp":
         from gongke_core import mcp_server
         mcp_server.serve()

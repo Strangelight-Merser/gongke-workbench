@@ -150,7 +150,8 @@ def draw(p: PulleyBlank, path: str | Path, title: str = "大带轮", drawing_no:
     lv.line((-hb, rd + t2), (hb, rd + t2))
     sh.cross(lv.P(0, 0), da / 2 * s, 4)
     lv.dim((-hb, rd + t2), (hb, rd + t2), (-hb, rd + t2 + 8 / s), 0, "<>", 0, tol=tol.deviations("JS9", 2 * hb * 1e-3))
-    lv.dim((hb, -rd), (hb, rd + t2), (rd + 10 / s, 0), 90, "<>", 1, tol=tol.hub_keyway_depth(2 * hb * 1e-3))
+    lv.dim_auto((hb, -rd), (hb, rd + t2), [(rd + k / s, 0) for k in (10, 14, 18, 23, 28, 34)], 90, "<>", 1,
+                tol=tol.hub_keyway_depth(2 * hb * 1e-3))
 
     # ------------------------------------------------ 参数表、图框
     widths = [32, 14, 30]

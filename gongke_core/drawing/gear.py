@@ -215,14 +215,15 @@ def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str,
     sh.cross(lv.P(0, 0), da / 2 * s, 4)
     yd = rb + t2 + 8 / s
     lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, yd), 0, "<>", 0, tol=tol.deviations("JS9", kb / 1e3))
-    lv.dim((hb, -rb), (hb, rb + t2), (rb + 10 / s, 0), 90, "<>", 1, tol=tol.hub_keyway_depth(kb / 1e3))
-    sh.roughness(*lv.P(hb, rb + t2), "Ra 3.2", 0, 2.5)
+    lv.dim_auto((hb, -rb), (hb, rb + t2), [(rb + k / s, 0) for k in (10, 14, 18, 23, 28, 34)], 90, "<>", 1,
+                tol=tol.hub_keyway_depth(kb / 1e3))
+    kx, ky = lv.P(hb * 0.5, rb + t2)
+    sh.roughness_leader((kx, ky), (kx + 6, ky + 8), "Ra 3.2", 2.5)
     # 键槽对称度（对基准 A），指引线箭头与键宽尺寸线对齐
     val = tol.fmt_mm(tol.keyway_symmetry(kb / 1e3))
     ax, ay = lv.P(-hb, yd)
-    fw_ = 6 + len(val) * 1.8 + 4 + 1.8 + 4
-    sh.arrow((ax - 9, ay), (ax - 3, ay), 2.0, "细实线")
-    sh.gtol(ax - 9 - fw_, ay - 3, "symmetry", val, "A", 3.0)
+    bx, _ = lv.P(hb, yd)
+    sh.gtol_aligned([((ax - 3, ay), (ax - 9, ay), True), ((bx + 3, ay), (bx + 9, ay), False)], "symmetry", val, "A", 3.0)
 
     # ------------------------------------------------ 参数表、图框
     param_table(sh, pair, member, span)

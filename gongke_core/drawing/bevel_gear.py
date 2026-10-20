@@ -156,11 +156,9 @@ def draw(pair: BevelPair, member: int, bore: float, path: str | Path, title: str
     # 基准与跳动：齿顶圆锥对轴孔的圆跳动、基准端面对轴孔的端面圆跳动
     sh.datum(*mv.P(t0 + (t1 - t0) * 0.75, -rb), "A", "up")
     px, py = mv.P(tipL[0] - 0.3 * (tipL[0] - tipS[0]), tipL[1] - 0.3 * (tipL[1] - tipS[1]))
-    sh.arrow((px + 6, py + 22), (px, py), 2.5, "细实线")
-    sh.gtol(px + 6, py + 22, "runout", "0.040", "A")
+    sh.gtol_leader((px, py), (px + 6, py + 22), "runout", "0.040", "A")
     px, py = mv.P(t_ref, (rK if member == 2 else rh) * 0.8)
-    sh.arrow((px + 12, py + 8), (px, py), 2.5, "细实线")
-    sh.gtol(px + 12, py + 8, "runout", "0.025", "A")
+    sh.gtol_leader((px, py), (px + 12, py + 8), "runout", "0.025", "A")
 
     # ------------------------------------------------ 轴孔局部视图
     hb = kb / 2

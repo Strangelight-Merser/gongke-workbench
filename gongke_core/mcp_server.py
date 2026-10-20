@@ -78,6 +78,11 @@ TOOLS = [
           lambda task, out_dir, docx=True, drawings=True, step=False, full_teeth=False, fem=False: api.generate(
               task, out_dir, report_docx=docx, drawings=drawings, step=step, full_teeth=full_teeth, fem=fem),
           read_only=False),
+    _tool("check_drawings", "检查图纸重叠",
+          "检查 DXF 工程图中文字互相重叠、图线（轮廓线、点画线、尺寸线）穿过文字的位置。path 为某张 DXF 或 generate_files "
+          "输出的 drawings 目录（绝对路径）。返回问题总数和每张图的问题列表（类型、文字内容、图纸坐标 mm），总数为 0 表示无重叠。",
+          {"path": {"type": "string", "description": "DXF 文件或图纸目录（绝对路径）"}}, ["path"],
+          lambda path: api.check_drawings(path)),
 ]
 _BY_NAME = {t["name"]: t for t in TOOLS}
 

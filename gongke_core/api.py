@@ -420,6 +420,9 @@ def generate(task: dict, out_dir: str | Path, report_docx: bool = True, drawings
             sheets = [{"name": f.name, "number": f.number, "size": f.size, "dxf": f.dxf.name,
                        "svg": f.svg.name if f.svg else None} for f in files]
             (out / "drawings" / "index.json").write_text(json.dumps(sheets, ensure_ascii=False, indent=2), encoding="utf-8")
+            n = check_drawings(out / "drawings")["total"]
+            if n:
+                notes.append(f"图纸自查发现 {n} 处文字重叠或压线，详见 check_drawings")
     if step:
         try:
             from gongke_core.geometry import assembly
@@ -429,3 +432,17 @@ def generate(task: dict, out_dir: str | Path, report_docx: bool = True, drawings
             assembly.export(res, out / "reducer_assembly.step", teeth=full_teeth)
     files = sorted(str(p.relative_to(out)) for p in out.rglob("*") if p.is_file())
     return {"out_dir": str(out.resolve()), "ok": res.ok, "drawings": sheets, "files": files, "notes": notes}
+
+
+def check_drawings(path: str | Path) -> dict:
+    """检查 DXF 图纸中文字与文字重叠、图线穿过文字（GB/T 4458.4 要求图线遇尺寸数字断开）。
+    path 为单个 DXF 或图纸目录。返回每张图的问题（类型、文字、图纸坐标 mm）和总数。"""
+    from gongke_core.drawing import lint
+
+    p = Path(path)
+    if not p.exists():
+        raise ValueError(f"找不到 {p}")
+    results = [lint.check(p)] if p.is_file() else lint.check_dir(p)
+    sheets = [{"file": Path(r.file).name, "issues": [i.as_dict() for i in r.issues]} for r in results]
+    return {"checked": len(sheets), "total": sum(len(s["issues"]) for s in sheets),
+            "sheets": [s for s in sheets if s["issues"]]}

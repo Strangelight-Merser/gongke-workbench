@@ -49,6 +49,7 @@ Windows 上 `command` 可以写 FreeCAD 自带的 Python，如 `C:\\Program File
 | `get_report` | 计算说明书（Markdown），可只取某一章 |
 | `lookup_standard` | 查电动机、轴承、平键、模数、齿轮材料、蜗轮材料、齿形系数 |
 | `generate_files` | 生成说明书（md/docx）、工程图（DXF/SVG/整套 PDF）、三维模型（STEP）、有限元复核 |
+| `check_drawings` | 检查 DXF 图纸中文字重叠、图线穿过文字的位置（命令行：`python -m gongke_core check-drawings 目录`） |
 
 任务书与 `examples/*.yaml` 结构相同，只有 `conveyor`（拉力 N、带速 m/s、卷筒直径 mm）必填。
 错误的任务书会以工具错误（`isError: true`）返回逐条说明，agent 可以据此修改后重试。

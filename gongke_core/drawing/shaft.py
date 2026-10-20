@@ -252,8 +252,7 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
                     (x0_, y0_), (x1_, y1_) = bevel["tipS"], bevel["tipL"]
                     px, py = v.P((x0_ + x1_) / 2, (y0_ + y1_) / 2)
                 fx, fy = px - 6, py + 24
-                sh.arrow((fx, fy), (px, py), 2.5, "细实线")
-                sh.gtol(fx, fy, "runout", RUNOUT[seg.role], "A-B")
+                sh.gtol_leader((px, py), (fx, fy), "runout", RUNOUT[seg.role], "A-B")
         # 轴承轴颈圆柱度、轴承定位轴肩端面圆跳动（GB/T 275-2015，普通级轴承）
         for i, (a, b, seg) in enumerate(S):
             if seg.role != "轴承":

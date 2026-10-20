@@ -132,10 +132,12 @@ def draw(d, path: str | Path, drawing_no: str = "GK-00") -> Sheet:
     _top(d, t, tv, sh, add)
     # 剖切符号与视图名称
     sh.section_label(lv.P(W / 2, 0)[0], oy_f + y_top * s + 3, "B")
-    for zz, sg in ((-delta - fw - 6, -1), (W + delta + fw + 6, 1)):
-        p0, p1 = tv.P(zz, 0), tv.P(zz + sg * 5, 0)
+    # 剖切符号（粗短画）画在视图轮廓以外：一端在轴承盖外，另一端在伸出轴端外
+    # （轴承盖外到地脚螺栓孔距尺寸线之间、伸出轴端外到总长尺寸线之间）
+    for zz, sg in ((min(-delta - fw, -L1 - e) - 1.5 / s, -1), (max(W + delta + fw, z_max - 5) + 1.5 / s, 1)):
+        p0, p1 = tv.P(zz, 0), tv.P(zz + sg * 5 / s, 0)
         sh.line(p0, p1, "图框")
-        sh.text(p1[0] + 2, p1[1] + (1 if sg < 0 else -6), "B", 5)
+        sh.label(p1, (p1[0] + 2, p1[1] + (1 if sg < 0 else -6)), "B", 5)  # 出图时避开图线
 
     # ------------------------------------------------ 零件序号与明细栏
     col_fl = ox + x_min * s - 18
@@ -158,7 +160,7 @@ def draw(d, path: str | Path, drawing_no: str = "GK-00") -> Sheet:
     lv.dim((zr, yb), (zr, t.cover_top * MM), (zr + 16 / s, yb), 90, "<>", 0)
     x_dim = min(xo0 - fw, ws.segments[0].z0 * MM) - 10 / s
     tv.dim((-delta - fw, xo0 - fw), (W + delta + fw, xo0 - fw), (-delta - fw, x_dim), 0, "<>", 0)
-    tv.dim((z_max - 10, xo0 - fw), (z_max - 10, xo1 + fw), (z_max + 2 / s, xo0 - fw), 90, "<>", 0)
+    tv.dim((z_max - 10, xo0 - fw), (z_max - 10, xo1 + fw), (z_max + 16 / s, xo0 - fw), 90, "<>", 0)
     # 安装尺寸：地脚螺栓孔（在凸缘下方，虚线）的孔距和孔径，两外伸轴段的配合长度
     from gongke_core.drawing.housing_base import CLEARANCE
     dfh = CLEARANCE[round(h.bolt_foot * MM)]

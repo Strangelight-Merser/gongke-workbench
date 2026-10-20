@@ -236,7 +236,8 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
     for (xa, xb), pair in zip(zip(xs, xs[1:]), mesh):
         fa = center_distance_fa(pair.inp.grade, pair.a) * MM
         tv.dim((zr, xa), (zr, xb), (zr - 10 / s, xa), 90, f"<>±{fa:.3f}".rstrip("0"), 0)
-    tv.dim((-delta - fw, xo0 - fw), (W + delta + fw, xo0 - fw), (-delta - fw, xo0 - fw - 14 / s), 0, "<>", 0)
+    xl_dim = x_left + 2  # 宽度、总宽尺寸放在俯视图最左端（含Ⅰ轴伸出端）以外
+    tv.dim((-delta - fw, xo0 - fw), (W + delta + fw, xo0 - fw), (-delta - fw, xl_dim - 14 / s), 0, "<>", 0)
     tv.dim((z_max - 5, xo0 - fw), (z_max - 5, xo1 + fw), (z_max + 2 / s, xo0 - fw), 90, "<>", 0)
     # 安装尺寸：地脚螺栓孔的孔距（横向在凸缘上方，纵向在右侧）和孔径
     from gongke_core.drawing.housing_base import CLEARANCE
@@ -258,12 +259,12 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
         tv.dim((end.z0 * MM, xx - 6 / s), (end.z1 * MM, xx - 6 / s), (end.z0 * MM, xx), 0, "<>", 0)
     # 外形尺寸：两外伸轴端之间的总宽
     z_ends = [z_min + 5, z_max - 5]
-    tv.dim((z_ends[0], xs[0]), (z_ends[1], xs[-1]), (z_ends[0], xo0 - fw - 22 / s), 0, "<>", 0)
+    tv.dim((z_ends[0], xs[0]), (z_ends[1], xs[-1]), (z_ends[0], xl_dim - 22 / s), 0, "<>", 0)
     # 中心高、总高（左视图右侧）
     zl = z_max
-    lv.dim((zl, fy0), (zl, 0), (zl + 10 / s, fy0), 90, "<>", 0)
+    lv.dim_auto((zl, fy0), (zl, 0), [(zl + k / s, fy0) for k in (10, 15, 5)], 90, "<>", 0)
     top_y = t.cover_top * MM
-    lv.dim((zl, fy0), (zl, top_y), (zl + 20 / s, fy0), 90, "<>", 0)
+    lv.dim((zl, fy0), (zl, top_y), (zl + 22 / s, fy0), 90, "<>", 0)
     _fits(d, tv, sh)
 
     # ------------------------------------------------ 技术特性、技术要求

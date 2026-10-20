@@ -463,7 +463,7 @@ def _front_worm(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     sh.leader_text((px, py), (px + 6, py - 14), f"Ø{D:g}H7", 3.0)
     # 蜗杆座孔直径，圆柱度框格接在尺寸引线下方（两端座孔一次镗出）
     px, py = v.P(xf - 0.4 * (xf - xbi), -a + hD)
-    sh.leader_text((px, py), (px - 10, py - 14), f"Ø{2 * hD:g}H7", 3.0)
+    sh.leader_text((px, py), (px - 10, py - 14), f"Ø{2 * hD:g}H7", 3.0, fixed=True)
     sh.line((px - 10, py - 14), (px - 10, py - 18), "细实线")
     sh.gtol(px - 10, py - 24, "cylindricity", _fmt(tl["worm"][1]), "", 3.0)
     # 表面结构：剖分面、蜗杆座孔端面、底面

@@ -55,6 +55,14 @@ LAYERS = {
 }
 
 
+def fit_height(s: str, h: float, max_w: float, h_min: float = 2.5) -> float:
+    """表格格子里的文字：放不下时减小字高（不小于 h_min，GB/T 14691 最小字号 2.5）。"""
+    from gongke_core.drawing.lint import text_width
+
+    w = text_width(s, h)
+    return h if w <= max_w else max(h * max_w / w, h_min)
+
+
 def scale_label(s: float) -> str:
     if s >= 1:
         return f"{s:g}:1"
@@ -112,6 +120,8 @@ class Sheet:
         c = MARGIN_C[size]
         self.inner = (BIND_A, c, self.w - c, self.h - c)  # x0, y0, x1, y1
         self.parts_rows: list[list[str]] = []
+        self._leaders: list = []  # 待出图时定位的引出标注
+        self._dims: list = []  # 待出图时选位置的尺寸
         self.parts_first_rows: int | None = None  # 标题栏上方明细栏的最多行数，其余续接在标题栏左方
 
     # ------------------------------------------------------------ 基本图元
@@ -179,14 +189,60 @@ class Sheet:
         d = self.msp.add_linear_dim(base=base, p1=p1, p2=p2, angle=angle, text=text, dimstyle="GB",
                                     location=location, override=ov, dxfattribs={"layer": "尺寸"})
         d.render()
+        return d.dimension
+
+    def dim_auto(self, p1, p2, bases, angle=0.0, text="<>", scale=1.0, dec=1, tol=None):
+        """有几个候选尺寸线位置的线性尺寸：出图时选尺寸数字不压线、不压字的那个（按 bases 的先后优先）。"""
+        self._dims.append((p1, p2, list(bases), angle, text, scale, dec, tol))
+
+    def _place_dims(self):
+        from gongke_core.drawing import lint
+
+        g = lint.obstacle_grid(self.msp)
+        for p1, p2, bases, angle, text, scale, dec, tol in self._dims:
+            best = None
+            for k, base in enumerate(bases):
+                d = self.dim(p1, p2, base, angle, text, scale, dec, tol=tol)
+                boxes = [b for ve in d.get_geometry_block() if (b := lint._text_box(ve, -1))]
+                c = sum(lint._place_cost(g, lambda t, a, lf, b=b: (b, []), None, None, False, self.inner) for b in boxes) + 0.5 * k
+                if best is None or c < best[0]:
+                    if best is not None:
+                        self._drop_dim(best[1])
+                    best = (c, d)
+                else:
+                    self._drop_dim(d)
+                if c == 0 and k == 0:
+                    break
+            for ve in best[1].get_geometry_block():
+                b = lint._text_box(ve, -1)
+                if b:
+                    g.add(("text", b), lint._bbox_pts(b.corners()))
+        self._dims = []
+
+    def _drop_dim(self, d):
+        name = d.dxf.geometry
+        self.msp.delete_entity(d)
+        self.doc.blocks.delete_block(name, safe=False)
 
     def dim_value(self, value_mm: float) -> str:
         return f"{value_mm:.2f}".rstrip("0").rstrip(".")
 
-    def leader_text(self, target, at, s, h=3.5, left=False):
-        """引出标注：带箭头的引线 + 水平线 + 文字。left=True 时水平线和文字在 at 的左边。"""
+    def label(self, near, at, s: str, h: float = 3.5):
+        """不带引线的标注文字（如剖切符号旁的字母），at 为原定的左下角；出图时若压线则绕 near 另找位置。"""
+        self._leaders.append(("label", near, at, False, (s, h)))
+
+    def leader_text(self, target, at, s, h=3.5, left=False, fixed=False):
+        """引出标注：带箭头的引线 + 水平线 + 文字。left=True 时水平线和文字在 at 的左边。
+
+        默认在出图（save）时再画：若原定位置的文字压线或压字，在附近另找空位（`lint.place_leader`）。
+        fixed=True 时立即按原位置画。"""
+        if not fixed:
+            self._leaders.append(("text", target, at, left, (s, h)))
+            return
+        from gongke_core.drawing.lint import text_width
+
         self.arrow(at, target)
-        w = len(s) * h * 0.75 + 2
+        w = text_width(s, h) + 2
         x0 = at[0] - w if left else at[0]
         self.line((x0, at[1]), (x0 + w, at[1]), "尺寸")
         self.text(x0 + 1, at[1] + 0.8, s, h)
@@ -228,11 +284,30 @@ class Sheet:
         self.line(R(h2 * t, h2), R(h2 * t + w, h2), "细实线")
         self.text(*R(h2 * t + 1, h2 - h - 1), ra, h, rotation=angle)
 
-    def roughness_leader(self, target, at, ra: str, h: float = 3.0):
-        """带引线的表面结构符号：箭头指向表面，符号站在引线的水平段上。"""
+    def roughness_leader(self, target, at, ra: str, h: float = 3.0, fixed: bool = False):
+        """带引线的表面结构符号：箭头指向表面，符号站在引线的水平段上。出图时自动避让（同 leader_text）。"""
+        if not fixed:
+            self._leaders.append(("ra", target, at, False, (ra, h)))
+            return
         self.arrow(at, target, 2.5, "细实线")
         self.line(at, (at[0] + 10, at[1]), "细实线")
         self.roughness(at[0] + 5, at[1], ra, 0, h)
+
+    @staticmethod
+    def _gtol_size(value: str, datum: str = "", h: float = 3.5) -> tuple[float, float]:
+        hh = 2 * h
+        return hh + len(value) * h * 0.6 + 4 + (len(datum) * h * 0.6 + 4 if datum else 0), hh
+
+    def gtol_leader(self, target, at, kind: str, value: str, datum: str = "", h: float = 3.5):
+        """带指引箭头的几何公差框格：箭头从框格左下角（框格在目标左边时为右下角）指向目标。
+        at 为原定的框格左下角，出图时若压线、压字则在附近另找位置。"""
+        self._leaders.append(("gtol", target, at, False, (kind, value, datum, h)))
+
+    def gtol_aligned(self, options, kind: str, value: str, datum: str = "", h: float = 3.5, arrow: float = 2.0):
+        """指引线须与尺寸线对齐的几何公差框格（如键槽对称度）：options 为若干 (箭头尖, 框格侧边中点, 框格在左)，
+        出图时选不压线的一个，并可沿指引线方向外移。"""
+        t, a, lf = options[0]
+        self._leaders.append(("gtol", t, a, lf, (kind, value, datum, h), {"options": options, "mid": True, "arrow": arrow}))
 
     def gtol(self, x, y, kind: str, value: str, datum: str = "", h: float = 3.5):
         """几何公差框格（GB/T 1182），左下角在 (x, y)。kind：runout / symmetry / perpendicular / parallel / cylindricity / flatness。"""
@@ -343,7 +418,7 @@ class Sheet:
             cx = R + i * 80 / 3
             self.line((cx, Y + 20), (cx, Y + 36), "细实线")
             self.text(cx + 80 / 6, Y + 32, lab, 3.5, "MIDDLE")
-            self.text(cx + 80 / 6, Y + 24, val, 3.5, "MIDDLE")
+            self.text(cx + 80 / 6, Y + 24, val, fit_height(val, 3.5, 80 / 3 - 2), "MIDDLE")
         self.text(R + 40, Y + 14, info.drawing_no, 5, "MIDDLE")
         self.line((R, Y + 8), (x1, Y + 8), "细实线")
         self.text(R + 40, Y + 4, info.school, 3.5, "MIDDLE")
@@ -377,7 +452,7 @@ class Sheet:
             cx = x
             for w, v in zip(widths, row):
                 self.rect(cx, yy, cx + w, yy + row_h, "细实线")
-                self.text(cx + w / 2, yy + row_h / 2, v, h if len(v) * h * 0.72 < w else h * 0.75, "MIDDLE")
+                self.text(cx + w / 2, yy + row_h / 2, v, fit_height(v, h, w - 1.5), "MIDDLE")
                 cx += w
         self.rect(x, y_top - row_h * len(rows), x + sum(widths), y_top, "粗实线")
 
@@ -391,6 +466,39 @@ class Sheet:
     # ------------------------------------------------------------ 输出
 
     def save(self, path):
+        from gongke_core.drawing import lint
+
+        if self._dims:
+            self._place_dims()
+        if self._leaders:
+            g = lint.obstacle_grid(self.msp)
+            for kind, target, at, left, args, *opt in self._leaders:
+                opt = opt[0] if opt else {}
+                if kind == "label":
+                    shape = lint.label_shape(args[0], args[1])
+                elif kind == "text":
+                    shape = lint.leader_shape(args[0], args[1])
+                elif kind == "gtol":
+                    shape = lint.frame_shape(*self._gtol_size(args[1], args[2], args[3]), mid=opt.get("mid", False))
+                else:
+                    shape = lint.roughness_shape(args[0], args[1])
+                if opt.get("options"):
+                    target, at, left = lint.place_sliding(g, shape, opt["options"], self.inner)
+                else:
+                    at, left = lint.place(g, shape, target, at, left, self.inner, flip=kind != "ra")
+                lint.add_obstacles(g, shape, target, at, left)
+                if kind == "label":
+                    self.text(at[0], at[1], args[0], args[1])
+                elif kind == "text":
+                    self.leader_text(target, at, args[0], args[1], left, fixed=True)
+                elif kind == "gtol":
+                    w, hh = self._gtol_size(args[1], args[2], args[3])
+                    self.arrow(at, target, opt.get("arrow", 2.5), "细实线")
+                    self.gtol(at[0] - w if left else at[0], at[1] - (hh / 2 if opt.get("mid") else 0), *args)
+                else:
+                    self.roughness_leader(target, at, args[0], args[1], fixed=True)
+            self._leaders = []
+        lint.break_lines(self.msp)  # 点画线、细实线、尺寸线在文字处断开
         self.doc.saveas(str(path))
 
 
@@ -442,6 +550,11 @@ class View:
         pts = [(p[0] + ux * L * k / (4 * n) - uy * amp * math.sin(math.pi * k / 2),
                 p[1] + uy * L * k / (4 * n) + ux * amp * math.sin(math.pi * k / 2)) for k in range(4 * n + 1)]
         self.poly(pts, "细实线")
+
+    def dim_auto(self, a, b, bases, angle=0.0, text="<>", dec=1, tol=None):
+        if self.rot:
+            angle = 90.0 - angle
+        self.sh.dim_auto(self.P(*a), self.P(*b), [self.P(*p) for p in bases], angle, text, self.s, dec, tol=tol)
 
     def dim(self, a, b, base, angle=0.0, text="<>", dec=1, tol=None):
         if self.rot:

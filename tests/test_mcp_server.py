@@ -34,7 +34,7 @@ def test_protocol_over_stdio():
     assert [m["id"] for m in out] == [1, 2, 3, 4, 5]  # 通知没有响应
     assert out[0]["result"]["protocolVersion"] == "2025-06-18"
     tools = {t["name"]: t for t in out[1]["result"]["tools"]}
-    assert {"run_design", "explore_parameter", "generate_files", "lookup_standard"} <= set(tools)
+    assert {"run_design", "explore_parameter", "generate_files", "lookup_standard", "check_drawings"} <= set(tools)
     assert all(t["inputSchema"]["type"] == "object" for t in tools.values())
     r = out[2]["result"]
     assert r["isError"] is False and r["structuredContent"]["ok"] is True

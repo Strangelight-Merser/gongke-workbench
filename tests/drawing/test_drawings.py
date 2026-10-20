@@ -7,7 +7,7 @@ import ezdxf
 import pytest
 
 from gongke_core import design, drawing
-from gongke_core.drawing import gear, sheet
+from gongke_core.drawing import gear, lint, sheet
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "examples" / "conveyor_basic.yaml"
 
@@ -180,6 +180,16 @@ def test_assembly_front_view_local_sections(drawings):
     assert len(msp.query("HATCH")) >= 8
 
 
+def _assert_no_overlaps(files):
+    """GB/T 4458.4：尺寸数字、文字不被图线通过，文字之间不重叠（lint 按预览字体估外框）。"""
+    bad = [(f.dxf.name, i.as_dict()) for f in files for i in lint.check(f.dxf).issues]
+    assert not bad, bad
+
+
+def test_coupling_scheme_drawings_have_no_overlaps(drawings):
+    _assert_no_overlaps(drawings[1])
+
+
 def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
     vb = EXAMPLE.parent / "conveyor_vbelt.yaml"
     d = design.run(design.ReducerTask.from_yaml(vb))
@@ -187,6 +197,7 @@ def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
     pul = next(f for f in files if f.number == "GK-03-01")
     texts = " ".join(e.dxf.text for e in ezdxf.readfile(pul.dxf).modelspace().query("TEXT"))
     assert "大带轮" in texts and "HT200" in texts and "槽角" in texts
+    _assert_no_overlaps(files)
 
 
 def test_bevel_scheme_drawings(tmp_path):
@@ -202,6 +213,7 @@ def test_bevel_scheme_drawings(tmp_path):
     # 箱座、箱盖零件图：左端壁上有小锥齿轮轴承座，技术要求说明座孔与Ⅱ轴座孔垂直相交
     for name in ("箱座零件图", "箱盖零件图"):
         assert "垂直相交" in texts(next(f for f in files if f.name == name))
+    _assert_no_overlaps(files)
 
 
 def test_worm_scheme_drawings(tmp_path):
@@ -220,6 +232,7 @@ def test_worm_scheme_drawings(tmp_path):
     # 中心距标注带极限偏差
     dims = [e.dxf.text for e in ezdxf.readfile(asm.dxf).modelspace().query("DIMENSION")]
     assert any("±" in s for s in dims)
+    _assert_no_overlaps(files)
 
 
 def test_housing_base_drawing(drawings):

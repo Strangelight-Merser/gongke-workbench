@@ -66,3 +66,8 @@ def test_generate_files(tmp_path):
     assert r["ok"] and "report.md" in r["files"] and "drawings/drawings.pdf" in r["files"]
     assert {d["number"] for d in r["drawings"]} >= {"GK-00", "GK-04-01"}
     assert json.loads((tmp_path / "task.json").read_text(encoding="utf-8"))["scheme"] == "worm"
+    # 生成的图纸经自查无文字重叠、无压线（GB/T 4458.4：图线遇尺寸数字断开）
+    c = api.check_drawings(tmp_path / "drawings")
+    assert c["checked"] == len(r["drawings"]) and c["total"] == 0, c["sheets"]
+    from gongke_core.__main__ import main
+    assert main(["check-drawings", str(tmp_path / "drawings")]) == 0

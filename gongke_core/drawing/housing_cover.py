@@ -200,7 +200,7 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
         v.dim((xa_, 0), (xb_, 0), (xa_, yb_), 0, f"<>±{_fmt(tl['fa'][k])}", 0)
     v.dim((xo0 - fw, 0), (xs[0], 0), (xo0 - fw, yb_), 0, "<>", 1)
     top = t.cover_top * MM
-    v.dim((xo1 + fw, 0), (xo1 + fw, b1), (xo1 + fw + 5 / s, 0), 90, "<>", 0)
+    v.dim_auto((xo1 + fw, 0), (xo1 + fw, b1), [(xo1 + fw + k / s, 0) for k in (5, 9, 13)], 90, "<>", 0)
     xa_ = blocks[0][0]
     v.dim((xa_, 0), (xa_, hb), (xa_ - 6 / s, 0), 90, "<>", 0)  # 轴承旁凸台高度
     v.dim((xo1 + fw, 0), (xs[-1], top), (xo1 + fw + 14 / s, 0), 90, "<>", 0)

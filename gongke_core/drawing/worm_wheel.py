@@ -181,8 +181,7 @@ def draw(w: WormPair, bore: float, hub_length: float, path: str | Path, title: s
     # 基准与跳动
     sh.datum(*mv.P(L * 0.5, -rb), "A", "up")
     px, py = mv.P(h * 0.6, de / 2)
-    sh.arrow((px + 8, py + 22), (px, py), 2.5, "细实线")
-    sh.gtol(px + 8, py + 22, "runout", "0.050", "A")
+    sh.gtol_leader((px, py), (px + 8, py + 22), "runout", "0.050", "A")
     px, py = mv.P(h, -(ro + rsd) / 2)
     sh.arrow((px + 12, py - 12), (px, py), 2.5, "细实线")
     sh.gtol(px + 12, py - 19, "runout", "0.025", "A")
