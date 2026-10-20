@@ -5,6 +5,9 @@
 输出：summary.json（结果摘要）、report.docx / .md、reducer_assembly.step、
 drawings/（装配图和零件图，DXF + SVG 预览，整套 drawings.pdf）；加 --fem 时还有 fem/（CalculiX 输入、结果和对照表）。
 FreeCAD 工作台也通过这个入口在独立进程中生成模型。
+
+    python -m gongke_core mcp       # 以 MCP 服务器方式运行（stdio），供 AI agent 直接调用，见 docs/agent-api.md
+    python -m gongke_core schema    # 输出任务书的 JSON Schema
 """
 
 from __future__ import annotations
@@ -28,7 +31,17 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--no-drawings", action="store_true", help="不生成二维工程图")
     d.add_argument("--fem", action="store_true", help="用 CalculiX 复核轴的刚度和齿根应力（需要 ccx 和 gmsh，FreeCAD 自带）")
     d.add_argument("--full-teeth", action="store_true", help="建出完整渐开线齿形（文件约 30 MB，生成较慢）")
+    sub.add_parser("mcp", help="以 MCP 服务器方式运行（stdio），供 AI agent 调用")
+    sub.add_parser("schema", help="输出任务书的 JSON Schema")
     args = ap.parse_args(argv)
+    if args.cmd == "mcp":
+        from gongke_core import mcp_server
+        mcp_server.serve()
+        return 0
+    if args.cmd == "schema":
+        from gongke_core import api
+        print(json.dumps(api.task_schema(), ensure_ascii=False, indent=2))
+        return 0
 
     from gongke_core import design, summary
     from gongke_core.report import content, markdown_writer

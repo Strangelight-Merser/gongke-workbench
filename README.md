@@ -15,6 +15,9 @@
 
 改任何一个参数，后面的齿轮、轴、轴承、键、模型、说明书全部重算。
 
+**人和 AI 都能用**：除了 FreeCAD 图形界面和命令行，同一套能力还以 MCP 服务器（`python -m gongke_core mcp`）的形式提供给 AI agent。
+Claude、Cursor 等可以直接调用设计计算、多方案对比、标准件查询和出图，不需要操作界面。接入方法见 [docs/agent-api.md](docs/agent-api.md)。
+
 ## 使用方法
 
 ### 方式一：FreeCAD 工作台

@@ -70,7 +70,8 @@ gongke-workbench/
 > 已完成（续）：齿根弯曲应力二维有限元复核：齿条刀具展成齿廓（含过渡曲线，`calc/tooth_profile.py`），Gmsh 划分网格、CalculiX 求解，与教材 YFa·YSa 相差 −3%～−6%（`fem/gear_tooth.py`）。
 > 已完成（续）：整套图纸输出为一个矢量 PDF（`drawing/pdf.py`，自写的小型 PDF 后端，不引入 AGPL 依赖）。
 > 已完成（续）：工作台默认用 FreeCAD 自带的 Python，首次使用在面板上一键安装依赖包（装到工作台自己的目录，不进 FreeCAD 进程）；e2e 测试从全新 FreeCAD 走这一流程。
-> 下一步：请机械专业老师或学生评审图纸；DWG 读取、STEP 导入（M4 其余部分）；Windows 上验证安装流程。
+> 已完成（续）：原生 agent 接口：`gongke_core/api.py`（dict 进出）+ MCP 服务器 `python -m gongke_core mcp`（标准库实现，8 个工具），用官方 SDK 客户端和 Claude Code 实测通过（见 `docs/agent-api.md`）。
+> 下一步：找标准样图自查图纸；DWG 读取、STEP 导入（M4 其余部分）；Windows 上验证安装流程。
 
 ### M0 骨架（第 1–2 周）
 - [ ] 仓库、许可证、CI（GitHub Actions，无头 FreeCAD 跑测试）

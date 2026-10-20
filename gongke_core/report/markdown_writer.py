@@ -9,6 +9,11 @@ from gongke_core.report import Doc
 
 def write(doc: Doc, path: str | Path) -> None:
     path = Path(path)
+    path.write_text(render(doc, path), encoding="utf-8")
+
+
+def render(doc: Doc, path: Path | None = None) -> str:
+    """渲染为 Markdown 文本。给出 path 时图片另存为同目录 PNG，否则只写图题占位。"""
     out = [f"# {doc.title}", ""]
     n_img = 0
     for b in doc.blocks:
@@ -29,7 +34,10 @@ def write(doc: Doc, path: str | Path) -> None:
             out.append("")
         elif b.kind == "img":
             n_img += 1
+            if path is None:
+                out += [f"[图 {n_img}　{b.text}]", ""]
+                continue
             name = f"{path.stem}_fig{n_img}.png"
             (path.parent / name).write_bytes(b.image)
             out += [f"![{b.text}]({name})", "", f"图 {n_img}　{b.text}", ""]
-    path.write_text("\n".join(out), encoding="utf-8")
+    return "\n".join(out)
