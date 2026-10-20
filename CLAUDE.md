@@ -28,6 +28,7 @@
 - `pytest tests/fem`：CalculiX 有限元复核（需要 ccx ≥ 2.21 和 gmsh，可用 `GONGKE_CCX`、`GONGKE_GMSH` 指定路径；没有时自动跳过）。
 - `pytest tests/geometry`：需要 build123d（约 2 分钟）。
 - `tests/e2e/run_freecad_e2e.sh`：下载 FreeCAD AppImage，在 Xvfb 下跑界面端到端测试，CI 中运行。
+- `tests/e2e/freecad_python_flow.py`：不开界面，用 FreeCAD 自带的 Python 按面板流程装依赖、跑五种方案（中文用户目录、中文输出目录）；CI 在 Windows 版 FreeCAD 上运行它。
 - 提交前至少跑纯 Python 测试。
 
 ## 语言

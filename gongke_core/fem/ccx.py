@@ -51,7 +51,7 @@ MIN_VERSION = (2, 21)  # U1 梁单元在 2.21 修正了横向载荷的错误
 def version(exe: Path | None = None) -> tuple[int, int]:
     """ccx 版本号，如 (2, 22)；读不出来时返回 (0, 0)。"""
     try:
-        r = subprocess.run([str(exe or find()), "-v"], capture_output=True, text=True, timeout=30)
+        r = subprocess.run([str(exe or find()), "-v"], capture_output=True, text=True, errors="replace", timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         return (0, 0)
     m = re.search(r"Version\s+(\d+)\.(\d+)", r.stdout + r.stderr)
@@ -70,7 +70,7 @@ def run(inp: Path, timeout: float = 300) -> Path:
     exe = find()
     job = inp.with_suffix("")
     env = dict(os.environ, OMP_NUM_THREADS="1")
-    r = subprocess.run([str(exe), "-i", job.name], cwd=inp.parent, capture_output=True, text=True,
+    r = subprocess.run([str(exe), "-i", job.name], cwd=inp.parent, capture_output=True, text=True, errors="replace",
                        timeout=timeout, env=env)
     dat = job.with_suffix(".dat")
     if r.returncode != 0 or not dat.exists() or "*ERROR" in r.stdout:

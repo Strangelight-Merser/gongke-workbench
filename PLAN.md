@@ -74,7 +74,8 @@ gongke-workbench/
 > 已完成（续）：对照指导书通行要求自查图纸（`docs/drawing-checklist.md`）：零件图注极限偏差和几何公差、齿轮检验项目，装配图安装尺寸、轴承规定画法、主视图局部剖；放油孔改到油池最低处。
 > 已完成（续）：图纸自动自查文字重叠和压线（`drawing/lint.py`），图线遇文字自动断开、引出标注自动避让；DXF 改为 R2007 格式，兼容学校机房常见的旧版 AutoCAD。
 > 已完成（续）：V 带 + 一级圆柱齿轮减速器方案（`scheme: single`），计算、说明书、三维模型、整套工程图、有限元复核和 FreeCAD 面板都已支持。
-> 下一步：Windows 上验证安装流程。
+> 已完成（续）：Windows 验证放进 CI：Windows 上跑纯 Python 测试；用 Windows 版 FreeCAD 自带的 Python 按面板流程装依赖、跑五种方案（含中文路径和有限元复核）。gmsh、ccx 改为在工作目录中用相对文件名调用。仓库还没有推到 GitHub，CI 尚未实际运行。
+> 下一步：推到 GitHub 后看 Windows CI 结果。
 
 ### M0 骨架（第 1–2 周）
 - [ ] 仓库、许可证、CI（GitHub Actions，无头 FreeCAD 跑测试）

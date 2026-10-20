@@ -22,3 +22,33 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y xvfb libfuse2
       - run: tests/e2e/run_freecad_e2e.sh
+
+  # Windows：纯 Python 测试，并把输出写到含中文和空格的目录
+  core-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml pytest python-docx pillow build123d ezdxf
+      - run: pytest -q tests/calc tests/standards tests/drawing tests/test_api.py tests/test_runner.py tests/test_mcp_server.py
+      - run: python -m gongke_core design examples/conveyor_single.yaml -o "中文 目录/输出"
+        env:
+          PYTHONIOENCODING: utf-8
+
+  # Windows 版 FreeCAD 自带的 Python：按面板的流程装依赖包、设计、出图、建模，并用自带的 ccx、gmsh 做有限元复核
+  freecad-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: |
+          $ver = "1.0.2"
+          $name = "FreeCAD_$ver-conda-Windows-x86_64-py311"
+          Invoke-WebRequest "https://github.com/FreeCAD/FreeCAD/releases/download/$ver/$name.7z" -OutFile fc.7z
+          7z x fc.7z -ofc | Out-Null
+          $bin = (Get-ChildItem -Path fc -Recurse -Filter python.exe | Where-Object { $_.Directory.Name -eq "bin" } | Select-Object -First 1).Directory.FullName
+          $env:PYTHONIOENCODING = "utf-8"
+          & "$bin\python.exe" tests/e2e/freecad_python_flow.py "$bin\python.exe" "$env:RUNNER_TEMP\gk 工作" "$bin\ccx.exe"
+          if ($LASTEXITCODE -ne 0) { exit 1 }

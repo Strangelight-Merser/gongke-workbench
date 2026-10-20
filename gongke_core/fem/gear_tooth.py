@@ -165,8 +165,9 @@ def build(z: float, workdir: Path, name: str = "tooth", **mesh) -> ToothModel:
     geo = workdir / f"{name}.geo"
     info = write_geo(geo, z, **mesh)
     msh = workdir / f"{name}.msh"
-    r = subprocess.run([str(find_gmsh()), str(geo), "-2", "-o", str(msh), "-v", "2"], capture_output=True, text=True,
-                       timeout=300)
+    # 在工作目录中用相对文件名调用：Windows 上用户目录常含中文，避免外部程序处理非 ASCII 路径
+    r = subprocess.run([str(find_gmsh()), geo.name, "-2", "-o", msh.name, "-v", "2"], cwd=workdir,
+                       capture_output=True, text=True, errors="replace", timeout=300)
     if r.returncode != 0 or not msh.exists():
         raise RuntimeError(f"gmsh 划分网格失败：\n{(r.stdout + r.stderr)[-1500:]}")
     nodes, tris, lines_by_tag = read_msh(msh)
