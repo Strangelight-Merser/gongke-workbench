@@ -3,3 +3,9 @@ __pycache__/
 .pytest_cache/
 out/
 *.step
+
+# Local-only materials
+.DS_Store
+/[Ww][Oo][Rr][Kk][Bb][Uu][Dd][Dd][Yy]/
+/.[Ww][Oo][Rr][Kk][Bb][Uu][Dd][Dd][Yy]/
+/星光杯/
