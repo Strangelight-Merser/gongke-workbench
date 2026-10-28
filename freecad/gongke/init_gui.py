@@ -9,7 +9,7 @@ from freecad.gongke import ICONPATH
 
 class GongKeWorkbench(Gui.Workbench):
     MenuText = "工科工作台"
-    ToolTip = "机械类课程设计：减速器设计计算、三维建模、计算说明书"
+    ToolTip = "原生轴建模、当前工程校核与 agent 协作"
     Icon = os.path.join(ICONPATH, "gongke.svg")
 
     def Initialize(self):
@@ -20,7 +20,8 @@ class GongKeWorkbench(Gui.Workbench):
         self.appendMenu("工科", commands.MENU)
 
     def Activated(self):
-        pass
+        from freecad.gongke.bridge import start
+        start()
 
     def Deactivated(self):
         pass

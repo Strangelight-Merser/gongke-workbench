@@ -24,6 +24,24 @@ def material_name(code: str) -> str:
     return code.split("_")[0]
 
 
+def check_data_range(design) -> None:
+    """在写第一张图之前检查圆柱齿轮实际用到的中心距与齿顶圆公差。"""
+    from gongke_core.calc import tolerance as tol
+
+    for pair in (design.high, getattr(design, "low", None)):
+        if pair is None or not hasattr(pair, "mn"):
+            continue
+        dimensions = [("中心距", pair.a, lambda v: tol.center_distance_fa(pair.inp.grade, v)),
+                      ("小齿轮齿顶圆 h11", pair.da1, lambda v: tol.deviations("h11", v)),
+                      ("大齿轮齿顶圆 h11", pair.da2, lambda v: tol.deviations("h11", v))]
+        for label, size, lookup in dimensions:
+            try:
+                lookup(size)
+            except ValueError as exc:
+                raise ValueError(f"{pair.inp.name or '圆柱齿轮级'}{label}：{exc}；"
+                                 "当前数据不支持该图纸尺寸，未外推或省略公差") from exc
+
+
 def build_all(design, out_dir: str | Path, svg: bool = True, pdf: bool = True) -> list[DrawingFile]:
     """生成整套图纸：装配图 GK-00、各轴 GK-01-0n、各（非齿轮轴的）齿轮 GK-02-0n，V 带方案另有大带轮 GK-03-01，
     箱座 GK-04-01、箱盖 GK-04-02。
@@ -33,6 +51,7 @@ def build_all(design, out_dir: str | Path, svg: bool = True, pdf: bool = True) -
     """
     from gongke_core.drawing import assembly, gear, render, shaft
 
+    check_data_range(design)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     files: list[DrawingFile] = []

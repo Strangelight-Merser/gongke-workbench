@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "scope": "simplified_shaft",
+  "entity_id": "aebbb771-0832-4918-aaca-76c7c1cdf867",
+  "segments": [
+    {"segment_id": "left", "length_m": 0.1, "diameter_m": 0.03, "editable": false, "min_diameter_m": 0.03, "max_diameter_m": 0.03},
+    {"segment_id": "middle", "length_m": 0.3, "diameter_m": 0.04, "editable": true, "min_diameter_m": 0.02, "max_diameter_m": 0.06},
+    {"segment_id": "right", "length_m": 0.1, "diameter_m": 0.03, "editable": false, "min_diameter_m": 0.03, "max_diameter_m": 0.03}
+  ],
+  "material": {
+    "name": "教学基准弹性材料",
+    "young_modulus_pa": 206000000000,
+    "allowable_stress_pa": 60000000,
+    "source": "教学基准假定：E=206 GPa、名义许用应力=60 MPa，仅用于演示原生编辑与解析校核，不是材料认证或完整减速器验收。"
+  },
+  "supports_m": [0.05, 0.45],
+  "loads": [{"z_m": 0.25, "fx_n": 0.0, "fy_n": -1000.0}],
+  "torque_points": [{"z_m": 0.1, "torque_nm": 100.0}, {"z_m": 0.4, "torque_nm": -100.0}],
+  "constraints": {"alpha": 0.6, "max_deflection_m": 0.0001}
+}

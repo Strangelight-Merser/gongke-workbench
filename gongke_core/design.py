@@ -48,6 +48,10 @@ class ReducerTask:
 
     @classmethod
     def from_dict(cls, d: dict) -> "ReducerTask":
+        from gongke_core.task_input import validate, TaskError
+        errors = validate(d)
+        if errors:
+            raise TaskError("任务书有误：\n" + "\n".join(errors))
         c = d["conveyor"]
         life = d.get("life", {})
         hours_per_year = life.get("days_per_year", 300) * life.get("shifts", 2) * 8
@@ -412,8 +416,10 @@ def run(task: ReducerTask) -> ReducerDesign:
         "高速级", kin.shafts[1].torque, kin.shafts[1].speed_rpm, kin.i_high, t.life_hours, **task.high))
     # 低速级齿数比按总传动比修正，抵消高速级齿数圆整的误差
     u_low = kin.reducer_ratio / high.u
+    kin = kinematics.with_actual_ratios(kin, (high.u, u_low))
     low = gear_calc.design(gear_calc.GearPairInput(
         "低速级", kin.shafts[2].torque, kin.shafts[2].speed_rpm, u_low, t.life_hours, **task.low))
+    kin = kinematics.with_actual_ratios(kin, (high.u, low.u))
     h = lay.housing(high, low)
     z_low = h.gap_axial + low.b1 / 2
     z_high = h.gap_axial + low.b1 + h.gap_gears + high.b1 / 2
@@ -456,6 +462,7 @@ def _run_single(task: ReducerTask) -> ReducerDesign:
     t = task.conveyor
     pair = gear_calc.design(gear_calc.GearPairInput(
         "", kin.shafts[1].torque, kin.shafts[1].speed_rpm, kin.i_high, t.life_hours, **task.high))
+    kin = kinematics.with_actual_ratios(kin, (pair.u,))
     h = lay.housing(pair, None)
     z = h.inner_width / 2
     shafts = [_shaft(i, task, kin, h, pair, None, z, z, belt) for i in (1, 2)]

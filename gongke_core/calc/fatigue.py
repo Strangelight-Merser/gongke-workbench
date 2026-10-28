@@ -132,6 +132,7 @@ class FatigueCheck:
     material: ShaftMaterial
     S_required: float
     sections: list[FatigueSection] = field(default_factory=list)
+    unsupported_sections: list[dict] = field(default_factory=list)
 
     @property
     def critical(self) -> FatigueSection | None:
@@ -139,7 +140,7 @@ class FatigueCheck:
 
     @property
     def ok(self) -> bool:
-        return self.critical is None or self.critical.S_ca >= self.S_required
+        return not self.unsupported_sections and (self.critical is None or self.critical.S_ca >= self.S_required)
 
 
 def fillet_radius(small: Segment, large: Segment) -> float:
@@ -191,10 +192,14 @@ def _section(label, z, d, feature, m, t, kt_b, kt_t, r, keyway, mat: ShaftMateri
 
 
 def check(segments: list[Segment], case: ShaftLoadCase, material: ShaftMaterial,
-          S_required: float = 1.5, fit_k: float | None = None) -> FatigueCheck:
+          S_required: float = 1.5, fit_k: float | None = None, *,
+          shoulder_radii: dict[int, float] | None = None) -> FatigueCheck:
     """在每个轴肩（直径变化处，取小直径一侧）和每个键槽处计算安全系数。
 
     fit_k 为齿轮过盈配合（H7/r6）处的 kσ/εσ（教材附表查得）；给出时再校核齿轮轮毂两端截面。
+    shoulder_radii 给出当前轴肩实际圆角，键为相邻右段的索引（1..n−1）、值为 m。
+    显式圆角必须完整；超出当前拟合标注范围的截面只记录缺口，不用夹紧值计算。
+    未传入时仍采用批处理设计的角色推定圆角，调用者不得将该近似当作实形校核。
     """
     out = FatigueCheck(material, S_required)
     fits = {"轴承", "齿轮", "端部", "密封"}
@@ -203,19 +208,42 @@ def check(segments: list[Segment], case: ShaftLoadCase, material: ShaftMaterial,
         mx, my = bending_moments(case, z)
         return math.hypot(mx, my), torque_at(case, z)
 
+    def within_bounds(value, lower, upper):
+        # 仅容纳 SI 换算和相减产生的舍入误差，不修改原始 t/r，也不扩大工程适用范围。
+        return (lower <= value <= upper
+                or math.isclose(value, lower, rel_tol=1e-12, abs_tol=1e-14)
+                or math.isclose(value, upper, rel_tol=1e-12, abs_tol=1e-14))
+
     eps = 1e-6
-    for a, b in zip(segments, segments[1:]):
+    for index, (a, b) in enumerate(zip(segments, segments[1:]), 1):
         da, db = a.root_d or a.d, b.root_d or b.d
         if abs(da - db) < 1e-6:
             continue
+        if shoulder_radii is not None:
+            r = shoulder_radii.get(index)
+            if isinstance(r, bool) or not isinstance(r, (int, float)) or not math.isfinite(r) or r <= 0:
+                raise ValueError(f"轴肩 {index} 缺少有限正数的实际圆角半径")
         small, large = (a, b) if da < db else (b, a)
         z = b.z0 - eps if small is a else b.z0 + eps
         m, t = loads(z)
         if m <= 0 and t == 0:
             continue
         D, d = max(da, db), min(da, db)
-        r = fillet_radius(small, large)
+        if shoulder_radii is None:
+            r = fillet_radius(small, large)
         label = f"{small.role}段与{large.role}段之间的轴肩"
+        if shoulder_radii is not None:
+            ratio = (D - d) / (2 * r)
+            unsupported = []
+            if m > 0 and not within_bounds(ratio, 0.1, 20.0):
+                unsupported.append("弯曲拟合要求 0.1 ≤ t/r ≤ 20")
+            if t != 0 and not within_bounds(ratio, 0.25, 4.0):
+                unsupported.append("扭转拟合要求 0.25 ≤ t/r ≤ 4")
+            if unsupported:
+                out.unsupported_sections.append({"label": label, "z": b.z0, "d": d, "r": r,
+                                                 "right_segment_index": index, "t_over_r": ratio,
+                                                 "status": "blocked", "reason": "；".join(unsupported)})
+                continue
         out.sections.append(_section(label, b.z0, d, "轴肩圆角", m, t, kt_shoulder_bending(D, d, r),
                                      kt_shoulder_torsion(D, d, r), r, None, material, small.role in fits))
     for s in segments:

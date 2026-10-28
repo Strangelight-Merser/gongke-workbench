@@ -211,9 +211,15 @@ def draw(w: WormPair, bore: float, hub_length: float, path: str | Path, title: s
     lv.line((hb, yb), (hb, rb + t2))
     lv.line((-hb, rb + t2), (hb, rb + t2))
     sh.cross(lv.P(0, 0), de / 2 * s, 4)
-    lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, rb + t2 + 8 / s), 0, "<>", 0, tol=tol.deviations("JS9", kb / MM))
-    lv.dim((hb, -rb), (hb, rb + t2), (rh + 8 / s, 0), 90, "<>", 1, tol=tol.hub_keyway_depth(kb / MM))
-    sh.roughness(*lv.P(hb, rb + t2), "Ra 3.2", 0, 2.5)
+    # 键宽尺寸线紧贴键槽最好看，但轮毂、轮缘圆会压住尺寸数字，给几个候选位置择一；槽底深度也自动选高度
+    y0 = rb + t2
+    yd_cands = [(0, y0 + k / s) for k in (8, 13, 17, 22, 28, 35, 44)]
+    for r_c in sorted({rr for rr in (rsd, rh, rc if rc > rh else None, de / 2) if rr}):
+        yd_cands.append((0, r_c + 10 / s))
+    lv.dim_best((-hb, y0), (hb, y0), yd_cands, 0, "<>", 0, tol=tol.deviations("JS9", kb / MM))
+    lv.dim_auto((hb, -rb), (hb, y0), [(rh + k / s, 0) for k in (8, 12, 16, 22, 28, 36)], 90, "<>", 1,
+                tol=tol.hub_keyway_depth(kb / MM))
+    sh.roughness_leader(lv.P(hb, y0), lv.P(hb + 8 / s, y0 + 10 / s), "Ra 3.2", 2.5)
 
     # ------------------------------------------------ 参数表、图框
     param_table(sh, w, 2)

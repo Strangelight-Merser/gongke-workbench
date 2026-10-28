@@ -220,6 +220,10 @@ def draw(d: ReducerDesign, path: str | Path, drawing_no: str = "GK-00") -> Sheet
     # ------------------------------------------------ 零件序号与明细栏
     col_fl = min(ox + cx0 * s, ox + (h.x_range[0] * MM - delta - fw) * s) - 30  # 俯视图左侧有宽度、总宽两道尺寸
     col_tr = ox + (xo1 + fw) * s + 30
+    # 续接明细栏占据标题栏左侧 180 mm；序号引线末端还向右伸出 8 mm。
+    # 为整列序号预留边距，不能只检查模型轮廓，否则两位序号会压到续表。
+    if sh.parts_first_rows is not None and len(parts) > sh.parts_first_rows:
+        col_tr = min(col_tr, x1 - 360 - 12)
     col_fr = front_right + 14
     row_ft = oy_f + fy1 * s + 12
     _place_balloons(sh, parts, {

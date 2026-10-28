@@ -147,7 +147,8 @@ def _motor(doc: Doc, d: ReducerDesign):
     doc.eq(f"电动机所需功率 Pd = Pw / η = {k.work_power/1e3:.3f} / {k.eta_total:.4f} = {k.required_power/1e3:.3f} kW")
     m = k.motor
     doc.p(f"按同步转速 {m.sync_speed_rpm:.0f} r/min，选额定功率不小于 Pd 的 Y 系列三相异步电动机 {m.model}："
-          f"额定功率 {m.power/1e3:.1f} kW，满载转速 {m.speed_rpm:.0f} r/min，轴伸直径 {mm(m.shaft_d, 0)} mm（JB/T 10391-2008）。")
+          f"额定功率 {m.power/1e3:.1f} kW，满载转速 {m.speed_rpm:.0f} r/min，轴伸直径 {mm(m.shaft_d, 0)} mm。")
+    doc.note("电机采用课程设计历史 Y 系列数据表。引用的 JB/T 10391-2008 已废止；表内满载转速及轴伸尺寸尚未逐项核对原表，本结果不作为采购选型依据。")
 
 
 def _ratios(doc: Doc, d: ReducerDesign):
@@ -160,7 +161,7 @@ def _ratios(doc: Doc, d: ReducerDesign):
         w = d.worm
         doc.p(f"单级蜗杆减速器，全部传动比由蜗杆传动承担。蜗杆头数 z1 = {w.z1}，蜗轮齿数 z2 = {w.z2}，"
               f"实际传动比 i' = z2/z1 = {w.u:.3f}，输送带速度误差 {d.output_speed_error*100:+.2f}%（允许 ±5%）。")
-        doc.p("各轴功率按电动机所需功率 Pd 逐级乘以效率计算，转矩 T = 9550 P / n。")
+        doc.p("各轴功率按电动机所需功率 Pd 逐级乘以效率计算；转速按最终齿数比逐级计算，转矩 T = P / (2πn/60)（P 用 W）。")
         doc.table(["轴", "功率 P / kW", "转速 n / (r/min)", "转矩 T / (N·m)"],
                   [[s.name, f(s.power / 1e3, 3), f(s.speed_rpm, 2), f(s.torque, 2)] for s in k.shafts])
         return
@@ -174,7 +175,7 @@ def _ratios(doc: Doc, d: ReducerDesign):
         doc.eq(f"齿轮传动比 i齿 = i / i带 = {k.total_ratio:.3f} / {b.ratio:.3f} = {k.i_high:.3f}")
         doc.p(f"齿数圆整后实际齿数比 u = {d.high.z2}/{d.high.z1} = {d.high.u:.3f}，总传动比 i带 u = {d.actual_ratio:.3f}，"
               f"输送带速度误差 {d.output_speed_error*100:+.2f}%（允许 ±5%）。")
-        doc.p("各轴功率按电动机所需功率 Pd 逐级乘以效率计算，转矩 T = 9550 P / n。")
+        doc.p("各轴功率按电动机所需功率 Pd 逐级乘以效率计算；转速按最终齿数比逐级计算，转矩 T = P / (2πn/60)（P 用 W）。")
         doc.table(["轴", "功率 P / kW", "转速 n / (r/min)", "转矩 T / (N·m)"],
                   [[s.name, f(s.power / 1e3, 3), f(s.speed_rpm, 2), f(s.torque, 2)] for s in k.shafts])
         return
@@ -197,7 +198,7 @@ def _ratios(doc: Doc, d: ReducerDesign):
     doc.p(f"齿数圆整后实际传动比 i1' = {d.high.z2}/{d.high.z1} = {d.high.u:.3f}，"
           f"i2' = {d.low.z2}/{d.low.z1} = {d.low.u:.3f}，总传动比 {tot}，"
           f"输送带速度误差 {d.output_speed_error*100:+.2f}%（允许 ±5%）。")
-    doc.p("各轴功率按电动机所需功率 Pd 逐级乘以效率计算，转矩 T = 9550 P / n。")
+    doc.p("各轴功率按电动机所需功率 Pd 逐级乘以效率计算；转速按最终齿数比逐级计算，转矩 T = P / (2πn/60)（P 用 W）。")
     doc.table(["轴", "功率 P / kW", "转速 n / (r/min)", "转矩 T / (N·m)"],
               [[s.name, f(s.power / 1e3, 3), f(s.speed_rpm, 2), f(s.torque, 2)] for s in k.shafts])
 
@@ -525,7 +526,7 @@ def _fatigue(doc: Doc, s: ShaftResult):
     if fc.critical is None:
         return
     m = fc.material
-    doc.h2("5. 按疲劳强度精确校核（安全系数法）")
+    doc.h2("5. 疲劳强度校核（安全系数法，系数近似）")
     doc.p(f"材料 {m.name}：σB = {mpa(m.sigma_b,0)} MPa，σ−1 = {mpa(m.sigma_m1,0)} MPa，τ−1 = {mpa(m.tau_m1,0)} MPa，"
           f"ψσ = {m.psi_sigma:g}，ψτ = {m.psi_tau:g}。弯曲应力按对称循环，扭转切应力按脉动循环（τa = τm = T/2WT）。"
           "对每个轴肩和键槽截面计算：")
@@ -548,6 +549,7 @@ def _bearings(doc: Doc, d: ReducerDesign):
     _h1(doc, "滚动轴承寿命计算")
     doc.p(f"当量动载荷 P = fp (X Fr + Y Fa)，fp = {d.task.load_factor_bearing}；寿命 L10h = 10⁶/(60n) (C/P)^ε，"
           f"球轴承 ε = 3。预期寿命 {d.task.bearing_life_hours:.0f} h。")
+    doc.note("L10h 是基本额定寿命，按 90% 可靠度定义，不等同于实际使用寿命。GB/T 276 规定外形尺寸，不能作为额定载荷 C、C0 的来源；当前载荷表及 X、Y 插值表尚缺可逐项核对的原始页，寿命结果按所列输入条件解释。")
     if any(hasattr(s.layout.bearing, "Y") for s in d.shafts):
         doc.p("圆锥滚子轴承 ε = 10/3：派生轴向力 Fd = Fr/(2Y)，被压紧一端的轴承 Fa = 外加轴向力 + 另一端的 Fd，"
               "被放松一端的 Fa = 自身的 Fd；Fa/Fr ≤ e 时 X = 1、Y = 0，否则 X = 0.4、Y 查表。")

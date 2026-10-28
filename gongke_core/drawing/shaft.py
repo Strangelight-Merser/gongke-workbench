@@ -174,7 +174,8 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
                "<>", s, 0, tol=tol.deviations("N9", kb / 1e3))
         sh.dim((c[0], c[1] - rs), (c[0], c[1] + top), (c[0] + rs + 6, c[1]), 90, "<>", s, 1,
                tol=tol.shaft_keyway_depth(kb / 1e3))
-        sh.roughness(c[0] + hb, c[1] + top + 1, "Ra 3.2", h=2.5)
+        # 槽底的表面结构：断面图小的时候符号会越出断面圆、压在圆上，用引出标注在附近另找空位
+        sh.roughness_leader((c[0] + hb, c[1] + top), (c[0] + hb + 8, c[1] + top + 10), "Ra 3.2", 2.5)
         # 键槽对称度（对公共轴线 A-B）：被测要素是中心平面，指引线箭头与键宽尺寸线对齐
         yd = c[1] + rs + 3.5
         val = tol.fmt_mm(tol.keyway_symmetry(kb / 1e3))
@@ -213,7 +214,9 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
             sh.dim(v.P(xm, -d / 2), v.P(xm, d / 2), v.P(xm, 0), 90, txt, s, 1 if d % 1 else 0,
                    location=(tx, ly - 9), tol=dev)
         else:
-            v.dim((xm, -d / 2), (xm, d / 2), (xm, 0), 90, txt, 1 if d % 1 else 0, tol=dev)
+            # 尺寸线沿轴线附近试几个位置，避开齿部轮廓、台阶的粗实线
+            v.dim_auto((xm, -d / 2), (xm, d / 2), [(xm + off / s, 0) for off in (0, 3, -3, 6, -6, 10, -10)],
+                       90, txt, 1 if d % 1 else 0, tol=dev)
     # 轴向尺寸链（下方），最长的非配合段不注
     fit_roles = set(FITS) | {"齿轮轴"}
     free = max((t for t in S if t[2].role not in fit_roles), key=lambda t: t[1] - t[0], default=None)
@@ -223,13 +226,13 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
             continue
         v.dim((a, -(seg.root_d or seg.d) * 1e3 / 2), (b, -(seg.root_d or seg.d) * 1e3 / 2), (a, y_chain), 0, "<>", 0)
     v.dim((0, -S[0][2].d * 1e3 / 2), (L, -S[-1][2].d * 1e3 / 2), (0, y_chain - 10 / s), 0, "<>", 0)
-    # 键槽长度与定位（上方）
+    # 键槽长度与定位（上方）：尺寸线试几个高度，避开上方的表面结构符号和台阶
     for xm, seg, kb, t1, kl, ka, kz in sections:
         r = seg.d * 1e3 / 2
         a = next(t[0] for t in S if t[2] is seg)
-        v.dim((ka, kb / 2), (kz, kb / 2), (ka, r + 12 / s), 0, "<>", 0)
+        v.dim_auto((ka, kb / 2), (kz, kb / 2), [(ka, r + k / s) for k in (12, 17, 23, 30, 38)], 0, "<>", 0)
         if ka - a > 0.5:
-            v.dim((a, r), (ka, kb / 2), (a, r + 12 / s), 0, "<>", 0)
+            v.dim_auto((a, r), (ka, kb / 2), [(a, r + k / s) for k in (12, 17, 23, 30, 38)], 0, "<>", 0)
 
     # ------------------------------------------------ 表面结构、基准、跳动
     datums = []
@@ -237,7 +240,9 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
         r = (seg.d if seg.role != "齿轮轴" else integral.tip_d) * 1e3 / 2
         xm = (a + b) / 2
         if seg.role in RA:
-            sh.roughness(*v.P(a + (b - a) * 0.82, r), RA[seg.role], h=3.0)
+            # 短轴段上符号会越出台肩压到轮廓线，用引出标注在附近另找空位
+            p = v.P(a + (b - a) * 0.82, r)
+            sh.roughness_leader(p, (p[0] + 6, p[1] + 9), RA[seg.role], 3.0)
         if seg.role == "轴承":
             datums.append((xm, r))
     if len(datums) >= 2:

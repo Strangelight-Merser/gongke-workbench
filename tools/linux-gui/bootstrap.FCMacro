@@ -1,0 +1,26 @@
+"""仅打开隔离副本并记录启动信息；实际改尺寸、撤销与保存通过原生界面完成。"""
+import json
+import traceback
+from pathlib import Path
+
+import FreeCAD as App
+import FreeCADGui as Gui
+
+try:
+    Gui.activateWorkbench("GongKeWorkbench")
+    from freecad.gongke import bridge, native_shaft
+    doc = App.openDocument("/workspace/ui_shaft.FCStd")
+    Gui.activeDocument().activeView().viewAxonometric()
+    Gui.activeDocument().activeView().fitAll()
+    Gui.getMainWindow().showMaximized()
+    result = {
+        "version": App.Version(),
+        "user_data": App.getUserAppDataDir(),
+        "module_path": native_shaft.__file__,
+        "context": bridge.start().state.get_project_context(),
+        "document": doc.FileName,
+    }
+    Path("/workspace/bootstrap.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+except Exception:
+    Path("/workspace/bootstrap-error.txt").write_text(traceback.format_exc())
+    App.Console.PrintError(traceback.format_exc())

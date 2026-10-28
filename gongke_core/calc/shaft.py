@@ -154,7 +154,7 @@ def check(segments: list[Segment], case: ShaftLoadCase, sigma_allow: float = 60e
     """按弯扭合成应力校核：σca = √(M² + (αT)²) / W ≤ [σ−1b]。
 
     α 为折合系数：单向转动、扭转切应力按脉动循环取 0.6。[σ−1b] 对 45 钢调质取 60 MPa。
-    沿轴均匀取样，并加上各段端点和载荷作用点，取 σca 最大处为危险截面。
+    沿轴均匀取样，并覆盖各段和转矩事件的左右侧，取 σca 最大处为危险截面。
     """
     z_start, z_end = segments[0].z0, segments[-1].z1
     zs = {z_start + (z_end - z_start) * i / n for i in range(n + 1)}
@@ -163,6 +163,12 @@ def check(segments: list[Segment], case: ShaftLoadCase, sigma_allow: float = 60e
         zs.update((s.z0 + eps, s.z1 - eps))
     for p in case.loads:
         zs.update((p.z - eps, p.z + eps))
+    # 转矩在施加位置跳变；固定 eps 可能跨过整个窄区间，必须取事件的相邻浮点位置。
+    # 同时覆盖直径突变两侧，不能把小直径侧的转矩误配到大直径截面。
+    boundaries = {z for s in segments for z in (s.z0, s.z1)}
+    boundaries.update(z for z, _ in case.torque_points)
+    for z in boundaries:
+        zs.update((z, math.nextafter(z, -math.inf), math.nextafter(z, math.inf)))
     samples = []
     for z in sorted(zs):
         seg = next((s for s in segments if s.z0 <= z <= s.z1), None)

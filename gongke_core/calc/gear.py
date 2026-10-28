@@ -378,13 +378,26 @@ def design(inp: GearPairInput) -> GearPair:
         a = _ceil_to((z1 + z2) * mn / (2 * math.cos(beta0)), inp.center_distance_step)
         if a_min is not None:
             a = max(a, a_min)
+        # 初选角恰为上限时，向上圆整必然使反算角超限，增加齿数也
+        # 无法改变这一点；该边界须向下取整，再做角度、结构和强度校核。
+        if inp.beta_deg == 20:
+            a = math.floor((z1 + z2) * mn / (2 * math.cos(beta0))
+                           / inp.center_distance_step + 1e-9) * inp.center_distance_step
+            a_low = (z1 + z2) * mn / (2 * math.cos(math.radians(8)))
+            if a < max(a_low, a_min or 0.0) - 1e-12:
+                z1 += 1
+                continue
         beta = math.acos((z1 + z2) * mn / (2 * a))
-        if not math.radians(8) <= beta <= math.radians(20):
-            # 螺旋角超出 8°–20°：增减齿数使中心距贴近
+        if not math.radians(8) - 1e-12 <= beta <= math.radians(20) + 1e-12:
             z1 += 1 if beta > math.radians(20) else -1
             continue
         d1f = z1 * mn / math.cos(beta)
+        if d1f < inp.min_d1 - 1e-12:
+            z1 += 1
+            continue
         b2 = _ceil_to(phi * d1f, 1e-3)
+        # 最终校核的寿命循环次数使用候选实际齿数比，不能沿用初选比。
+        cycles, khn, kfn, sh_allow, sf_allow = _allowables(inp, z2 / z1)
         chk = check_strength(inp, z1, z2, mn, beta, b2, sh_allow, sf_allow)
         if chk.ok:
             break
@@ -392,7 +405,8 @@ def design(inp: GearPairInput) -> GearPair:
         a_min = a + inp.center_distance_step
         z1 = math.ceil(2 * a_min * math.cos(beta0) / (mn * (1 + u)))
     else:
-        raise RuntimeError(f"{inp.name}：迭代未收敛，请检查材料或输入参数")
+        raise RuntimeError(f"{inp.name or '圆柱齿轮级'}：39 次候选设计未通过；初选螺旋角 {inp.beta_deg:g}°，"
+                           f"传动比 {u:g}，转矩 {t1:g} N·m，最小分度圆直径 {inp.min_d1 * 1e3:g} mm")
 
     d2 = z2 * mn / math.cos(beta)
     return GearPair(

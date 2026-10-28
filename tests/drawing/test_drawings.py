@@ -190,6 +190,21 @@ def test_coupling_scheme_drawings_have_no_overlaps(drawings):
     _assert_no_overlaps(drawings[1])
 
 
+@pytest.mark.parametrize("pull,speed,drum", [
+    (4000, 1.6, 450),   # 键宽尺寸的数字原本正好压在低速级大齿轮的轮毂圆上（比例 1:1.5、A2 图幅）
+    (1500, 0.8, 300),   # 小载荷、小卷筒：齿轮小、比例大
+    (6000, 2.2, 500),   # 大扭矩：轴径大、轮毂相对小
+])
+def test_coupling_drawings_have_no_overlaps_at_other_parameters(tmp_path, pull, speed, drum):
+    """示例任务书之外的工况也要保证尺寸数字不被图线通过（GB/T 4458.4）。"""
+    import yaml
+    task = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    task["conveyor"] = {"belt_pull_N": pull, "belt_speed_m_s": speed, "drum_diameter_mm": drum}
+    d = design.run(design.ReducerTask.from_dict(task))
+    files = drawing.build_all(d, tmp_path, svg=False, pdf=False)
+    _assert_no_overlaps(files)
+
+
 def test_vbelt_scheme_adds_pulley_drawing(tmp_path):
     vb = EXAMPLE.parent / "conveyor_vbelt.yaml"
     d = design.run(design.ReducerTask.from_yaml(vb))

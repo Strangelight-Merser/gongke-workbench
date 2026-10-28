@@ -51,7 +51,8 @@ def task_dict(v: FormValues) -> dict:
         "bearing_life_years": v.bearing_life_years,
         "motor_sync_speed_rpm": v.sync_speed_rpm,
         "ratio_split": v.ratio_split,
-        "gears": {"high": dict(gear)} if v.scheme == "single" else {"high": dict(gear), "low": dict(gear)},
+        "gears": {"worm": {"grade": v.grade}} if v.scheme == "worm" else
+                 {"high": dict(gear)} if v.scheme == "single" else {"high": dict(gear), "low": dict(gear)},
         "scheme": v.scheme,
         "vbelt": {"ratio": v.belt_ratio} if v.belt_ratio else {},
     }
@@ -94,6 +95,12 @@ def missing_module(stderr: str) -> str:
 
 
 def write_task(v: FormValues, out_dir: Path) -> Path:
+    # 工作台重复运行时保留整次旧产物，不在原目录里覆盖报告或混用旧模型。
+    # 仅归档本程序有 manifest 标识的运行目录；其他非空目录仍由导出器拒绝。
+    if (out_dir / "manifest.json").is_file():
+        from uuid import uuid4
+        archive = out_dir.with_name(out_dir.name + "-" + uuid4().hex[:12])
+        out_dir.rename(archive)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "task.yaml"
     path.write_text(json.dumps(task_dict(v), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -160,14 +167,17 @@ SCHEMES = ("coupling", "vbelt", "bevel", "worm", "single")
 
 def read_outputs(out_dir: Path) -> dict:
     out_dir = Path(out_dir)
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    if manifest["status"] in ("running", "failed"):
+        raise RuntimeError("本次运行未完成：" + "；".join(manifest["notes"]))
     summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
+    delivered = set(manifest["files"])
     files = {name: out_dir / name for name in ("reducer_assembly.step", "report.docx", "report.md", "drawings/drawings.pdf",
-                                                "fem/comparison.md")}
-    index = out_dir / "drawings" / "index.json"
+                                                "fem/comparison.md") if name in delivered}
     drawings = []
-    if index.exists():
-        for d in json.loads(index.read_text(encoding="utf-8")):
-            d["dxf"] = out_dir / "drawings" / d["dxf"]
-            d["svg"] = out_dir / "drawings" / d["svg"] if d.get("svg") else None
-            drawings.append(d)
-    return {"summary": summary, "files": {k: v for k, v in files.items() if v.exists()}, "drawings": drawings}
+    for row in manifest["drawings"]:
+        d = dict(row)
+        d["dxf"] = out_dir / "drawings" / d["dxf"]
+        d["svg"] = out_dir / "drawings" / d["svg"] if d.get("svg") else None
+        drawings.append(d)
+    return {"summary": summary, "files": files, "drawings": drawings, "delivery": manifest}

@@ -182,13 +182,11 @@ def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str,
     sh.roughness(*mv.P(-b * 0.25, d / 2), "Ra 1.6", 0, 3.0)  # 齿面（标在分度线上）
     # 基准与跳动
     sh.datum(*mv.P(b * 0.25, -rb), "A", "up")
-    px, py = mv.P(b * 0.2, da / 2)
-    sh.arrow((px - 8, py + 22), (px, py), 2.5, "细实线")
     t_rad, t_ax = blank_tolerances(pair, member, da / 1e3, span)
-    sh.gtol(px - 30, py + 22, "runout", tol.fmt_mm(t_rad), "A")
+    px, py = mv.P(b * 0.2, da / 2)
+    sh.gtol_leader((px, py), (px - 30, py + 22), "runout", tol.fmt_mm(t_rad), "A")
     px, py = mv.P(b / 2, -da / 2 * 0.45)
-    sh.arrow((px + 10, py - 12), (px, py), 2.5, "细实线")
-    sh.gtol(px + 10, py - 19, "runout", tol.fmt_mm(t_ax), "A")
+    sh.gtol_leader((px, py), (px + 10, py - 19), "runout", tol.fmt_mm(t_ax), "A")
 
     # ------------------------------------------------ 左视图
     lv.circle((0, 0), da / 2)
@@ -213,17 +211,24 @@ def draw(pair: GearPair, member: int, bore: float, path: str | Path, title: str,
     lv.line((hb, yb), (hb, rb + t2))
     lv.line((-hb, rb + t2), (hb, rb + t2))
     sh.cross(lv.P(0, 0), da / 2 * s, 4)
-    yd = rb + t2 + 8 / s
-    lv.dim((-hb, rb + t2), (hb, rb + t2), (-hb, yd), 0, "<>", 0, tol=tol.deviations("JS9", kb / 1e3))
+    # 键宽尺寸线紧贴键槽最好看，但轮毂大、比例小时会正好压在轮毂圆（或轮缘圆）上，
+    # 所以给几个候选位置，出图时选尺寸数字不被圆压住的那个，再逐级外移。
+    y0 = rb + t2
+    yd_cands = [(0, y0 + k / s) for k in (8, 13, 17, 22, 28, 35, 44)]
+    if g.web:
+        yd_cands += [(0, g.hub_d * 1e3 / 2 + 10 / s), (0, g.rim_inner_d * 1e3 / 2 + 10 / s)]
+    yd_cands.append((0, da / 2 + 10 / s))
+    base = lv.dim_best((-hb, y0), (hb, y0), yd_cands, 0, "<>", 0, tol=tol.deviations("JS9", kb / 1e3))
+    yd = base[1]  # 采用的尺寸线所在的图纸 y，对称度框格的指引线要与它对齐
     lv.dim_auto((hb, -rb), (hb, rb + t2), [(rb + k / s, 0) for k in (10, 14, 18, 23, 28, 34)], 90, "<>", 1,
                 tol=tol.hub_keyway_depth(kb / 1e3))
     kx, ky = lv.P(hb * 0.5, rb + t2)
     sh.roughness_leader((kx, ky), (kx + 6, ky + 8), "Ra 3.2", 2.5)
     # 键槽对称度（对基准 A），指引线箭头与键宽尺寸线对齐
     val = tol.fmt_mm(tol.keyway_symmetry(kb / 1e3))
-    ax, ay = lv.P(-hb, yd)
-    bx, _ = lv.P(hb, yd)
-    sh.gtol_aligned([((ax - 3, ay), (ax - 9, ay), True), ((bx + 3, ay), (bx + 9, ay), False)], "symmetry", val, "A", 3.0)
+    ax = lv.P(-hb, 0)[0]
+    bx = lv.P(hb, 0)[0]
+    sh.gtol_aligned([((ax - 3, yd), (ax - 9, yd), True), ((bx + 3, yd), (bx + 9, yd), False)], "symmetry", val, "A", 3.0)
 
     # ------------------------------------------------ 参数表、图框
     param_table(sh, pair, member, span)

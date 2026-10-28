@@ -48,10 +48,44 @@ class SettingsCommand:
             App.Console.PrintMessage(f"工科工作台：Python 解释器设为 {path}\n")
 
 
-TOOLBAR = ["GongKe_ReducerDesign"]
-MENU = ["GongKe_ReducerDesign", "GongKe_Settings"]
+class NativeShaftCommand:
+    def GetResources(self):
+        return {"Pixmap": os.path.join(ICONPATH, "gongke.svg"), "MenuText": "创建原生教学轴",
+                "ToolTip": "三个轴段，可在 Sketcher 中编辑；用于名义应力与挠度比较"}
+
+    def IsActive(self):
+        return True
+
+    def Activated(self):
+        import json
+        import uuid
+        from importlib.resources import files
+        from freecad.gongke.native_shaft import create_shaft
+        from freecad.gongke.bridge import start
+
+        snapshot = json.loads(files("gongke_core").joinpath("resources/native_shaft.json").read_text(encoding="utf-8"))
+        snapshot["entity_id"] = str(uuid.uuid4())
+        doc = App.newDocument("ShaftStudy")
+        doc.UndoMode = 1
+        doc.openTransaction("创建原生教学轴")
+        try:
+            body = create_shaft(doc, snapshot)
+            doc.commitTransaction()
+        except Exception:
+            doc.abortTransaction()
+            raise
+        start()
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(body)
+        Gui.activeDocument().activeView().viewAxonometric()
+        Gui.activeDocument().activeView().fitAll()
+
+
+TOOLBAR = ["GongKe_NativeShaft", "GongKe_ReducerDesign"]
+MENU = ["GongKe_NativeShaft", "GongKe_ReducerDesign", "GongKe_Settings"]
 
 
 def register():
+    Gui.addCommand("GongKe_NativeShaft", NativeShaftCommand())
     Gui.addCommand("GongKe_ReducerDesign", ReducerDesignCommand())
     Gui.addCommand("GongKe_Settings", SettingsCommand())

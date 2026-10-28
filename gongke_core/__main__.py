@@ -54,56 +54,26 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(api.task_schema(), ensure_ascii=False, indent=2))
         return 0
 
-    from gongke_core import design, summary
-    from gongke_core.report import content, markdown_writer
+    import yaml
+    from gongke_core.delivery import generate
+    from gongke_core.task_input import TaskError
 
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    t0 = time.time()
-    res = design.run(design.ReducerTask.from_yaml(args.task))
-    fem = None
-    if args.fem:
-        from gongke_core.fem import ccx, shaft_check
-        try:
-            fem = shaft_check.run(res, out / "fem")
-        except ccx.CcxNotFound as e:
-            print(f"跳过有限元复核：{e}", file=sys.stderr)
-        else:
-            (out / "fem" / "comparison.md").write_text(shaft_check.to_markdown(fem), encoding="utf-8")
-            gears = f"，{len(fem.gears)} 个齿轮的齿根应力" if fem.gears else ""
-            print(f"有限元复核完成：{len(fem.shafts)} 根轴（与解析结果最大相差 {fem.max_diff * 100:.2f}%）{gears}")
-            if fem.gear_note:
-                print(f"跳过齿根应力复核：{fem.gear_note}", file=sys.stderr)
-    (out / "summary.json").write_text(json.dumps(summary.summarize(res, fem), ensure_ascii=False, indent=2), encoding="utf-8")
-    doc = content.build(res, fem=fem)
-    markdown_writer.write(doc, out / "report.md")
-    if not args.no_docx:
-        try:
-            from gongke_core.report import docx_writer
-            docx_writer.write(doc, out / "report.docx")
-        except ImportError:
-            print("未安装 python-docx，跳过 Word 说明书", file=sys.stderr)
-    print(f"计算完成（{time.time()-t0:.1f} s）：{'全部校核通过' if res.ok else '有校核项不满足，见 summary.json'}")
-    no_geometry = False
-    if not args.no_drawings and not no_geometry:
-        try:
-            from gongke_core import drawing
-            from gongke_core.drawing import render  # noqa: F401  需要 ezdxf
-        except ImportError:
-            print("未安装 ezdxf，跳过工程图", file=sys.stderr)
-        else:
-            t1 = time.time()
-            files = drawing.build_all(res, out / "drawings")
-            index = [{"name": f.name, "number": f.number, "size": f.size, "dxf": f.dxf.name,
-                      "svg": f.svg.name if f.svg else None} for f in files]
-            (out / "drawings" / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"工程图已生成（{time.time()-t1:.1f} s）：{len(files)} 张，见 {out / 'drawings'}（整套打印用 drawings.pdf）")
-    if not args.no_step and not no_geometry:
-        from gongke_core.geometry import assembly
-        t1 = time.time()
-        assembly.export(res, out / "reducer_assembly.step", with_housing=not args.no_housing, teeth=args.full_teeth)
-        print(f"三维模型已生成（{time.time()-t1:.1f} s）：{out / 'reducer_assembly.step'}")
-    return 0 if res.ok else 2
+    try:
+        with open(args.task, encoding="utf-8") as f:
+            task = yaml.safe_load(f)
+        result = generate(task, args.out, report_docx=not args.no_docx,
+                          drawings=not args.no_drawings, step=not args.no_step,
+                          full_teeth=args.full_teeth, fem=args.fem,
+                          with_housing=not args.no_housing, source_task=args.task)
+    except (TaskError, OSError, yaml.YAMLError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(f"计算校核：{'通过' if result['calculation_ok'] else '未通过或未完成'}；"
+          f"请求产物：{'齐全' if result['exports_complete'] else '未完成'}")
+    for note in result['notes']:
+        print(note)
+    print(f"本次交付清单：{Path(result['out_dir']) / 'manifest.json'}")
+    return 0 if result['ok'] else 2
 
 
 if __name__ == "__main__":

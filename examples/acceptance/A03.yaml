@@ -1,0 +1,25 @@
+title: 带式输送机传动装置设计
+conveyor:
+  belt_pull_N: 6000
+  belt_speed_m_s: 1.0
+  drum_diameter_mm: 500
+life:
+  years: 10
+  days_per_year: 300
+  shifts: 2
+bearing_life_years: 3
+motor_sync_speed_rpm: 1500
+ratio_split: 1.3
+gears:
+  high:
+    material1: 40Cr_QT
+    material2: 45_QT
+    grade: 8
+    z1: 24
+    beta_deg: 14
+  low:
+    material1: 40Cr_QT
+    material2: 45_QT
+    grade: 8
+    z1: 24
+    beta_deg: 14

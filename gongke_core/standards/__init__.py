@@ -53,12 +53,19 @@ def motors() -> list[Motor]:
 
 def select_motor(required_power: float, sync_speed_rpm: float) -> Motor:
     """在给定同步转速下选额定功率不小于 ``required_power``（W）的最小电机。"""
+    rows = motors()
+    speeds = sorted({m.sync_speed_rpm for m in rows})
+    if sync_speed_rpm not in speeds:
+        available = " / ".join(f"{v:g}" for v in speeds)
+        raise SelectionError(f"电动机表未收录同步转速 {sync_speed_rpm:g} r/min；可用转速：{available} r/min")
     cands = sorted(
-        (m for m in motors() if m.sync_speed_rpm == sync_speed_rpm and m.power >= required_power),
+        (m for m in rows if m.sync_speed_rpm == sync_speed_rpm and m.power >= required_power),
         key=lambda m: m.power,
     )
     if not cands:
-        raise SelectionError(f"同步转速 {sync_speed_rpm} r/min 下没有功率 ≥ {required_power/1e3:.2f} kW 的电机")
+        max_power = max(m.power for m in rows if m.sync_speed_rpm == sync_speed_rpm)
+        raise SelectionError(f"同步转速 {sync_speed_rpm:g} r/min 需功率 ≥ {required_power/1e3:.2f} kW，"
+                             f"当前表最大仅 {max_power/1e3:g} kW；请核对工况或补充有来源的电机数据")
     return cands[0]
 
 

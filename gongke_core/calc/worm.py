@@ -322,7 +322,9 @@ def design(inp: WormPairInput) -> WormPair:
             best = (a, min(cands, key=lambda t: t[0]))
             break
     if best is None:
-        raise standards.SelectionError(f"{inp.name}：标准中心距 ≤ 500 mm 内没有满足强度和传动比要求的蜗杆传动")
+        raise standards.SelectionError(f"{inp.name}：当前标准中心距 ≤ 500 mm 的候选集内未找到满足强度和传动比要求的方案；"
+                                       f"请求头数 z1={inp.z1}，传动比 {inp.ratio:g}。"
+                                       "这不代表头数非法或工程上绝对不可行；可比较其他头数或传动方案")
     a, (_, m, d1, z2, x2, c, eta1, eta) = best
     return WormPair(inp, mat, cycles, a_req, a, m, d1, z1, z2, x2, c, eta1, eta)
 

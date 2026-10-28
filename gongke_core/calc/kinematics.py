@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from gongke_core import standards
 
@@ -198,3 +198,18 @@ def _solve_worm(task: ConveyorTask) -> Kinematics:
     names = ["电动机轴", "Ⅰ轴（蜗杆轴）", "Ⅱ轴（蜗轮轴）", "卷筒轴"]
     shafts = [ShaftState(nm, p, n, torque_from_power(p, n)) for nm, p, n in zip(names, [p0, p1, p2, p3], speeds)]
     return Kinematics(task, pw, eta, pd, motor, nw, i, i, 1.0, shafts, 1.0)
+
+
+def with_actual_ratios(kin: Kinematics, ratios: tuple[float, ...]) -> Kinematics:
+    """按已选齿数比重算各轴 n、T；功率和初选传动比分配保留用于说明书对照。
+
+    n后=n前/u，T=P/(2πn/60)。末轴为联轴器后的卷筒，与输出轴同速。
+    """
+    if len(ratios) != len(kin.shafts) - 3:
+        raise ValueError("实际齿数比数量与传动级数不一致")
+    speeds = [kin.motor.speed_rpm, kin.motor.speed_rpm / kin.i_belt]
+    for ratio in ratios:
+        speeds.append(speeds[-1] / ratio)
+    speeds.append(speeds[-1])
+    return replace(kin, shafts=[replace(s, speed_rpm=n, torque=torque_from_power(s.power, n))
+                                for s, n in zip(kin.shafts, speeds)])

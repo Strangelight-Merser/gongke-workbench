@@ -37,7 +37,9 @@ def moment_diagram(shaft_result, width: int = 900, row_h: int = 150) -> bytes:
         dr.line(pts, fill=color, width=2)
         dr.line([(X(z0), base), (X(z1), base)], fill="black", width=1)
         k = max(range(len(vals)), key=lambda j: abs(vals[j]))
-        dr.text((pts[k][0] + 4, pts[k][1] - 16 if vals[k] >= 0 else pts[k][1] + 2), f"{vals[k]:.1f} N·m", fill="black", font=font)
+        label = f"{vals[k]:.1f} N·m"
+        x = min(pts[k][0] + 4, width - 4 - dr.textbbox((0, 0), label, font=font)[2])
+        dr.text((x, pts[k][1] - 16 if vals[k] >= 0 else pts[k][1] + 2), label, fill="black", font=font)
         dr.text((8, top + h / 2 - 8), name, fill="black", font=font)
     # 支承位置
     bottom = row_h * len(rows)
@@ -89,7 +91,9 @@ def deflection_diagram(shaft_result, fem=None, curve=None, width: int = 900, row
                 x, y = X(z), base - v / vmax * h
                 dr.ellipse([x - 3, y - 3, x + 3, y + 3], outline=(40, 40, 40))
         k = max(range(len(vals)), key=lambda j: vals[j])
-        dr.text((pts[k][0] + 4, pts[k][1] - 16), f"{vals[k]:.3g}", fill="black", font=font)
+        label = f"{vals[k]:.3g}"
+        x = min(pts[k][0] + 4, width - 4 - dr.textbbox((0, 0), label, font=font)[2])
+        dr.text((x, pts[k][1] - 16), label, fill="black", font=font)
         dr.text((8, top + h / 2 - 8), name, fill="black", font=font)
     bottom = row_h * len(rows)
     for zb in lay.bearing_z:

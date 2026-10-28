@@ -32,6 +32,24 @@ def _gb_tolerance_text(self, tol_upper: float, tol_lower: float):
 
 _dim_base.Tolerance.update_tolerance_text = _gb_tolerance_text
 
+
+def _wrap_text(s: str, w_max: float, h: float, indent: str = "") -> list[str]:
+    """把长句按文字外框宽度折行。中文可逐字断开；续行前加 indent。放不下哪怕一个字时也至少成一行。"""
+    from gongke_core.drawing.lint import text_width
+
+    if text_width(s, h) <= w_max:
+        return [s]
+    out, cur = [], ""
+    for ch in s:
+        if cur and text_width(cur + ch, h) > w_max:
+            out.append(cur)
+            cur = indent + ch
+        else:
+            cur += ch
+    if cur:
+        out.append(cur)
+    return out
+
 # 图幅 B × L（GB/T 14689 基本幅面），以及装订边 a、周边 c
 SIZES = {"A0": (841, 1189), "A1": (594, 841), "A2": (420, 594), "A3": (297, 420), "A4": (210, 297)}
 BIND_A = 25
@@ -194,6 +212,32 @@ class Sheet:
     def dim_auto(self, p1, p2, bases, angle=0.0, text="<>", scale=1.0, dec=1, tol=None):
         """有几个候选尺寸线位置的线性尺寸：出图时选尺寸数字不压线、不压字的那个（按 bases 的先后优先）。"""
         self._dims.append((p1, p2, list(bases), angle, text, scale, dec, tol))
+
+    def dim_best(self, p1, p2, bases, angle=0.0, text="<>", scale=1.0, dec=1, tol=None):
+        """同 dim_auto，但立即画出并把采用的尺寸线位置（图纸坐标）返回给调用者。
+
+        用于需要与尺寸线对齐的几何公差框格：框格的指引线必须落在尺寸线上，因此要先知道尺寸线最终在哪。
+        候选按 bases 的先后优先（每往后一个加 0.5 的代价），所以够用时不外移。"""
+        from gongke_core.drawing import lint
+
+        g = lint.obstacle_grid(self.msp)
+        best = None
+        for k, base in enumerate(bases):
+            d = self.dim(p1, p2, base, angle, text, scale, dec, tol=tol)
+            boxes = [b for ve in d.get_geometry_block() if (b := lint._text_box(ve, -1))]
+            c = sum(lint._place_cost(g, lambda t, a, lf, b=b: (b, []), None, None, False, self.inner)
+                    for b in boxes) + 0.5 * k
+            if best is None or c < best[0]:
+                if best is not None:
+                    self._drop_dim(best[1])
+                best = (c, d, base)
+            else:
+                self._drop_dim(d)
+        for ve in best[1].get_geometry_block():
+            b = lint._text_box(ve, -1)
+            if b:
+                g.add(("text", b), lint._bbox_pts(b.corners()))
+        return best[2]
 
     def _place_dims(self):
         from gongke_core.drawing import lint
@@ -457,11 +501,18 @@ class Sheet:
         self.rect(x, y_top - row_h * len(rows), x + sum(widths), y_top, "粗实线")
 
     def tech_requirements(self, lines: list[str], x: float | None = None, y: float | None = None):
+        """技术要求：编号逐条列出；比图框宽度还长的条目自动折行（折行后不再重编号）。"""
         x = x if x is not None else self.inner[2] - 180 - 150
-        y = y if y is not None else self.inner[1] + 10 + 7 * len(lines)
+        from gongke_core.drawing.lint import text_width
+
+        rows: list[str] = []
+        w_max = self.inner[2] - (x + 4) - 3  # 右侧留 3 mm，不压图框
+        for i, s in enumerate(lines, 1):
+            rows += _wrap_text(f"{i}. {s}", w_max, 3.5, indent="   ")
+        y = y if y is not None else self.inner[1] + 10 + 7 * len(rows)
         self.text(x, y + 9, "技术要求", 5)
-        for i, s in enumerate(lines):
-            self.text(x + 4, y - i * 7, f"{i + 1}. {s}", 3.5)
+        for i, s in enumerate(rows):
+            self.text(x + 4, y - i * 7, s, 3.5)
 
     # ------------------------------------------------------------ 输出
 
@@ -560,3 +611,9 @@ class View:
         if self.rot:
             angle = 90.0 - angle
         self.sh.dim(self.P(*a), self.P(*b), self.P(*base), angle, text, self.s, dec, tol=tol)
+
+    def dim_best(self, a, b, bases, angle=0.0, text="<>", dec=1, tol=None):
+        """在几个候选尺寸线位置中自动选一个，返回采用的 base（图纸坐标）。见 Sheet.dim_best。"""
+        if self.rot:
+            angle = 90.0 - angle
+        return self.sh.dim_best(self.P(*a), self.P(*b), [self.P(*p) for p in bases], angle, text, self.s, dec, tol=tol)

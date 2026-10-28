@@ -200,6 +200,7 @@ def run(task: ReducerTask) -> BevelReducerDesign:
         bevel = bevel_calc.design(bevel_calc.BevelPairInput(
             "高速级", kin.shafts[1].torque, kin.shafts[1].speed_rpm, i1, t.life_hours, **high))
         u_low = kin.reducer_ratio / bevel.u
+        kin = kinematics.with_actual_ratios(kin, (bevel.u, u_low))
         low = gear_calc.design(gear_calc.GearPairInput(
             "低速级", kin.shafts[2].torque, kin.shafts[2].speed_rpm, u_low, t.life_hours, **task.low))
         if _dip_depth(bevel, low) <= low.da2 / 6 or min_d1 > 2 * bevel.d1_trial:
@@ -209,6 +210,7 @@ def run(task: ReducerTask) -> BevelReducerDesign:
         else:
             min_d1 = 1.05 * bevel.d1
 
+    kin = kinematics.with_actual_ratios(kin, (bevel.u, low.u))
     # 大锥齿轮轮毂长度取决于Ⅱ轴直径，先按估算的孔径定，再用实际孔径复核
     seat_guess = lay.std_diameter(max(1.05 * shaft_calc.min_diameter(kin.shafts[2].power, kin.shafts[2].speed_rpm),
                                       20 * MM) + 8 * MM)

@@ -218,6 +218,7 @@ def run(task: ReducerTask) -> WormReducerDesign:
     kin, w = _settle(task, kin, 0.0)
 
     for _ in range(6):  # 蜗杆刚度不够时加大蜗杆直径重新设计
+        kin = kinematics.with_actual_ratios(kin, (w.u,))
         seat_guess = lay.std_diameter(
             1.05 * shaft_calc.min_diameter(kin.shafts[2].power, kin.shafts[2].speed_rpm) + 10 * MM)
         hub = wlay.wheel_hub(w, seat_guess)

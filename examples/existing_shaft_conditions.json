@@ -1,0 +1,15 @@
+{
+  "coordinate_system": "body_local_x",
+  "source": "已有三段轴教学算例：轴长200 mm、两简支点间距150 mm、中点向下1000 N，材料与限值均为明确假定；只用于验证当前轴校核和原生编辑，不是实际零件设计依据。中段直径允许32至50 mm。",
+  "material": {
+    "name": "教学基准弹性材料",
+    "young_modulus_pa": 200000000000,
+    "allowable_stress_pa": 60000000,
+    "source": "解析教学假定：E=200 GPa、名义许用应力60 MPa，不对应已认证的材料牌号。"
+  },
+  "supports_m": [0.025, 0.175],
+  "loads": [{"z_m": 0.1, "fx_n": 0.0, "fy_n": -1000.0}],
+  "torque_points": [],
+  "constraints": {"alpha": 0.6, "max_deflection_m": 0.0001},
+  "middle_diameter_bounds_m": [0.032, 0.05]
+}

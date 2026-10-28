@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "gongke-workbench"
 version = "0.1.0"
-description = "工科工作台：面向机械类课程设计的设计计算、三维建模与计算说明书"
+description = "工科工作台：原生工程建模、机械校核与 agent 协作"
 requires-python = ">=3.10"
 license = "LGPL-2.1-or-later"
 dependencies = ["pyyaml>=6"]
@@ -14,3 +18,7 @@ dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
 include = ["gongke_core*", "freecad*"]
+
+[tool.setuptools.package-data]
+gongke_core = ["resources/*.json"]
+"freecad.gongke" = ["resources/icons/*.svg"]

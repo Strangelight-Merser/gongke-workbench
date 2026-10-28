@@ -149,7 +149,10 @@ def draw(p: PulleyBlank, path: str | Path, title: str = "大带轮", drawing_no:
     lv.line((hb, yb), (hb, rd + t2))
     lv.line((-hb, rd + t2), (hb, rd + t2))
     sh.cross(lv.P(0, 0), da / 2 * s, 4)
-    lv.dim((-hb, rd + t2), (hb, rd + t2), (-hb, rd + t2 + 8 / s), 0, "<>", 0, tol=tol.deviations("JS9", 2 * hb * 1e-3))
+    # 键宽尺寸线给几个候选高度，避开轮毂、轮缘圆（同圆柱齿轮零件图）
+    y0 = rd + t2
+    lv.dim_best((-hb, y0), (hb, y0), [(0, y0 + k / s) for k in (8, 13, 17, 22, 28, 35, 44)]
+                + [(0, da / 2 + 10 / s)], 0, "<>", 0, tol=tol.deviations("JS9", 2 * hb * 1e-3))
     lv.dim_auto((hb, -rd), (hb, rd + t2), [(rd + k / s, 0) for k in (10, 14, 18, 23, 28, 34)], 90, "<>", 1,
                 tol=tol.hub_keyway_depth(2 * hb * 1e-3))
 

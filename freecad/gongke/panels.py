@@ -179,7 +179,9 @@ class ReducerTaskPanel:
         except FileNotFoundError as e:
             self.result.setPlainText(str(e))
             return
-        doc_dir = Path(App.ActiveDocument.FileName).parent if App.ActiveDocument and App.ActiveDocument.FileName else None
+        self.target_document = App.ActiveDocument
+        self.target_document_name = self.target_document.Name if self.target_document else None
+        doc_dir = Path(self.target_document.FileName).parent if self.target_document and self.target_document.FileName else None
         self.out_dir = (doc_dir or Path(tempfile.mkdtemp(prefix="gongke_"))) / "gongke_reducer"
         task = runner.write_task(self.values(), self.out_dir)
         prog, args, cwd = runner.command(python, task, self.out_dir, step=self.with_model.isChecked(),
@@ -205,6 +207,8 @@ class ReducerTaskPanel:
         log = bytes(self.proc.readAllStandardOutput()).decode("utf-8", "replace")
         err = bytes(self.proc.readAllStandardError()).decode("utf-8", "replace")
         try:
+            if code != 0:
+                raise FileNotFoundError("本次计算进程未成功结束")
             out = runner.read_outputs(self.out_dir)
         except FileNotFoundError:
             mod = runner.missing_module(err)
@@ -214,6 +218,9 @@ class ReducerTaskPanel:
                                          "或在“设置 Python 解释器”中改用已装好依赖的 Python。")
             else:
                 self.result.setPlainText(f"运行失败（退出码 {code}）：\n{err or log}")
+            return
+        except RuntimeError as exc:
+            self.result.setPlainText(str(exc))
             return
         s = out["summary"]
         rows = "".join(
@@ -240,13 +247,37 @@ class ReducerTaskPanel:
         self.result.setHtml(html)
         step = out["files"].get("reducer_assembly.step")
         if step and self.with_model.isChecked():
-            import Import
+            try:
+                self._import_model(step)
+            except Exception as exc:
+                self.result.append(f"模型未自动导入：{exc}。生成文件已保留，可从上方链接打开。")
 
-            doc = App.ActiveDocument or App.newDocument("减速器")
+    def _import_model(self, step):
+        import Import
+
+        created = self.target_document is None
+        if created:
+            doc = App.newDocument("减速器")
+        else:
+            doc = App.listDocuments().get(self.target_document_name)
+            if doc is not self.target_document:
+                raise ValueError("启动计算时的目标文档已关闭")
+        gui_doc = Gui.getDocument(doc.Name)
+        if doc.HasPendingTransaction or gui_doc.getInEdit():
+            raise ValueError("目标文档正在编辑，请完成编辑后手动导入")
+        doc.openTransaction("导入减速器批处理模型")
+        try:
             Import.insert(str(step), doc.Name)
             doc.recompute()
-            Gui.SendMsgToActiveView("ViewFit")
-            Gui.activeDocument().activeView().viewIsometric()
+            doc.commitTransaction()
+        except Exception:
+            doc.abortTransaction()
+            doc.recompute()
+            if created:
+                App.closeDocument(doc.Name)
+            raise
+        gui_doc.activeView().viewIsometric()
+        gui_doc.activeView().fitAll()
 
     def getStandardButtons(self):
         return int(QtGui.QDialogButtonBox.Close)

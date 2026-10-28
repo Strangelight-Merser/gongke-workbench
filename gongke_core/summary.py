@@ -73,7 +73,7 @@ def summarize(d: ReducerDesign, fem=None) -> dict:
         "scheme": d.task.scheme,
         "belt": belt,
         "motor": {"model": k.motor.model, "power_kw": k.motor.power / 1e3, "speed_rpm": k.motor.speed_rpm},
-        "ratios": {"total": k.total_ratio, "belt": k.i_belt, "high": d.high.u, "low": d.low.u if getattr(d, "low", None) else None, "speed_error_pct": d.output_speed_error * 100},
+        "ratios": {"target_total": k.total_ratio, "total": d.actual_ratio, "belt": k.i_belt, "high": d.high.u, "low": d.low.u if getattr(d, "low", None) else None, "speed_error_pct": d.output_speed_error * 100},
         "shaft_states": [{"name": s.name, "power_kw": s.power / 1e3, "speed_rpm": s.speed_rpm, "torque_nm": s.torque}
                          for s in k.shafts],
         "gears": gears,

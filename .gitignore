@@ -9,3 +9,8 @@ out/
 /[Ww][Oo][Rr][Kk][Bb][Uu][Dd][Dd][Yy]/
 /.[Ww][Oo][Rr][Kk][Bb][Uu][Dd][Dd][Yy]/
 /星光杯/
+
+# Local audit and execution records
+/docs/audit-2026-10-23.md
+/docs/implementation-progress.md
+/docs/professional-source-audit.md

@@ -1,0 +1,17 @@
+title: 带式输送机传动装置设计
+conveyor:
+  belt_pull_N: 2500
+  belt_speed_m_s: 1.4
+  drum_diameter_mm: 400
+life:
+  years: 10
+  days_per_year: 300
+  shifts: 2
+bearing_life_years: 3
+motor_sync_speed_rpm: 1500
+ratio_split: 1.3
+gears:
+  high:
+    beta_deg: 20
+  low:
+    beta_deg: 20

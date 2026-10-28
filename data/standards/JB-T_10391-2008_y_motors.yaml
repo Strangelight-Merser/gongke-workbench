@@ -3,6 +3,9 @@
 # 说明: 只录入课程设计选电机需要的数值（额定功率、满载转速、轴伸尺寸），字段结构为本项目自定。
 # 状态: 待人工核对（录入人: Claude，2026-10-19）
 standard: JB/T 10391-2008
+standard_status: 废止（官方元数据核对，2026-10-23）
+source_url: https://std.samr.gov.cn/hb/search/stdHBDetailed?id=8B1827F1B556BB19E05397BE0A0AB44A
+value_verification: 历史课程设计数据，未完成原表数值逐项核对
 fields:
   model: 型号
   poles: 极数
