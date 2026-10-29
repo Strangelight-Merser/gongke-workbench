@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage SchemaVersion="1.0" AppVersion="0.1.0" Name="Gongke AutoCAD Bridge"
+ Description="Gongke engineering workbench native drawing connection"
+ ProductCode="{C46D696F-CF1B-44A3-A49D-137D18C84447}"
+ UpgradeCode="{E4667D19-4BD7-4A6F-A837-8C7312D91C80}">
+  <CompanyDetails Name="Gongke Workbench" />
+  <Components>
+    <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R25.1" SeriesMax="R25.1" />
+    <ComponentEntry AppName="Gongke.AutoCAD.Addin" AppType=".Net"
+      ModuleName="./Contents/Windows/Gongke.AutoCAD.Addin.dll"
+      LoadOnAutoCADStartup="True" LoadOnCommandInvocation="False" />
+  </Components>
+</ApplicationPackage>

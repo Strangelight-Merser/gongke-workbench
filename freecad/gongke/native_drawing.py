@@ -36,7 +36,7 @@ def _dimension(dim):
             issues.append("视图没有可读投影，请在 CAD 打开图纸并完成更新后再检查")
             continue
         for name in subs:
-            if not re.fullmatch(r"Edge[1-9][0-9]*", name):
+            if not re.fullmatch(r"Edge(?:0|[1-9][0-9]*)", name):
                 if reference_status != "dangling":
                     reference_status = "unknown"
                 issues.append("当前仅验证直径标注的投影边引用")

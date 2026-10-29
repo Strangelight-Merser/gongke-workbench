@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>Gongke.AutoCAD.Addin</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Autodesk-owned compile references. Host assemblies must never be redistributed. -->
+    <PackageReference Include="AutoCAD.NET" Version="[25.1.0]" IncludeAssets="compile;build" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net8.0-windows'" />
+    <PackageReference Include="AutoCAD.NET" Version="[25.1.1]" IncludeAssets="compile;build" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net10.0-windows'" />
+  </ItemGroup>
+</Project>

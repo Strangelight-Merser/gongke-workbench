@@ -2,6 +2,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 out/
+node_modules/
+desktop/dist/
+desktop/dist-electron/
+desktop/release/
+desktop/service/
 *.step
 
 # Local-only materials

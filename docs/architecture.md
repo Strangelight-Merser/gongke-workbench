@@ -1,5 +1,7 @@
 # 架构说明
 
+当前桌面主入口与安装构建见 [desktop/README.md](../desktop/README.md)，应用命令与任务语义见 [gongke_app/README.md](../gongke_app/README.md)。
+
 本文保留 2026-10-19 的任务书批处理架构，适用于初始化、STEP 与图纸导出。当前原生协作由 FreeCAD 文档、窄命令桥、当前轴校核和独立梁任务组成，尺寸直接读取原生草图；不会通过重导 STEP 覆盖人工修改。实际操作见 [原生工程协作](assistant-workflow.md)，产品方向见 [README](../README.md)。下文的“第一版”及功能取舍均属于历史批处理阶段。
 
 > 2026-10-19 定稿第一版。记录"做什么、不做什么、为什么这样分层"。

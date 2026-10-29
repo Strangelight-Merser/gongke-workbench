@@ -123,6 +123,98 @@ class DocumentState:
     def get_project_context(self):
         return self._context(App.ActiveDocument)
 
+    def get_display_scene(self):
+        """只从当前原生形体取显示网格；网格编号不作为写入定位依据。"""
+        from freecad.gongke.native_display import drawing_pages
+
+        doc = App.ActiveDocument
+        context = self._context(doc)
+        if doc is None:
+            return {**context, "pages": [], "modified": False, "needs_rebuild": False}
+        state = self.sessions[context["session_id"]]
+        cache = state.get("display_pages")
+        if cache is None or cache["revision"] != context["revision"]:
+            names = [obj.Name for obj in doc.Objects if obj.TypeId == "TechDraw::DrawPage"]
+            pages = drawing_pages(doc, names) if names else []
+            if state["revision"] != context["revision"]:
+                raise ValueError("生成显示期间原生工程改变，请重新读取")
+            if all("svg" in page for page in pages):
+                state["display_pages"] = {"revision": context["revision"], "pages": pages}
+        else:
+            pages = cache["pages"]
+        objects = []
+        for obj in doc.Objects:
+            if not hasattr(obj, "Shape") or obj.Shape.isNull() or not obj.ViewObject.Visibility:
+                continue
+            # Body 已包含 Tip，避免把内部特征再次叠画成另一零件。
+            if obj.TypeId != "PartDesign::Body" and obj.getParentGeoFeatureGroup() is not None:
+                continue
+            vertices, triangles = obj.Shape.tessellate(0.2)
+            objects.append({"id": obj.Name, "label": obj.Label,
+                            "entity_id": getattr(obj, "GkEntityId", None),
+                            "vertices": [[p.x, p.y, p.z] for p in vertices],
+                            "triangles": [list(t) for t in triangles]})
+        return {"session_id": context["session_id"], "revision": context["revision"],
+                "document": doc.Name, "path": doc.FileName, "unit": "mm",
+                "modified": bool(Gui.getDocument(doc.Name).Modified),
+                "needs_rebuild": any("Touched" in obj.State for obj in doc.Objects),
+                "objects": objects, "pages": pages}
+
+    def _drawing_target(self, session_id, page_name, expected_revision):
+        state = self._session(session_id)
+        self._writable(state)
+        if state["revision"] != expected_revision:
+            raise ValueError("工程已改变，请重新读取模型和图纸")
+        page = state["doc"].getObject(page_name)
+        if page is None or page.TypeId != "TechDraw::DrawPage":
+            raise ValueError("指定 TechDraw 图纸页不存在")
+        return state, page
+
+    def select_display_object(self, session_id, object_name, expected_revision):
+        state = self._session(session_id)
+        if state["revision"] != expected_revision:
+            raise ValueError("显示快照已过期，请重新读取模型后选择")
+        obj = state["doc"].getObject(object_name)
+        if obj is None or not hasattr(obj, "Shape"):
+            raise ValueError("原生对象已不存在或不是形体")
+        Gui.Selection.clearSelection()
+        Gui.Selection.addSelection(obj)
+        return self._context(state["doc"])
+
+    def update_drawing(self, session_id, page_name, expected_revision):
+        state, page = self._drawing_target(session_id, page_name, expected_revision)
+        # 更新是显式写命令，G1 只读采集不会走到这里。
+        page.touch()
+        for view in page.Views:
+            view.touch()
+        state["doc"].recompute()
+        pending = [obj.Name for obj in [page, *page.Views] if "Touched" in obj.State]
+        invalid = [obj.Name for obj in [page, *page.Views] if not obj.isValid()]
+        return {"page": page.Name, "revision": state["revision"], "pending": pending,
+                "invalid": invalid, "updated": not pending and not invalid}
+
+    def export_drawing(self, session_id, page_name, expected_revision, path):
+        import TechDraw
+        from freecad.gongke.native_export import normalize_dxf_unicode
+
+        state, page = self._drawing_target(session_id, page_name, expected_revision)
+        target = Path(path).expanduser()
+        if not target.is_absolute() or target.suffix.lower() != ".dxf" or target.exists():
+            raise ValueError("导出必须使用尚不存在的 .dxf 绝对路径")
+        if not target.parent.is_dir():
+            raise ValueError("导出目录不存在")
+        if any("Touched" in obj.State or not obj.isValid() for obj in state["doc"].Objects):
+            raise ValueError("工程仍需重建或含错误，请完成图纸更新后再导出")
+        TechDraw.writeDXFPage(page, str(target))
+        if not target.is_file() or target.stat().st_size == 0:
+            raise ValueError("原生图纸没有成功导出")
+        encoding = normalize_dxf_unicode(target)
+        return {"path": str(target), "source_document": state["doc"].FileName,
+                "source_page": page.Name, "revision": state["revision"],
+                "source": "native_techdraw_page", "unit": "mm", "coordinate_space": "drawing_page",
+                "text_encoding": encoding,
+                "limitations": ["原生页比例，不代表三维模型的1:1几何", "DXF标注关联性需在目标软件核验"]}
+
     def read_revision_context(self, document_path, body_name, pages):
         """读取明确打开的工程；不沿用会重算的可写对象读取路径。"""
         from freecad.gongke.native_drawing import capture
@@ -357,6 +449,15 @@ class DocumentState:
         operation["undone"] = True
         return {"undone": True, "operation_id": operation_id, "revision": state["revision"]}
 
+    def get_operation_status(self, session_id, operation_id):
+        """只查询本次仍打开的原生会话，不重放候选或跨会话猜测结果。"""
+        self._session(session_id)
+        operation = self.operations.get((session_id, operation_id))
+        if operation is None:
+            return {"state": "not_found", "operation_id": operation_id}
+        return {"state": "committed", "operation_id": operation_id,
+                "undone": operation["undone"], "result": deepcopy(operation["result"])}
+
     def save_project(self, session_id, path=None):
         state = self._session(session_id)
         self._writable(state)
@@ -443,17 +544,24 @@ class Bridge:
         return value
 
     def drain(self):
-        while not self.queue.empty():
-            request = self.queue.get_nowait()
-            with request["lock"]:
-                if request["state"] == "cancelled":
-                    continue
-                request["state"] = "running"
-            try:
-                result = getattr(self.state, request["method"])(**request["params"])
-                request["reply"].put((True, result))
-            except Exception as exc:
-                request["reply"].put((False, str(exc)))
+        # 显示副本初始化需要处理 Qt 事件，期间不能重入执行另一条宿主命令。
+        if getattr(self, "_draining", False):
+            return
+        self._draining = True
+        try:
+            while not self.queue.empty():
+                request = self.queue.get_nowait()
+                with request["lock"]:
+                    if request["state"] == "cancelled":
+                        continue
+                    request["state"] = "running"
+                try:
+                    result = getattr(self.state, request["method"])(**request["params"])
+                    request["reply"].put((True, result))
+                except Exception as exc:
+                    request["reply"].put((False, str(exc)))
+        finally:
+            self._draining = False
 
     def dispatch(self, method, params):
         if method in ("run_analysis", "get_job", "cancel_job"):
@@ -494,7 +602,7 @@ class Bridge:
                 return self.main_call("remember_review", context=context, result=review(context["snapshot"]))
             candidate = preview(context["snapshot"], params["segment_id"], params["diameter_m"])
             return self.main_call("remember_preview", context=context, candidate=candidate)
-        if method not in ("create_project", "get_project_context", "read_revision_context", "bind_existing_shaft", "read_engineering_object", "apply_change", "undo_last_agent_change", "save_project"):
+        if method not in ("create_project", "get_project_context", "get_display_scene", "select_display_object", "get_operation_status", "update_drawing", "export_drawing", "read_revision_context", "bind_existing_shaft", "read_engineering_object", "apply_change", "undo_last_agent_change", "save_project"):
             raise ValueError("未知工程命令")
         return self.main_call(method, **params)
 

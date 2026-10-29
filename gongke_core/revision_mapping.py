@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import posixpath
+import ntpath
 
 
 METHOD_VERSION = 1
@@ -22,10 +23,13 @@ def _text(value, label):
 
 def _path(value):
     _text(value, "document.path")
-    if not value.startswith("/"):
-        raise ValueError("document.path 必须是宿主中的绝对路径")
     # 离线采集的路径属于宿主，不能在检查器机器上 resolve 或查找同名文件。
-    return posixpath.normpath(value)
+    drive, tail = ntpath.splitdrive(value)
+    if drive and tail.startswith(("/", "\\")):
+        return ntpath.normcase(ntpath.normpath(value))
+    if value.startswith("/"):
+        return posixpath.normpath(value)
+    raise ValueError("document.path 必须是宿主中的绝对路径")
 
 
 def validate_case(case):
