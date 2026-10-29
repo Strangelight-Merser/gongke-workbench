@@ -31,7 +31,7 @@ def generate(task, out_dir, report_docx=True, drawings=True, step=False,
     def fingerprint(root, pattern):
         digest = hashlib.sha256()
         for path in sorted(root.rglob(pattern)):
-            digest.update(str(path.relative_to(root)).encode())
+            digest.update(path.relative_to(root).as_posix().encode())
             digest.update(path.read_bytes())
         return digest.hexdigest()
     result['versions'] = {
@@ -49,7 +49,7 @@ def generate(task, out_dir, report_docx=True, drawings=True, step=False,
         before = {p for p in out.rglob('*') if p.is_file()}
         try:
             value = action()
-            missing = [str(p.relative_to(out)) for p in expected if not p.is_file() or p.stat().st_size == 0]
+            missing = [p.relative_to(out).as_posix() for p in expected if not p.is_file() or p.stat().st_size == 0]
             if missing:
                 raise RuntimeError('未生成或为空：' + '、'.join(missing))
         except Exception as exc:
@@ -57,7 +57,7 @@ def generate(task, out_dir, report_docx=True, drawings=True, step=False,
             result['notes'].append(f'{name} 未完成：{exc}')
             return None
         else:
-            created = sorted(str(p.relative_to(out)) for p in out.rglob('*') if p.is_file() and p not in before)
+            created = sorted(p.relative_to(out).as_posix() for p in out.rglob('*') if p.is_file() and p not in before)
             result['artifacts'][name] = {'status': 'complete', 'files': created}
             result['files'].extend(created)
             return value
