@@ -13,7 +13,6 @@ const assert = require("node:assert/strict");
   const project = join(output, "传动设计"),
     userdata = join(output, "user");
   mkdirSync(project);
-  mkdirSync(userdata);
   const packaged = process.env.GONGKE_TEST_EXECUTABLE;
   const env = { ...process.env, GONGKE_DESKTOP_USER_DATA: userdata };
   delete env.PYTHONPATH;
@@ -91,6 +90,21 @@ const assert = require("node:assert/strict");
       ),
     );
     console.log(JSON.stringify({ ok: true, output }));
+  } catch (error) {
+    writeFileSync(
+      join(output, "failure.json"),
+      JSON.stringify(
+        { ok: false, error: String(error), packaged: !!packaged },
+        null,
+        2,
+      ),
+    );
+    const page = app.windows()[0];
+    if (page)
+      await page
+        .screenshot({ path: join(output, "desktop-failure.png") })
+        .catch(() => {});
+    throw error;
   } finally {
     await app.close();
   }

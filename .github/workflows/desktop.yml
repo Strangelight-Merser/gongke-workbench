@@ -117,6 +117,32 @@ jobs:
       - name: Package unpacked desktop application
         working-directory: desktop
         run: npx electron-builder --dir --publish never
+      - name: Exercise packaged desktop with a fresh user directory
+        timeout-minutes: 8
+        shell: python
+        run: |
+          import json, os, pathlib, subprocess
+          root = pathlib.Path.cwd()
+          product = json.loads((root / 'desktop/package.json').read_text(encoding='utf-8'))['build']['productName']
+          release = root / 'desktop/release'
+          pattern = '*-unpacked/' + product + '.exe' if os.name == 'nt' else 'mac*/' + product + '.app/Contents/MacOS/' + product
+          executables = [path for path in release.glob(pattern) if path.is_file()]
+          assert len(executables) == 1, f'Expected one packaged executable, found {executables}'
+          env = dict(os.environ, GONGKE_TEST_EXECUTABLE=str(executables[0].resolve()))
+          for key in ('PYTHONPATH', 'PYTHONHOME', 'ELECTRON_RUN_AS_NODE'):
+              env.pop(key, None)
+          subprocess.run(['node', str(root / 'desktop/tests/desktop-flow.cjs')], cwd=root,
+              env=env, timeout=420, check=True)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: packaged-desktop-validation-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          path: |
+            out/desktop-validation/**/*.json
+            out/desktop-validation/**/*.png
+            out/desktop-validation/**/*.log
+          if-no-files-found: warn
+          retention-days: 7
       - name: Archive application preserving executable permissions and symlinks
         shell: python
         run: |

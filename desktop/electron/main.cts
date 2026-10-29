@@ -7,7 +7,13 @@ import {
   shell,
 } from "electron";
 import { join, resolve, relative, isAbsolute } from "node:path";
-import { existsSync, readFileSync, writeFileSync, realpathSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  realpathSync,
+  mkdirSync,
+} from "node:fs";
 import { Service } from "./service.cjs";
 import { normalizeProvider, mayReuseKey } from "./credentials.cjs";
 
@@ -64,6 +70,7 @@ async function configureSaved() {
     });
 }
 function startService() {
+  mkdirSync(app.getPath("userData"), { recursive: true });
   const root = resolve(__dirname, "../..");
   const binary = join(
     process.resourcesPath,
