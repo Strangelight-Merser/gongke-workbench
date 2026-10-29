@@ -18,7 +18,10 @@ from gongke_core import api, native_client
 SERVER_INFO = {"name": "gongke-workbench", "title": "工科工作台", "version": "0.1.0"}
 PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
 
-INSTRUCTIONS = """工科工作台：与学生共同修改 FreeCAD 中受支持的原生轴。
+NATIVE_INSTRUCTIONS = """工科工作台：与学生共同修改 FreeCAD 中受支持的原生轴。
+已有轴与工程图的严格只读检查用 inspect_revision，传完整修订 case；不绑定、不重算、不保存。
+capture 省略时读取当前 FreeCAD，显式 capture 仅是离线采集，不能代表当前 CAD 未发生变化。
+inspect_revision 的结论只代表采集时刻，重新读取后再判断旧结论的适用性。
 新案例用 create_shaft_project；已有工程用 get_project_context 获取会话与选择 → read_engineering_object 读取实际参数与约束
 已有未绑定轴先查看 unbound_objects，明确工程条件及来源后用 bind_existing_shaft 接续；不默认套用教学工况。
 → review_current_object 固定当前尺寸复核
@@ -27,9 +30,11 @@ INSTRUCTIONS = """工科工作台：与学生共同修改 FreeCAD 中受支持�
 当前工程尺寸单位为 m，载荷 N、应力 Pa。预览过期后必须重新读取，不得覆盖学生手改。
 局部校核通过不代表完整实际轴的疲劳、轴肩或配合检查通过，请保留工具返回的范围和限制。
 需要梁刚度复核时用 run_analysis 提交当前轴快照，get_job 查询终态与结果适用性，cancel_job 取消。
-任务成功不等于工程通过；仅使用 applicability=current 的结果描述当前工程。
-任务书批处理工具 run_design、explore_parameter、get_report、generate_files 会重新设计，不会编辑当前原生工程。
+任务成功不等于工程通过；仅使用 applicability=current 的异步分析结果描述当前工程。"""
+
+BATCH_INSTRUCTIONS = """任务书批处理工具 run_design、explore_parameter、get_report、generate_files 会重新设计，不会编辑当前原生工程。
 批处理任务书单位：力 N、长度 mm、速度 m/s、转速 r/min；批处理结果中应力为 MPa、功率 kW。"""
+INSTRUCTIONS = NATIVE_INSTRUCTIONS + "\n" + BATCH_INSTRUCTIONS
 
 _TASK = {"type": "object", "description": "任务书（结构见 get_task_schema）"}
 
@@ -90,7 +95,21 @@ def _tool(name: str, title: str, description: str, props: dict, required: list[s
             "annotations": {"readOnlyHint": read_only, "openWorldHint": False}, "_fn": fn}
 
 
+def _inspect_revision(case, capture=None, previous=None):
+    from gongke_core.revision_case import inspect_revision
+
+    return inspect_revision(case, capture=capture, previous=previous)
+
+
 TOOLS = [
+    _tool("inspect_revision", "检查当前零件与工程图",
+          "按完整修订 case 读取当前 FreeCAD，返回尺寸—轴段—标注映射、图纸问题、条件来源和可计算项。"
+          "严格只读：不添加绑定属性、不重算、不保存、不改变显示或选择；不授予修改资格。"
+          "显式提供 capture 时只检查离线采集；previous 可传本入口上次完整结果以判断旧结论是否过期。",
+          {"case": {"type": "object", "description": "完整修订任务，包括文档、目标尺寸、页与标注映射、工程条件"},
+           "capture": {"type": "object", "description": "可选的离线采集；不传则读取当前 FreeCAD"},
+           "previous": {"type": "object", "description": "可选的上次完整 revision.json"}},
+          ["case"], _inspect_revision),
     _tool("create_shaft_project", "创建原生轴工程",
           "在 FreeCAD 新文档中创建原生轴并选中。case=teaching 创建可比较改径的三段教学轴；"
           "case=course_output 从 coupling 任务书初始化真实七段输出轴、键槽和圆角，之后读取当前 CAD，不重新选径。"
@@ -229,7 +248,11 @@ TOOLS = [
           {"path": {"type": "string", "description": "DXF 文件或图纸目录（绝对路径）"}}, ["path"],
           lambda path: api.check_drawings(path)),
 ]
-_BY_NAME = {t["name"]: t for t in TOOLS}
+
+BATCH_TOOL_NAMES = frozenset({
+    "get_task_schema", "get_example_task", "validate_task", "run_design", "explore_parameter",
+    "get_report", "lookup_standard", "generate_files", "check_drawings",
+})
 
 
 def _public(t: dict) -> dict:
@@ -237,8 +260,15 @@ def _public(t: dict) -> dict:
 
 
 class Server:
-    def __init__(self):
+    def __init__(self, profile="all"):
+        if profile not in ("all", "native", "batch"):
+            raise ValueError("profile 必须为 all、native 或 batch")
         self.protocol = PROTOCOL_VERSIONS[0]
+        self.tools = [tool for tool in TOOLS if profile == "all"
+                      or ((tool["name"] in BATCH_TOOL_NAMES) == (profile == "batch"))]
+        self.by_name = {tool["name"]: tool for tool in self.tools}
+        self.instructions = {"all": INSTRUCTIONS, "native": NATIVE_INSTRUCTIONS,
+                             "batch": BATCH_INSTRUCTIONS}[profile]
 
     def handle(self, msg: dict) -> dict | None:
         """处理一条 JSON-RPC 消息，返回响应（通知返回 None）。"""
@@ -256,17 +286,17 @@ class Server:
             want = params.get("protocolVersion")
             self.protocol = want if want in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0]
             return {"protocolVersion": self.protocol, "capabilities": {"tools": {"listChanged": False}},
-                    "serverInfo": SERVER_INFO, "instructions": INSTRUCTIONS}
+                    "serverInfo": SERVER_INFO, "instructions": self.instructions}
         if method == "ping":
             return {}
         if method == "tools/list":
-            return {"tools": [_public(t) for t in TOOLS]}
+            return {"tools": [_public(t) for t in self.tools]}
         if method == "tools/call":
             return self._call(params.get("name"), params.get("arguments") or {})
         raise _RpcError(-32601, f"Method not found: {method}")
 
     def _call(self, name: str, args: dict) -> dict:
-        tool = _BY_NAME.get(name)
+        tool = self.by_name.get(name)
         if tool is None:
             raise _RpcError(-32602, f"Unknown tool: {name}")
         try:
@@ -295,7 +325,8 @@ def _error_result(message: str) -> dict:
     return {"content": [{"type": "text", "text": message}], "isError": True}
 
 
-def serve(stdin=None, stdout=None) -> None:
+def serve(stdin=None, stdout=None, *, profile="all") -> None:
+    server = Server(profile=profile)
     if stdin is None:
         sys.stdin.reconfigure(encoding="utf-8")
         stdin = sys.stdin
@@ -303,7 +334,6 @@ def serve(stdin=None, stdout=None) -> None:
         sys.stdout.reconfigure(encoding="utf-8")
         stdout = sys.stdout
         sys.stdout = sys.stderr  # 计算过程中的 print 不能混进协议消息
-    server = Server()
     for line in stdin:
         line = line.strip()
         if not line:

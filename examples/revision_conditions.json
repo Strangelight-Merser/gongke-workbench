@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "fields": {
+    "coordinate_system": {
+      "value": "body_local_x",
+      "status": "confirmed",
+      "source": {
+        "text": "教学假定，非实际设计依据",
+        "reference": "本测试条件"
+      },
+      "position_mode": "fixed_body_coordinate"
+    },
+    "supports": {
+      "value": [
+        25,
+        175
+      ],
+      "unit": "mm",
+      "status": "confirmed",
+      "source": {
+        "text": "教学假定，非实际设计依据",
+        "reference": "本测试条件"
+      }
+    },
+    "loads": {
+      "value": [
+        {
+          "position": {
+            "value": 100,
+            "unit": "mm"
+          },
+          "fx": {
+            "value": 0,
+            "unit": "N"
+          },
+          "fy": {
+            "value": -1,
+            "unit": "kN"
+          },
+          "status": "confirmed",
+          "source": {
+            "text": "轴中点向下1000 N",
+            "reference": "教学受力图"
+          }
+        }
+      ],
+      "status": "confirmed",
+      "source": {
+        "text": "教学假定，非实际设计依据",
+        "reference": "本测试条件"
+      }
+    },
+    "torque_points": {
+      "value": [],
+      "status": "confirmed",
+      "source": {
+        "text": "教学假定，非实际设计依据",
+        "reference": "本测试条件"
+      }
+    },
+    "material_name": {
+      "value": "教学弹性材料",
+      "status": "confirmed",
+      "source": {
+        "text": "教学假定，非实际设计依据",
+        "reference": "本测试条件"
+      }
+    },
+    "young_modulus": {
+      "value": 200,
+      "unit": "GPa",
+      "status": "confirmed",
+      "source": {
+        "text": "教学假定，非实际设计依据",
+        "reference": "本测试条件"
+      }
+    },
+    "allowable_stress": {
+      "value": 60,
+      "unit": "MPa",
+      "status": "confirmed",
+      "source": {
+        "text": "教学假定，非实际设计依据",
+        "reference": "本测试条件"
+      }
+    },
+    "alpha": {
+      "value": 0.6,
+      "unit": "1",
+      "status": "confirmed",
+      "source": {
+        "text": "教学假定，非实际设计依据",
+        "reference": "本测试条件"
+      }
+    },
+    "max_deflection": {
+      "value": 0.1,
+      "unit": "mm",
+      "status": "confirmed",
+      "source": {
+        "text": "教学假定，非实际设计依据",
+        "reference": "本测试条件"
+      }
+    }
+  }
+}

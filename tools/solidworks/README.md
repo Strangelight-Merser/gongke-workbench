@@ -1,37 +1,85 @@
-# SOLIDWORKS 只读采集原型
+# SOLIDWORKS 借机只读验证包
 
-从当前运行的 SOLIDWORKS 读取活动零件、尺寸原始标识和已打开工程图的视图引用，导出一个新 JSON 文件。宏不修改尺寸、显示设置或配置，不重建、不保存 CAD 文件，也不启动另一份 SOLIDWORKS。
+在已经可以正常运行 SOLIDWORKS 的 Windows 电脑上采集一份现有零件和关联工程图。只需解压本包并导入 VBA 模块，**不需要安装 Git、Python、插件或 SDK**。JSON 带回开发机检查。
 
-目前只有源码核对和合成 JSON 测试，**尚未在 Windows / SOLIDWORKS 编译或运行**。这不是现有 FreeCAD 原生编辑能力的 SOLIDWORKS 版本。
+当前是 v2 源码探针，**尚未在 Windows / SOLIDWORKS 编译或运行**；没有可直接双击的已验证 `.swp`。首次借机的成果是实际编译与读取证据。没有修改、重建、撤销或图纸同步能力。
 
-## 运行
+## 借机前准备
 
-1. 在 Windows 的 SOLIDWORKS 中打开目标 `.SLDPRT`，使其成为活动文档并停留在需要读取的配置。需要检查关联的 `.SLDDRW` 也应已经打开；宏不会搜索磁盘或打开其他文件。
-2. 在 SOLIDWORKS 的“工具 → 宏 → 新建”中创建宏。在 VBA 编辑器导入本目录的 `CollectCurrentPart.bas` 模块，运行该模块的 `main`。如果改用粘贴源码，跳过第一行 `Attribute VB_Name`，那是模块导入信息。宏使用 late binding 和 Windows 内置文件组件，不要求额外安装 Python COM 包或 SDK。
-3. 输入一个**尚不存在**的 JSON 文件路径。文件已存在会报错并保留原文件。采集问题会保留在 JSON 的 `issues` 中；导出成功不等于所有字段都读到了。
-4. 可在有 Python 3.10+ 的机器上检查文件，无需安装 SOLIDWORKS：
+- 准备一套已获使用许可的 `.SLDPRT` 与关联 `.SLDDRW`，优先用课程轴的工作副本。保持图纸指向该副本；单独复制或同名文件不能证明引用正确。
+- 使用电脑上现有的 SOLIDWORKS 年份/SP，无需为探针升级。先确认它能打开这套原生工程。
+- 本包不含原生模型与 SOLIDWORKS 安装程序。若缺原生样本，先补样本；STEP 不能替代本次验证。
+- 新建一个结果目录，建议 `Documents\GongKeProbeResults`。不要将原生工程放入探针包中。
 
-   ```sh
-   python tools/solidworks/read_capture.py /path/to/capture.json
-   ```
+## 第一次运行
 
-   命令只读取 JSON，显示文档、数量、问题及按完整模型路径和配置名匹配的已打开图纸视图。退出码 0 表示文件契约合格，允许 `partial` / `unsupported` / `error` 状态；请同时看输出的 `status`。格式错误退出码为 1。
+1. 用 SOLIDWORKS 打开样本零件和关联工程图。让零件处于活动状态，选好要读取的配置，**单击选中一个已有尺寸**。无需修改尺寸、切换显示设置或清空选择。若未能选到尺寸，仍可运行并带回 `selected_target` 缺失的问题。
+2. 截图记录当前配置、目标尺寸读数、标题栏未保存标记。将“帮助 → 关于 SOLIDWORKS”的版本/SP 填入 `field-checklist.txt`。版本接口还会记录原始 `RevisionNumber`。
+3. 在“工具 → 宏 → 新建”创建宏，保存为结果目录中的新 `.swp`。在 VBA 编辑器选择“文件 → 导入文件”，导入 `CollectCurrentPart.bas`。打开该模块，选择“调试 → 编译 VBAProject”。本包提供的是源码；这里编译成功才算有编译证据。
+4. 如果编译失败，**停止运行**，截图完整错误和高亮代码行，在清单中记录。不要自行删除代码、放宽宏安全设置或安装其他组件。把错误带回即可继续修复。
+5. 编译成功后，将光标置于导入模块的 `Public Sub main()` 中运行。输入一个尚不存在的输出路径，如 `C:\Users\你的账户\Documents\GongKeProbeResults\baseline.json`。默认路径在 `%TEMP%`，可在文件管理器地址栏输入 `%TEMP%` 找到。取消输入不会采集。
+6. 运行后检查零件和图纸是否仍停留在原配置、原选择和原尺寸，未保存标记是否改变。不要为了证明“不变”而关闭重开或保存，先截图当前内存状态。
+7. 保存新生成的 JSON、现场清单和截图。`partial` 是需要核对的真实结果；`collected` 只表示本轮已读记录字段齐备，均不表示工程正确或完整枚举。
 
-## 采集内容与边界
+宏使用当前 SOLIDWORKS 实例；不启动另一实例、不改尺寸/显示/选择/配置、不重建、不保存 CAD。只在输入的新路径写 JSON，已有文件拒绝覆盖。采集范围是该实例的活动零件与已经打开的工程图，不搜索磁盘或打开其他文件。
 
-- `document`：活动文档的真实路径、标题、类型和活动配置。只支持零件（类型 1）；装配体、图纸或没有活动文档会标记 `unsupported`。未保存零件没有路径，字段为 `null`，状态为 `partial`。
-- `dimensions`：`IDimension.FullName`、来源特征名、当前配置的 `GetSystemValue3` 值、参数类型、`DrivenState` 和 `ReadOnly`。线性值以米、角度以弧度输出；整数参数的单位为 `integer`，不是长度。`DrivenState` 保留官方枚举整数。读取失败的字段为 `null`，该记录为 `partial`。`ReadOnly=false` 不能单独证明允许编辑；方程、设计表等驱动关系尚未检查。
-- `open_drawings`：当前实例已打开图纸中各 sheet 的视图，保留真实 `GetReferencedModelName` 与 `ReferencedConfiguration`。不按同名文件猜测关联，也不把另一个配置算作当前配置。没打开的图纸、磁盘引用是否存在和工程图是否已更新均未验证。
-- `status=collected`：本轮枚举的记录字段读取成功。**不保证全部尺寸都被枚举。** 官方特征尺寸接口要求尺寸已显示；宏不会为此改显示设置，所以始终输出 `enumeration_completeness=not_established`。零尺寸会标记 `partial`，不能据此判断模型没有尺寸。
-- `engineering_semantics=unmapped`：尺寸名称与轴段、直径、圆角尚未建立明确映射。宏不猜测轴段，不推断材料、载荷或边界条件，不调用现有轴校核器，不把采集结果说成工程通过。
-- `prototype_validation=unverified`：该版本采集器尚无 SOLIDWORKS 实机验收；这是版本验证状态，不替代单次采集的 `status`。
+## 有时间再做的对照
 
-JSON 使用 ASCII 加 Unicode 转义，中文文件名、特征名和配置名可由标准 JSON 解析器恢复。运行说明只交付 `.bas` 源码，不声称已经生成或验证可执行 `.swp`。
+先完成基线，再在**专用测试副本**上逐项验证；不要改借用电脑上他人的原件。
 
-下一次实机验证应直接比较已有零件的活动配置与尺寸、工程图视图的模型和配置引用，并确认采集前后 CAD 文件及未保存修改保持原样。在此之前不能声称支持原生写入、重建或撤销。
+| 场景 | 带回的证据 | 期待观察 |
+| --- | --- | --- |
+| 同一参数在两个视图显示 | JSON、两个标注截图及人工对应说明 | 两个显示实例分别存在，不只取第一个 |
+| 已有未保存手改 | 运行前后尺寸和未保存标记截图、JSON | 宏不保存或丢弃手改；保存标志相同只是有限证据 |
+| 另一个配置的视图 | JSON 与配置截图 | 不算作当前配置的目标实例 |
+| 另一目录同名零件 | JSON 与完整引用路径对照 | 不按文件名误配 |
+| 已有数值覆盖标注 | JSON 与属性面板截图 | `override=true`；覆盖值保留 API 原值，单位未认定 |
+| 已有悬空标注 | JSON 与标注截图 | `dangling=true`，读取失败保留 null/partial |
+| 整段文字覆盖 | JSON 与属性面板截图 | 当前版本明确未检查，不能按“未发现问题”放行 |
+
+负例由熟悉 SOLIDWORKS 的操作者在隔离副本中准备，记录所做改变。宏不会制造负例。第一次借机不要求完成写入/Undo 流程。
+
+若需要核对磁盘文件不变，可在运行前后用 Windows PowerShell 对同一组明确的零件/图纸执行 `Get-FileHash -Algorithm SHA256 -LiteralPath '文件的完整路径'`，把结果记入清单。文件 hash 不证明未保存的内存编辑不变，仍需前后界面对照。
+
+## 带回开发机
+
+只需 `*.json`、填好的 `field-checklist.txt` 和截图。编译失败时带回错误和高亮行，无 JSON 也可诊断。原生工程如需进一步分析，单独确认可提供的样本范围，不默认打包上传。
+
+在有 Python 3.10+ 的 Mac/Linux/Windows 运行包内检查器，无第三方依赖：
+
+```sh
+python3 read_capture.py /absolute/path/baseline.json
+```
+
+仓库内的命令为：
+
+```sh
+python tools/solidworks/read_capture.py /absolute/path/baseline.json
+```
+
+退出 0 **仅代表 JSON 契约可解析**；必须看 `status`、`findings`、`issues` 和 `unknown`。检查器定位已读到的数值覆盖、悬空及不完整标注，并列出路径/配置/原始尺寸标识均匹配的显示实例。它始终保留 `drawing_review=incomplete`。重复运行、解析成功和合成测试都不能替代现场对照。
+
+## v2 采集内容
+
+- `host.revision_number`：宿主原始版本，现场补记年份/SP。版本适用范围需由对应版本的实测确定。
+- `document`：活动文档路径、标题、类型和配置。只有零件可标记 `collected/partial`；其他活动文档为 `unsupported`。
+- `selected_target`：单个明确选中的尺寸 FullName、系统值、参数类型、单位和显示类型。半径/直径由显示类型作线索，轴段角色仍未映射；倒角含两个参数，不能作单一目标。选择读取不改变原选择。
+- `dimensions`：特征枚举的原始尺寸、系统值、`DrivenState` 与 `ReadOnly`。线性为 m，角度为 rad，整数为 integer。没有补材料、载荷或轴段；`ReadOnly=false` 不等于允许写入。
+- `open_drawings[].views[]`：尝试读取已有图纸各页中的视图及其实际模型路径、配置引用；同一参数可以有多个 `display_dimensions` 实例，实际覆盖仍待实测。记录标注名称、关联 FullName、显示类型、数值覆盖与悬空状态。覆盖数值保留 API 原值，单位、公差、整段文字覆盖、手工注释和视图是否更新均未核验。
+- `state_before/state_after`：已打开文档的路径、配置、保存标志和选择数量。差异作为问题；相同不证明所有内存/磁盘内容不变，因此 `state_preservation=not_established`。
+- `prototype_validation=unverified`、`enumeration_completeness=not_established`、`engineering_semantics=unmapped`：独立的未验收边界，不因 JSON 可读而改变。没有枚举的区域和未知项不计作通过。
+
+新宏与检查器只接受 v2；旧现场文件保留原样，不转换成新证据。当前方案不检查方程、设计表、轻量/分离图纸或全部依赖，不授予任何写入资格。JSON 使用 ASCII 加 Unicode 转义，中文名称可恢复。
+
+开发者可生成独立包：`python tools/package_solidworks_probe.py --out /absolute/path/new-probe.zip`。目标必须不存在；压缩包只含此目录的明确文件和 hash 清单。
 
 ## 公开 API 依据
 
-- [IFeature.GetNextDisplayDimension](https://help.solidworks.com/2024/English/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IFeature~GetNextDisplayDimension.html)：特征与子特征尺寸枚举及显示前提；[IDisplayDimension.GetDimension2](https://help.solidworks.com/2019/english/api/sldworksapi/solidworks.interop.sldworks~solidworks.interop.sldworks.idisplaydimension~getdimension2.html)：倒角的两个尺寸与普通尺寸索引行为。
-- [官方 GetSystemValue3 VBA 示例](https://help.solidworks.com/2012/english/api/sldworksapi/Change_Dimensions_of_Gear_Mate_Example_VB.htm)：当前配置与 Empty 参数；[参数类型枚举](https://help.solidworks.com/2024/English/api/swconst/SolidWorks.Interop.swconst~SolidWorks.Interop.swconst.swDimensionParamType_e.html)：线性、角度和整数类型；[API 单位](https://help.solidworks.com/2024/english/api/sldworksapiprogguide/Overview/Units.htm)：系统单位。
-- [ISldWorks.GetDocuments](https://help.solidworks.com/2024/english/api/sldworksapi/solidworks.interop.sldworks~solidworks.interop.sldworks.isldworks~getdocuments.html)、[IDrawingDoc.GetViews](https://help.solidworks.com/2016/english/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IDrawingDoc~GetViews.html)：当前打开的文档及各 sheet 的视图数组，第一项为 sheet 本身。
+- [RevisionNumber](https://help.solidworks.com/2023/english/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.ISldWorks~RevisionNumber.html) 与 [GetSaveFlag](https://help.solidworks.com/2022/English/api/sldworksapi/SOLIDWORKS.Interop.sldworks~SOLIDWORKS.Interop.sldworks.IModelDoc2~GetSaveFlag.html)：版本与有限的未保存状态观察。
+- [GetSelectedObject6](https://help.solidworks.com/2024/english/api/sldworksapi/solidworks.interop.sldworks~solidworks.interop.sldworks.iselectionmgr~getselectedobject6.html)、[swSelectType_e](https://help.solidworks.com/2026/english/api/swconst/SolidWorks.Interop.swconst~SolidWorks.Interop.swconst.swSelectType_e.html)、[Type2](https://help.solidworks.com/2023/english/api/sldworksapi/SOLIDWORKS.Interop.sldworks~SOLIDWORKS.Interop.sldworks.IDisplayDimension~Type2.html)：选中尺寸返回显示实例，类型 14 为尺寸；显示类型与原始参数类型分开。
+- [GetFirstDisplayDimension5](https://help.solidworks.com/2021/English/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IView~GetFirstDisplayDimension5.html)、[GetNext5](https://help.solidworks.com/2015/english/api/sldworksapi/SOLIDWORKS.Interop.sldworks~SOLIDWORKS.Interop.sldworks.IDisplayDimension~GetNext5.html)：图纸显示实例遍历，一个模型尺寸可显示多次。
+- [GetOverride](https://help.solidworks.com/2024/English/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IDisplayDimension~GetOverride.html)、[GetOverrideValue](https://help.solidworks.com/2024/English/api/sldworksapi/SOLIDWORKS.Interop.sldworks~SOLIDWORKS.Interop.sldworks.IDisplayDimension~GetOverrideValue.html)、[GetAnnotation](https://help.solidworks.com/2010/English/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IDisplayDimension~GetAnnotation.html)、[IsDangling](https://help.solidworks.com/2013/english/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IAnnotation~IsDangling.html)、[GetName](https://help.solidworks.com/2013/english/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IAnnotation~GetName.html)：数值覆盖、悬空与定位。
+- [GetDimension2](https://help.solidworks.com/2019/english/api/sldworksapi/solidworks.interop.sldworks~solidworks.interop.sldworks.idisplaydimension~getdimension2.html)、[GetSystemValue3 官方示例](https://help.solidworks.com/2012/english/api/sldworksapi/Change_Dimensions_of_Gear_Mate_Example_VB.htm)、[API 单位](https://help.solidworks.com/2024/english/api/sldworksapiprogguide/Overview/Units.htm)：原模型尺寸和系统值。
+- [GetNextDisplayDimension](https://help.solidworks.com/2024/English/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IFeature~GetNextDisplayDimension.html)、[GetDocuments](https://help.solidworks.com/2024/english/api/sldworksapi/solidworks.interop.sldworks~solidworks.interop.sldworks.ISldWorks~GetDocuments.html)、[GetViews](https://help.solidworks.com/2016/english/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.IDrawingDoc~GetViews.html)：当前模型和已打开图纸枚举。
+
+以上是公开文档依据，不是本原型的编译或实机验证结果。

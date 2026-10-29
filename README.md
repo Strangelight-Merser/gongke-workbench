@@ -4,9 +4,37 @@
 
 产品方向为独立桌面 App，现有 FreeCAD 工作台是已实现的集成模块，菜单暂仍显示“工科工作台”。独立 App 尚未交付；内部 `gongke` 模块、MCP 名称与历史工程保持原样。英文品牌名未定。
 
-SOLIDWORKS 首条路径覆盖学生已有的 `.SLDPRT` 轴与关联 `.SLDDRW`：读取指定配置和尺寸、比较候选、原生修改与撤销、重建并核对工程图、保存后继续编辑。现有 STEP/DXF 导出只提供文件互通，不能代表这条原生路径已经可用。适配须在完整 SOLIDWORKS 的 Windows 环境中验证；本机 macOS 上的 FreeCAD 结果不替代该验收。
+近期主线是检查学生已有的轴与关联工程图：读出实际尺寸，明确计算条件，定位图纸问题，让学生在原软件中修正后重新检查。当前 G1 实现 FreeCAD 的受限只读流程；G2 的修订写入须等待 G1 真实操作流程验收后再推进。
 
-[SOLIDWORKS 只读采集原型](tools/solidworks/README.md) 可供下一次实机验证使用：读取活动零件、当前配置、原始尺寸和已打开图纸的视图引用。目前只有静态检查和合成数据测试，未在 SOLIDWORKS 中编译运行，也未实现原生修改。
+SOLIDWORKS 的目标是接续学生已有的 `.SLDPRT` 轴与关联 `.SLDDRW`，后续才进入候选比较、原生修改、撤销和图纸更新。[只读采集包](tools/solidworks/README.md) 当前供借用已安装 SOLIDWORKS 的 Windows 电脑采集证据，尚未编译或实机运行，未完成原生适配。STEP/DXF 导出只提供文件互通；FreeCAD 结果不能替代 Windows 验收。
+
+## 检查已有轴与关联图纸
+
+打开已有 FreeCAD 三段实心回转轴及其 TechDraw 图纸，启用“工科工作台”。执行者准备一个明确的 case，记录文件绝对路径、Body/草图/回转对象、目标半径约束对应的轴段，以及所选页中的每个目标直径标注。检查器核对这些对应关系，不靠尺寸数值相同猜测关系，也不需要先绑定或改写原件。
+
+```bash
+python -m gongke_core inspect-revision --host freecad \
+  --case /absolute/path/shaft.case.json --out /absolute/path/check-01
+```
+
+命令读取当前已打开的 FreeCAD，打印中文条件确认表和问题定位，并在新目录中生成 `revision.json`。检查不重算、不保存，不改模型、显示或选择。若模型或图纸待更新，结果保留未确认状态，需在 CAD 中明确更新后再读。
+
+支持范围为三段轴的名义弯扭应力、梁挠度，以及所选图纸中显式映射的直径标注。图纸检查包括实际测量、毫米显示精度、数值覆盖和模型/视图引用；未识别对象、悬空引用和枚举缺口会保留问题位置。两个视图显示同一尺寸时，须分别映射和检查。
+
+工程条件使用学生常见单位，并逐字段记录来源原文、来源位置及确认状态；示例见 [revision_conditions.json](examples/revision_conditions.json)。缺弹性模量时仍可计算应力，缺许用值时保留数值并标为未判定；缺载荷不视为零载荷。该示例中的材料与载荷均为**人工教学假定**，不得直接作为自己零件的实际依据。
+
+克隆后可从 [原生轴与图纸基准](tests/fixtures/revision_cases/README.md) 开始：复制一份 `.FCStd` 与同名 `.case.json` 到新工作目录，只把 case 的 `document.path` 改为该副本的绝对路径，然后在 FreeCAD 中打开副本。这些文件由 [revision_fixture.py](tests/e2e/revision_fixture.py) 构造，包含正常及四种负例；它们是测试基准，不是学生试用样本，保留仓库原件不变。
+
+手工修正后，重新检查并比较上一份结果：
+
+```bash
+python -m gongke_core inspect-revision --case /absolute/path/shaft.case.json \
+  --previous /absolute/path/check-01/revision.json --out /absolute/path/check-02
+```
+
+几何、条件、映射、图纸或会话改变会使旧结论过期。每次 `--out` 必须是尚不存在的新目录；已有空目录也拒绝覆盖。退出码 `0` 表示当前范围的图纸检查和数值限值检查均通过，`1` 表示已生成结果但有失败或未确认项，`2` 表示输入、连接或输出错误。通过只针对已声明条件及受支持范围，不代表机械设计、疲劳或制造验收合格。
+
+提供 `--capture /absolute/path/normal.capture.json` 时改为离线核对，不连接 FreeCAD。结果明确标为 `recorded_capture`，只能说明该次采集，不能证明当前 CAD 仍相同。完整 case、条件状态与 MCP 调用见 [agent-api.md](docs/agent-api.md#已有轴与工程图只读检查)。
 
 ## 原生轴协作
 
@@ -39,7 +67,7 @@ macOS 上，任务管理进程异常退出后，下一次加载会核对并清�
 python tools/install_freecad_workbench.py --mod-dir "$HOME/Library/Application Support/FreeCAD/v1-1/Mod"
 ```
 
-重启 FreeCAD 后加载工作台。MCP 使用外部 Python 3.11 或更新版本运行 `python -P -m gongke_core mcp`，将 `PYTHONPATH` 设为安装目录 `GongKeWorkbench` 的绝对路径；详细接口见 [agent-api.md](docs/agent-api.md)。`-P` 避免客户端的当前工作目录覆盖已安装模块。原生编辑不依赖 build123d。
+重启 FreeCAD 后加载工作台。MCP 使用外部 Python 3.11 或更新版本运行 `python -P -m gongke_core mcp --profile native`，将 `PYTHONPATH` 设为安装目录 `GongKeWorkbench` 的绝对路径；详细接口见 [agent-api.md](docs/agent-api.md)。`-P` 避免客户端的当前工作目录覆盖已安装模块。原生编辑不依赖 build123d。`native` 提供当前工程工具与 `inspect_revision`，`batch` 只提供 9 个任务书批处理工具，默认 `all` 提供两组。
 
 ## 减速器批处理
 
@@ -106,10 +134,15 @@ python -m gongke_core design examples/conveyor_basic.yaml -o out
 
 ## 测试
 
-```
-pytest -q                          # 计算、数据、三维建模、命令行（约 2 分钟）
+开发测试环境使用 Python 3.11+，在独立虚拟环境中安装依赖。MCP 协议验收强制使用官方 SDK；缺依赖会失败，不以跳过代替验收。
+
+```bash
+python -m pip install -e '.[dev,geometry,report,drawing]'
+python -m pytest -q                # 单元、协议、计算、图纸、三维与命令行测试
 tests/e2e/run_freecad_e2e.sh       # 下载 FreeCAD，在 Xvfb 下跑界面端到端测试
 ```
+
+`tests/test_revision_mcp.py` 使用官方 SDK 验证真实 stdio 通信，输入是明确标识的合成采集。G1 的 FreeCAD 原生文件、真实界面操作与读取前后状态验收需另行执行；协议通过和教学基准通过均不代表真实学生或专业机械验收通过。
 
 ## 许可证
 

@@ -1,0 +1,37 @@
+{
+  "artificial_fixture": true,
+  "source": "tests/e2e/revision_fixture.py",
+  "host_version": "FreeCAD 1.1.4",
+  "cases": [
+    {
+      "name": "normal",
+      "sha256": "b22fc0f962ceb97d4a9aac7ec929a8567cbbcbf6b26e2142f593d29585e8d65c",
+      "expected_drawing": "pass",
+      "expected_calculation": "pass"
+    },
+    {
+      "name": "override",
+      "sha256": "49860a3c46c84d6bc829bedb7e150dea00a9b6fc7a024ebc0545ca136f62dc58",
+      "expected_drawing": "fail",
+      "expected_calculation": "pass"
+    },
+    {
+      "name": "wrong_reference",
+      "sha256": "1f9a41b28fd1afb99f07950037b819d010348a765d62c0358e16102e3dc71525",
+      "expected_drawing": "fail",
+      "expected_calculation": "pass"
+    },
+    {
+      "name": "dangling",
+      "sha256": "91bea1862dde71917bbb37d4992173233ea71fb343feb8cae32b5f9798b0f76e",
+      "expected_drawing": "fail",
+      "expected_calculation": "pass"
+    },
+    {
+      "name": "missing_condition",
+      "sha256": "0d861031dc58a3a3184ec108825766364149d838890f07bbdf23dcc0858b9e73",
+      "expected_drawing": "pass",
+      "expected_calculation": "unknown"
+    }
+  ]
+}

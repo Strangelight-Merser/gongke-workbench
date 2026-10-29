@@ -1,11 +1,12 @@
 # 给 AI agent 用的接口（MCP）
 
-学生在 FreeCAD 中编辑工程，agent 通过 MCP 读取同一份原生对象、比较轴径、应用修改和提交受限梁复核。
+学生在 FreeCAD 中编辑工程，agent 通过 MCP 检查已有轴与关联图纸，或调用已有的受限原生编辑工具。
 已有任务书设计工具继续提供独立批处理；它们不会读取或修改当前原生工程。
 
 ## 启动与接入
 
 MCP 服务器使用**外部 Python 进程**，通过标准输入输出通信；协议实现不需要安装 `mcp` SDK。
+开发与协议测试使用 Python 3.11+，通过 `python -m pip install -e '.[dev]'` 安装官方 MCP SDK。`tests/test_revision_mcp.py` 必须实际导入 SDK 并完成 stdio 调用，缺依赖不能跳过。
 FreeCAD 工作台在本机开启带会话令牌的命令桥，文档操作由 FreeCAD 的 Qt 主线程执行。
 不要把 build123d/OCP 导入 FreeCAD 进程。外部几何、CalculiX 求解分别保持进程隔离。
 
@@ -19,7 +20,7 @@ FreeCAD 工作台在本机开启带会话令牌的命令桥，文档操作由 Fr
 **Claude Code**
 
 ```
-claude mcp add gongke --env PYTHONPATH=/path/to/GongKeWorkbench -- /path/to/python -P -m gongke_core mcp
+claude mcp add gongke --env PYTHONPATH=/path/to/GongKeWorkbench -- /path/to/python -P -m gongke_core mcp --profile native
 ```
 
 **WorkBuddy、Claude Desktop、Cursor 等（JSON 配置）**
@@ -29,7 +30,7 @@ claude mcp add gongke --env PYTHONPATH=/path/to/GongKeWorkbench -- /path/to/pyth
   "mcpServers": {
     "gongke": {
       "command": "/path/to/python",
-      "args": ["-P", "-m", "gongke_core", "mcp"],
+      "args": ["-P", "-m", "gongke_core", "mcp", "--profile", "native"],
       "env": {"PYTHONPATH": "/path/to/GongKeWorkbench"}
     }
   }
@@ -39,10 +40,84 @@ claude mcp add gongke --env PYTHONPATH=/path/to/GongKeWorkbench -- /path/to/pyth
 默认桥接会话文件为 `~/.local/share/gongke/freecad-session.json`。需要指定实例时，FreeCAD 与 MCP 进程设置同一个
 `GONGKE_FREECAD_SESSION` 路径。会话令牌由工作台生成，无需写进客户端配置；客户端只连接本机回环地址。
 
+`--profile` 决定本次服务器实际可调用的工具：
+
+| 值 | 工具范围 |
+| --- | --- |
+| `native` | 现有 13 个当前工程工具及只读 `inspect_revision`；不列出也不能调用 `run_design` 等批处理工具 |
+| `batch` | 9 个任务书批处理工具；不连接当前工程工具 |
+| `all` | 两组全部工具；省略参数时的默认值 |
+
+`native` 是工具分组，不是只读权限模式：其中仍有明确的绑定、修改和保存工具。G1 检查使用 `inspect_revision`，返回的检查结果不授予这些写入工具资格。
+
+## 已有轴与工程图只读检查
+
+`inspect_revision(case, capture=None, previous=None)` 与命令行 `inspect-revision` 使用同一个检查用例。它针对受支持的已有三段实心回转轴与所选 TechDraw 页，不添加绑定属性、不重算、不保存、不改显示或选择，也不先把零件转换成工作台创建的模型。
+
+`case` 是完整 JSON 对象，MCP 不接受文件名代替它。CLI 从 `--case` 指定的文件加载对象。执行者须先核对原生名称和关联关系；当前没有从任意零件自动推断工程语义的入口。
+
+| case 字段 | 内容 |
+| --- | --- |
+| `schema_version`、`case_id` | 版本为 `1`；本次任务标识 |
+| `document` | 宿主内 `.FCStd` 的绝对 `path`、`body`、`sketch`、`revolution` 及实际约束 `structure_signature`；可记录已有 `entity_id` |
+| `target` | `radius_constraint` 为原生半径约束名，`segment_index` 为 0、1 或 2；检查值使用该轴段实际直径，不能把半径数值当直径 |
+| `pages` | 明确选择的 TechDraw 页名称列表 |
+| `annotations` | 每个显示实例分别给出 `page`、`view`、`dimension` 和 `target: "diameter"`；同一尺寸的多个显示实例不能合并 |
+| `conditions` | 下述工程单位与来源记录；允许缺失，但对应计算将明确受限 |
+
+文件完整路径、对象、约束结构及目标轴段均须吻合。相同文件名或相同尺寸不足以建立映射；所选页中未映射的标注保留为未知。页、视图、标注的待更新、无效或未识别状态同样保留，读取器不会代为刷新以消除它们。
+
+条件格式见 [revision_conditions.json](../examples/revision_conditions.json)。将其整个对象放入 `case.conditions`。该文件提供人工教学假定，不是实际设计依据。各数值记录包含 `value`、`unit`、`status` 与 `source: {"text": "来源原文", "reference": "来源位置"}`。一条载荷的确认状态和来源覆盖其 `position`、`fx`、`fy` 分量；分量只需各自的数值与单位，载荷列表还须确认是否完整。
+
+| 条件 | 当前支持 |
+| --- | --- |
+| `coordinate_system` | `value: "body_local_x"`、`position_mode: "fixed_body_coordinate"`；位置沿 Body 局部 X，`fx/fy` 分别沿局部 Y/Z |
+| `supports` | 两个递增的非负支点位置；`m` 或 `mm` |
+| `loads` | 横向集中力列表；位置为 `m/mm`，力为 `N/kN` |
+| `torque_points` | 平衡转矩列表；位置为 `m/mm`，转矩为 `N*m`、`N·m`、`N*mm` 或 `N·mm` |
+| `young_modulus`、`allowable_stress` | 弹性模量、名义许用应力；`Pa`、`MPa` 或 `GPa` |
+| `alpha`、`max_deflection` | 弯扭折合系数用单位 `1`；挠度限值用 `m/mm` |
+| `material_name` | 可选材料说明，不从材料名称推算弹性模量或许用值 |
+
+`confirmed` 表示输入者确认，`verified` 表示输入者声明已核验；转换器不会自动认证来源。两者都必须有来源原文和位置才进入计算。`pending`、`conflict`、`missing` 保留为证据并给出中文问题。所有数值须有限；未知单位和半径/直径混用不得靠默认值补齐。载荷缺失不等于零载荷；确认没有载荷时须提供带来源的空列表。长度修改不会自动移动固定的 Body 局部位置，沿轴段边界移动等语义须另行确认。
+
+各计算按自己的依赖独立执行。缺弹性模量不隐藏已能算出的名义应力；缺许用应力或挠度限值时输出数值并标为 `unknown`，不会用极大限值制造通过。缺关键载荷、支承或几何时相应检查为 `unavailable`。`pass/fail` 只表示满足或超出输入者声明的限值，不是完整疲劳、配合或制造结论。
+
+实时检查要求目标文件已在 FreeCAD 中打开且工作台桥已启用。当前 CLI 的 `--host` 只接受 `freecad`：
+
+```bash
+python -m gongke_core inspect-revision --host freecad \
+  --case /absolute/path/shaft.case.json --out /absolute/path/check-01
+python -m gongke_core inspect-revision --case /absolute/path/shaft.case.json \
+  --previous /absolute/path/check-01/revision.json --out /absolute/path/check-02
+```
+
+每次输出目录必须不存在，包括空目录；命令不会覆盖旧检查。终端显示来源确认表、可计算项和图纸问题位置，`revision.json` 保存完整采集、映射、条件、计算、图纸检查及适用性。`--previous` 读取本入口上次的完整结果，比较几何、条件、映射、图纸和会话等内容；变化会使上次结论为 `stale`。
+
+| CLI 退出码 | 含义 |
+| --- | --- |
+| `0` | 生成结果，图纸状态与数值检查均为 `pass`；仅限声明的范围和条件 |
+| `1` | 生成结果，但有失败、缺条件或未确认项；读取 `revision.json` 定位 |
+| `2` | 输入、宿主连接或输出错误；包括已有输出目录，不能当作已完成检查 |
+
+离线采集显式传 `--capture`，不会连接或打开 FreeCAD：
+
+```bash
+python -m gongke_core inspect-revision --case /absolute/path/normal.case.json \
+  --capture /absolute/path/normal.capture.json --out /absolute/path/offline-01
+```
+
+实时结果是 `source_mode: "live"`、`applicability.status: "current_at_capture"`；离线结果是 `recorded_capture`，不能证明当前 CAD 仍为该状态。MCP 的 `case`、`capture`、`previous` 参数直接传完整对象，后两者可省略。该工具标注 `readOnlyHint: true`，所有结果都保留 `modification_eligibility.allowed: false`。它与现有 `review_current_object` 的写入前置检查契约分开，不能据此调用 `apply_change`。
+
+克隆后的直接入口是 [原生轴与图纸基准](../tests/fixtures/revision_cases/README.md)：复制 `.FCStd` 与同名 `.case.json` 到新工作目录，只把 case 的 `document.path` 改为副本绝对路径。原生文件中含两个视图的目标直径标注，配套 case 已列出完整约束结构。打开副本，在 CAD 中完成图纸更新后运行上述实时命令；不要改动仓库基准来消除负例。
+
+开发者也可在 FreeCAD Python 控制台执行 [revision_fixture.py](../tests/e2e/revision_fixture.py) 的 `build(新目录)`，生成原生 `.FCStd`、完整 `.case.json` 与 `.capture.json`。构造器会新建测试模型、更新并保存测试文件；它不属于只读采集操作。基准包含正常、显示覆盖、错误引用、失联标注及缺条件场景，材料和载荷为人工假定。协议测试采用合成采集；原生文件验证、真实界面流程和学生试用仍需分别验收。G2 修订写入等待 G1 真实流程门禁，不因单元或协议测试通过自动开放。
+
 ## 当前原生工程工具
 
 | 工具 | 参数 | 行为 |
 |---|---|---|
+| `inspect_revision` | `case`，可选 `capture`, `previous` | 检查已有三段轴与关联 TechDraw；不绑定、不重算、不保存，结果不授予写入资格 |
 | `create_shaft_project` | 可选 `case`, `task` | 新建并选中原生轴；`teaching` 是三段教学轴，`course_output` 从 coupling 任务书初始化带两个键槽和六处圆角的七段课程输出轴 |
 | `get_project_context` | 无 | 返回当前文档 `session_id`、选择及对象身份 |
 | `bind_existing_shaft` | `session_id`, `body_name`, `expected_revision`, `engineering`, `operation_id` | 给受支持的现有三段回转轴添加身份和工况映射，保留原生模型；绑定可撤销 |

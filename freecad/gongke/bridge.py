@@ -89,14 +89,18 @@ class DocumentState:
         if state["doc"].HasPendingTransaction:
             raise ValueError("当前文档有未结束的编辑事务，请先完成该操作")
 
-    def _context(self, doc):
-        if doc is None:
-            return {"session_id": None, "objects": [], "selection": [], "unbound_objects": [],
-                    "unbound_selection": [], "message": "请打开原生轴工程"}
+    def _session_for_document(self, doc):
         sid = next((sid for sid, s in self.sessions.items() if s["doc"] == doc), None)
         if sid is None:
             sid = str(uuid.uuid4())
             self.sessions[sid] = {"doc": doc, "revision": 0}
+        return sid
+
+    def _context(self, doc):
+        if doc is None:
+            return {"session_id": None, "objects": [], "selection": [], "unbound_objects": [],
+                    "unbound_selection": [], "message": "请打开原生轴工程"}
+        sid = self._session_for_document(doc)
         state = self.sessions[sid]
         objects = [{"entity_id": obj.GkEntityId, "name": obj.Name, "label": obj.Label,
                     **native_shaft.inspect(obj)} for obj in doc.Objects if hasattr(obj, "GkEntityId")]
@@ -118,6 +122,19 @@ class DocumentState:
 
     def get_project_context(self):
         return self._context(App.ActiveDocument)
+
+    def read_revision_context(self, document_path, body_name, pages):
+        """读取明确打开的工程；不沿用会重算的可写对象读取路径。"""
+        from freecad.gongke.native_drawing import capture
+
+        if not isinstance(document_path, str) or not Path(document_path).is_absolute():
+            raise ValueError("document_path 必须是当前工程的绝对路径")
+        matches = [doc for doc in App.listDocuments().values()
+                   if doc.FileName and Path(doc.FileName).resolve() == Path(document_path).resolve()]
+        if len(matches) != 1:
+            raise ValueError("指定工程未打开或不能唯一定位，请在 FreeCAD 中打开目标原生工程")
+        doc = matches[0]
+        return capture(doc, body_name, pages, self._session_for_document(doc))
 
     def bind_existing_shaft(self, session_id, body_name, expected_revision, engineering, operation_id):
         """接管当前已有回转轴；一次事务只加映射，不重建学生模型。"""
@@ -477,7 +494,7 @@ class Bridge:
                 return self.main_call("remember_review", context=context, result=review(context["snapshot"]))
             candidate = preview(context["snapshot"], params["segment_id"], params["diameter_m"])
             return self.main_call("remember_preview", context=context, candidate=candidate)
-        if method not in ("create_project", "get_project_context", "bind_existing_shaft", "read_engineering_object", "apply_change", "undo_last_agent_change", "save_project"):
+        if method not in ("create_project", "get_project_context", "read_revision_context", "bind_existing_shaft", "read_engineering_object", "apply_change", "undo_last_agent_change", "save_project"):
             raise ValueError("未知工程命令")
         return self.main_call(method, **params)
 

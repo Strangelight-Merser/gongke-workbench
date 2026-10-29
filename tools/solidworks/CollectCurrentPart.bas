@@ -31,13 +31,17 @@ Private Function Capture() As String
     Dim dims As Collection, drawings As Collection
     Dim status As String, document As String, configuration As Variant
     Dim docType As Variant, docPath As Variant, title As Variant
+    Dim revision As Variant, selected As String, before As String, after As String
     Set issues = New Collection
     Set dims = New Collection
     Set drawings = New Collection
-    status = "error": document = "null"
+    status = "error": document = "null": selected = "null"
+    before = "[]": after = "[]": revision = Null
     On Error GoTo Failed
     ' 在 SOLIDWORKS 内运行，使用该实例；不创建或猜测另一个 COM 实例。
     Set sw = Application.SldWorks
+    revision = ReadText(sw, "RevisionNumber", VbMethod, "host.revision_number")
+    before = StateJson(sw)
     Set model = sw.ActiveDoc
     If model Is Nothing Then
         status = "unsupported"
@@ -60,6 +64,7 @@ Private Function Capture() As String
             If docType = 1 Then
                 status = "collected"
                 ReadDimensions model, dims
+                selected = SelectedTargetJson(model)
                 If dims.Count = 0 Then AddIssue "dimensions", "none_enumerated_not_proof_of_no_dimensions"
             Else
                 AddIssue "active_document", "only_part_document_supported"
@@ -67,18 +72,97 @@ Private Function Capture() As String
         End If
     End If
     ReadOpenDrawings sw, drawings
+    after = StateJson(sw)
+    If before <> after Then AddIssue "state", "observed_state_changed"
     If status = "collected" And issues.Count > 0 Then status = "partial"
     GoTo Finish
 Failed:
     AddIssue "capture", Err.Description
     status = "error"
 Finish:
-    Capture = "{""schema_version"":1,""capture_kind"":""solidworks_readonly_inventory""," & _
+    Capture = "{""schema_version"":2,""capture_kind"":""solidworks_readonly_inventory""," & _
               """prototype_validation"":""unverified"",""status"":" & J(status) & _
+              ",""host"":{""revision_number"":" & J(revision) & ",""platform"":""Windows""}" & _
               ",""captured_at_local"":" & J(Format$(Now, "yyyy-mm-dd") & "T" & Format$(Now, "hh:nn:ss")) & _
               ",""document"":" & document & ",""enumeration_completeness"":""not_established""," & _
               """engineering_semantics"":""unmapped"",""dimensions"":" & JsonArray(dims) & _
-              ",""open_drawings"":" & JsonArray(drawings) & ",""issues"":" & JsonArray(issues) & "}"
+              ",""selected_target"":" & selected & ",""state_before"":" & before & ",""state_after"":" & after & _
+              ",""state_preservation"":""not_established"",""open_drawings"":" & JsonArray(drawings) & _
+              ",""issues"":" & JsonArray(issues) & "}"
+End Function
+
+Private Function StateJson(ByVal sw As Object) As String
+    Dim docs As Variant, model As Object, config As Object, selection As Object
+    Dim rows As Collection, index As Long, kind As Variant, configuration As Variant, count As Variant
+    Set rows = New Collection
+    On Error GoTo Failed
+    docs = sw.GetDocuments
+    If IsEmpty(docs) Then GoTo Finish
+    For index = LBound(docs) To UBound(docs)
+        Set model = docs(index)
+        kind = ReadScalar(model, "GetType", VbMethod, "state.type")
+        configuration = Null
+        If Not IsNull(kind) Then
+            If kind = 1 Then
+                Set config = model.ConfigurationManager.ActiveConfiguration
+                configuration = ReadText(config, "Name", VbGet, "state.configuration")
+            End If
+        End If
+        Set selection = model.SelectionManager
+        count = selection.GetSelectedObjectCount2(-1)
+        rows.Add "{""path"":" & J(ReadText(model, "GetPathName", VbMethod, "state.path")) & _
+                 ",""title"":" & J(ReadText(model, "GetTitle", VbMethod, "state.title")) & _
+                 ",""type"":" & J(kind) & ",""configuration"":" & J(configuration) & _
+                 ",""save_flag"":" & J(ReadScalar(model, "GetSaveFlag", VbMethod, "state.save_flag")) & _
+                 ",""selection_count"":" & J(count) & "}"
+    Next index
+    GoTo Finish
+Failed:
+    AddIssue "state.observation", Err.Description
+Finish:
+    ' 保存标志和选择数相同不能证明内存内容完全不变，必须保留人工对照。
+    StateJson = JsonArray(rows)
+End Function
+
+Private Function SelectedTargetJson(ByVal model As Object) As String
+    Dim selection As Object, display As Object, dimension As Object
+    Dim count As Long, kind As Long, displayType As Variant, name As Variant, parameterType As Variant, unit As Variant
+    SelectedTargetJson = "null"
+    On Error GoTo Failed
+    Set selection = model.SelectionManager
+    count = selection.GetSelectedObjectCount2(-1)
+    If count <> 1 Then
+        AddIssue "selected_target", "select_exactly_one_dimension": Exit Function
+    End If
+    kind = selection.GetSelectedObjectType3(1, -1)
+    If kind <> 14 Then
+        AddIssue "selected_target", "selection_is_not_dimension": Exit Function
+    End If
+    Set display = selection.GetSelectedObject6(1, -1)
+    displayType = ReadScalar(display, "Type2", VbGet, "selected_target.display_type")
+    If IsNull(displayType) Then Exit Function
+    If displayType = 10 Then
+        AddIssue "selected_target", "chamfer_has_two_parameters_not_a_single_target": Exit Function
+    End If
+    Set dimension = DimensionAt(display, 0)
+    If dimension Is Nothing Then Exit Function
+    name = ReadText(dimension, "FullName", VbGet, "selected_target.full_name")
+    parameterType = ReadScalar(dimension, "GetType", VbMethod, "selected_target.parameter_type")
+    unit = Null
+    If Not IsNull(parameterType) Then
+        Select Case parameterType
+            Case 0: unit = "m"
+            Case 1: unit = "rad"
+            Case 2: unit = "integer"
+            Case Else: AddIssue "selected_target.unit", "unknown_parameter_type"
+        End Select
+    End If
+    SelectedTargetJson = "{""full_name"":" & J(name) & ",""value_si"":" & J(DimensionValue(dimension)) & _
+                         ",""parameter_type"":" & J(parameterType) & ",""unit"":" & J(unit) & _
+                         ",""display_type"":" & J(displayType) & ",""selection_type"":14}"
+    Exit Function
+Failed:
+    AddIssue "selected_target", Err.Description
 End Function
 
 Private Sub ReadDimensions(ByVal model As Object, ByVal rows As Collection)
@@ -214,14 +298,80 @@ End Function
 
 Private Function ViewJson(ByVal view As Object, ByVal sheetName As Variant) As String
     Dim name As Variant, model As Variant, config As Variant, status As String
+    Dim displays As String, issueCount As Long
+    issueCount = issues.Count
     name = ReadText(view, "GetName2", VbMethod, "view.name")
     model = ReadText(view, "GetReferencedModelName", VbMethod, "view.referenced_model")
     config = ReadText(view, "ReferencedConfiguration", VbGet, "view.referenced_configuration")
+    displays = DisplayDimensionsJson(view)
     status = "read"
     If IsNull(sheetName) Or IsNull(name) Or IsNull(model) Or IsNull(config) Then status = "partial"
+    If issues.Count > issueCount Then status = "partial"
     ViewJson = "{""sheet_name"":" & J(sheetName) & ",""view_name"":" & J(name) & _
                ",""referenced_model"":" & J(model) & ",""referenced_configuration"":" & J(config) & _
-               ",""status"":" & J(status) & "}"
+               ",""status"":" & J(status) & ",""display_dimensions"":" & displays & _
+               ",""annotation_coverage"":""not_established"",""view_update_status"":""not_checked""}"
+End Function
+
+Private Function DisplayDimensionsJson(ByVal view As Object) As String
+    Dim rows As Collection, display As Object
+    Set rows = New Collection
+    On Error GoTo Failed
+    Set display = view.GetFirstDisplayDimension5
+    Do While Not display Is Nothing
+        rows.Add DisplayDimensionJson(display)
+        Set display = display.GetNext5
+    Loop
+    GoTo Finish
+Failed:
+    AddIssue "view.display_dimensions", Err.Description
+Finish:
+    DisplayDimensionsJson = JsonArray(rows)
+End Function
+
+Private Function DisplayDimensionJson(ByVal display As Object) As String
+    Dim annotation As Object, dimension As Object, names As Collection
+    Dim name As Variant, fullName As Variant, dangling As Variant, overridden As Variant
+    Dim overrideValue As Variant, displayType As Variant, status As String, lastIndex As Long, index As Long, issueCount As Long
+    Set names = New Collection
+    issueCount = issues.Count
+    name = Null: dangling = Null: overrideValue = Null: status = "read"
+    displayType = ReadScalar(display, "Type2", VbGet, "annotation.display_type")
+    overridden = ReadScalar(display, "GetOverride", VbMethod, "annotation.override")
+    If Not IsNull(overridden) Then
+        If overridden Then overrideValue = ReadScalar(display, "GetOverrideValue", VbMethod, "annotation.override_value")
+    End If
+    On Error GoTo Failed
+    Set annotation = display.GetAnnotation
+    name = ReadText(annotation, "GetName", VbMethod, "annotation.name")
+    dangling = ReadScalar(annotation, "IsDangling", VbMethod, "annotation.dangling")
+    lastIndex = 0
+    If Not IsNull(displayType) Then
+        If displayType = 10 Then lastIndex = 1
+    End If
+    For index = 0 To lastIndex
+        Set dimension = DimensionAt(display, index)
+        If Not dimension Is Nothing Then
+            fullName = ReadText(dimension, "FullName", VbGet, "annotation.dimension_full_name")
+            If Not IsNull(fullName) Then names.Add J(fullName)
+        End If
+    Next index
+    GoTo Finish
+Failed:
+    AddIssue "annotation", Err.Description
+    status = "partial"
+Finish:
+    If issues.Count > issueCount Then status = "partial"
+    If IsNull(name) Or IsNull(dangling) Or IsNull(overridden) Or IsNull(displayType) Or names.Count = 0 Then status = "partial"
+    If Not IsNull(overridden) Then
+        If overridden And IsNull(overrideValue) Then status = "partial"
+    End If
+    ' 数值覆盖保留 API 原始值；单位、整段文字覆盖与公差在此原型中尚未核对。
+    DisplayDimensionJson = "{""annotation_name"":" & J(name) & ",""dimension_full_names"":" & JsonArray(names) & _
+                           ",""display_type"":" & J(displayType) & ",""override"":" & J(overridden) & _
+                           ",""override_value"":" & J(overrideValue) & ",""override_value_unit"":""not_established""," & _
+                           """dangling"":" & J(dangling) & ",""text_override_status"":""not_checked""," & _
+                           """status"":" & J(status) & "}"
 End Function
 
 Private Function ReadScalar(ByVal obj As Object, ByVal member As String, ByVal callType As VbCallType, ByVal field As String) As Variant

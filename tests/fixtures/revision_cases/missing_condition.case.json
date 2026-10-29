@@ -1,0 +1,407 @@
+{
+  "schema_version": 1,
+  "case_id": "teaching-missing_condition",
+  "provenance": "人工构造基准，载荷与材料为教学假定，不代表实际设计依据",
+  "document": {
+    "path": "/absolute/path/missing_condition.FCStd",
+    "body": "MyRotor",
+    "sketch": "MyOutline",
+    "revolution": "MyTurnedShaft",
+    "structure_signature": [
+      {
+        "type": "Coincident",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 1,
+        "FirstPos": 2,
+        "Second": 6,
+        "SecondPos": 1,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Vertical",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 1,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Coincident",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 6,
+        "FirstPos": 2,
+        "Second": 4,
+        "SecondPos": 1,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Horizontal",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 6,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Coincident",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 4,
+        "FirstPos": 2,
+        "Second": 3,
+        "SecondPos": 1,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Vertical",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 4,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Coincident",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 3,
+        "FirstPos": 2,
+        "Second": 7,
+        "SecondPos": 1,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Horizontal",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 3,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Coincident",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 7,
+        "FirstPos": 2,
+        "Second": 0,
+        "SecondPos": 1,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Vertical",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 7,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Coincident",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 0,
+        "FirstPos": 2,
+        "Second": 5,
+        "SecondPos": 1,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Horizontal",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 0,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Coincident",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 5,
+        "FirstPos": 2,
+        "Second": 2,
+        "SecondPos": 1,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Vertical",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 5,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Coincident",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 2,
+        "FirstPos": 2,
+        "Second": 1,
+        "SecondPos": 1,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Horizontal",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 2,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Coincident",
+        "name": "",
+        "active": true,
+        "driving": true,
+        "First": 1,
+        "FirstPos": 1,
+        "Second": -1,
+        "SecondPos": 1,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Distance",
+        "name": "my_length_1",
+        "active": true,
+        "driving": true,
+        "First": 6,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "DistanceY",
+        "name": "my_radius_1",
+        "active": true,
+        "driving": true,
+        "First": 6,
+        "FirstPos": 2,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Distance",
+        "name": "my_length_2",
+        "active": true,
+        "driving": true,
+        "First": 3,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "DistanceY",
+        "name": "my_radius_2",
+        "active": true,
+        "driving": true,
+        "First": 3,
+        "FirstPos": 2,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "Distance",
+        "name": "my_length_3",
+        "active": true,
+        "driving": true,
+        "First": 0,
+        "FirstPos": 0,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      },
+      {
+        "type": "DistanceY",
+        "name": "my_radius_3",
+        "active": true,
+        "driving": true,
+        "First": 0,
+        "FirstPos": 2,
+        "Second": -2000,
+        "SecondPos": 0,
+        "Third": -2000,
+        "ThirdPos": 0
+      }
+    ]
+  },
+  "target": {
+    "radius_constraint": "my_radius_2",
+    "segment_index": 1
+  },
+  "pages": [
+    "ShaftDrawing"
+  ],
+  "annotations": [
+    {
+      "page": "ShaftDrawing",
+      "view": "EndView",
+      "dimension": "MiddleDiameter1",
+      "target": "diameter"
+    },
+    {
+      "page": "ShaftDrawing",
+      "view": "SecondEndView",
+      "dimension": "MiddleDiameter2",
+      "target": "diameter"
+    }
+  ],
+  "conditions": {
+    "schema_version": 1,
+    "fields": {
+      "coordinate_system": {
+        "value": "body_local_x",
+        "status": "confirmed",
+        "source": {
+          "text": "教学假定，非实际设计依据",
+          "reference": "本测试条件"
+        },
+        "position_mode": "fixed_body_coordinate"
+      },
+      "supports": {
+        "value": [
+          25,
+          175
+        ],
+        "unit": "mm",
+        "status": "confirmed",
+        "source": {
+          "text": "教学假定，非实际设计依据",
+          "reference": "本测试条件"
+        }
+      },
+      "loads": {
+        "value": [
+          {
+            "position": {
+              "value": 100,
+              "unit": "mm"
+            },
+            "fx": {
+              "value": 0,
+              "unit": "N"
+            },
+            "fy": {
+              "value": -1,
+              "unit": "kN"
+            },
+            "status": "confirmed",
+            "source": {
+              "text": "轴中点向下1000 N",
+              "reference": "教学受力图"
+            }
+          }
+        ],
+        "status": "confirmed",
+        "source": {
+          "text": "教学假定，非实际设计依据",
+          "reference": "本测试条件"
+        }
+      },
+      "torque_points": {
+        "value": [],
+        "status": "confirmed",
+        "source": {
+          "text": "教学假定，非实际设计依据",
+          "reference": "本测试条件"
+        }
+      },
+      "material_name": {
+        "value": "教学弹性材料",
+        "status": "confirmed",
+        "source": {
+          "text": "教学假定，非实际设计依据",
+          "reference": "本测试条件"
+        }
+      },
+      "allowable_stress": {
+        "value": 60,
+        "unit": "MPa",
+        "status": "confirmed",
+        "source": {
+          "text": "教学假定，非实际设计依据",
+          "reference": "本测试条件"
+        }
+      },
+      "alpha": {
+        "value": 0.6,
+        "unit": "1",
+        "status": "confirmed",
+        "source": {
+          "text": "教学假定，非实际设计依据",
+          "reference": "本测试条件"
+        }
+      },
+      "max_deflection": {
+        "value": 0.1,
+        "unit": "mm",
+        "status": "confirmed",
+        "source": {
+          "text": "教学假定，非实际设计依据",
+          "reference": "本测试条件"
+        }
+      }
+    }
+  }
+}

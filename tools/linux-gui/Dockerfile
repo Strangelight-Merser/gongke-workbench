@@ -25,6 +25,7 @@ RUN mkdir -p /home/engineer/.local/share/FreeCAD/Mod \
     && chown -R engineer:engineer /home/engineer
 COPY start.sh bootstrap.FCMacro /opt/gongke/
 RUN chmod +x /opt/gongke/start.sh
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONUTF8=1
 ENV HOME=/home/engineer DISPLAY=:1 QT_QPA_PLATFORM=xcb \
     LIBGL_ALWAYS_SOFTWARE=1 PYTHONDONTWRITEBYTECODE=1 \
     FREECAD_USER_HOME=/home/engineer/.local/share/FreeCAD \
