@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { DrawingViewer } from "./DrawingViewer";
 import { call, Data, errorText, text } from "./api";
 import { ModelView } from "./ModelView";
 import {
@@ -9,6 +11,20 @@ import {
   registeredWorkingCopy,
 } from "./CommercialView";
 import { Collapsible, StreamText, streamFragment } from "./Motion";
+import {
+  CheckInspector,
+  CheckRow,
+  CRITICAL,
+  Fact,
+  Spectrum,
+  StageId,
+  STAGES,
+  stageChecks,
+  stageState,
+  summaryOf,
+} from "./Workflow";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./style.css";
 
 const statuses: Data = {
@@ -34,7 +50,10 @@ function App() {
   const [project, setProject] = useState<Data | null>(null),
     [status, setStatus] = useState<Data>({}),
     [tasks, setTasks] = useState<Data[]>([]),
-    [tab, setTab] = useState("native");
+    [tab, setTab] = useState("task");
+  const [result, setResult] = useState<Data | null>(null),
+    [check, setCheck] = useState<Data | null>(null),
+    [filesOpen, setFilesOpen] = useState(false);
   const [hostKind, setHostKind] = useState("freecad");
   const importingDxf = useRef(false);
   const [pendingNative, setPendingNative] = useState<Data | null>(() => {
@@ -58,6 +77,29 @@ function App() {
     [busy, setBusy] = useState(""),
     [settings, setSettings] = useState(false),
     [hosts, setHosts] = useState<Data[]>([]);
+  const [inspector, setInspector] = useState<HTMLDivElement | null>(null),
+    [sidebar, setSidebar] = useState(() => {
+      try {
+        return localStorage.getItem("gongke.sidebar") !== "hidden";
+      } catch {
+        return true;
+      }
+    });
+  useEffect(() => {
+    try {
+      localStorage.setItem("gongke.sidebar", sidebar ? "shown" : "hidden");
+    } catch {}
+  }, [sidebar]);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "\\" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setSidebar((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
   const [messages, setMessages] = useState<Data[]>([]),
     [prompt, setPrompt] = useState(""),
     [allowWrites, setAllowWrites] = useState(true),
@@ -160,6 +202,24 @@ function App() {
     });
     return stop;
   }, [refresh]);
+  // 打开带条件的工程时做一次只读计算，侧栏阶段状态与校核汇总由它得出。
+  const taskKey = project
+    ? project.path + JSON.stringify(project.task || {})
+    : "";
+  useEffect(() => {
+    setCheck(null);
+    if (!project?.task?.conveyor) {
+      setResult(null);
+      return;
+    }
+    let live = true;
+    call("design.calculate", { task: project.task })
+      .then((value) => live && setResult(value))
+      .catch(() => live && setResult(null));
+    return () => {
+      live = false;
+    };
+  }, [taskKey]);
   async function choose(create: boolean) {
     await run(create ? "新建工程" : "打开工程", async () => {
       const path = await window.gongke.chooseProject(create);
@@ -282,81 +342,108 @@ function App() {
       await refresh();
     });
   }
+  const r = summaryOf(result);
+  const stageIndex = STAGES.findIndex((s) => s.id === tab);
+  const allChecks: Data[] = r?.checks || [];
+  const failedCount = allChecks.filter((c) => !c.ok).length,
+    criticalCount = allChecks.filter(
+      (c) => c.ok && (c.utilization ?? 0) >= CRITICAL,
+    ).length;
+  const running = tasks.filter((t) => t.status === "running").length;
+  const title =
+    stageIndex >= 0
+      ? STAGES[stageIndex].name
+      : tab === "checks"
+        ? "全部校核"
+        : tab === "native"
+          ? "原生模型"
+          : tab === "tasks"
+            ? "任务与回执"
+            : file?.name;
+  const eyebrow =
+    stageIndex >= 0
+      ? `第 ${stageIndex + 1} 步 · ${project?.task?.title || "课程设计"}`
+      : tab === "checks"
+        ? "按利用率排序"
+        : tab === "file"
+          ? file?.path
+          : tab === "native"
+            ? "实时连接的 CAD 文档"
+            : "工程操作记录";
+  const selectCheck = (c: Data) => setCheck(c);
   return (
     <div className="app">
-      <header>
-        <div className="brand">
-          <span className="brand-mark">G</span>
-          <strong>构想引擎</strong>
-        </div>
-        <span className="project-title">{project?.name || "工程工作台"}</span>
-        <div className="header-actions">
-          <button onClick={() => choose(false)}>打开工程</button>
-          <button onClick={() => choose(true)}>新建工程</button>
-          <button className="icon-button" onClick={() => setSettings(true)}>
-            模型服务
-          </button>
-        </div>
-      </header>
       <div className="body">
-        <aside className="tree">
-          <div className="tree-heading">
-            {project?.name || "未打开工程"}
-            <button onClick={refresh} title="刷新工程">
+        <aside className="tree" hidden={!sidebar}>
+          <div className="tree-top drag">
+            <span className="brand-mark">G</span>
+            <div className="proj" title={project?.path}>
+              <b>{project?.name || "构想引擎"}</b>
+              <small>
+                {project
+                  ? project.teaching
+                    ? "教学示例 · 条件须核对"
+                    : schemes[project.task?.scheme] || "工程"
+                  : "未打开工程"}
+              </small>
+            </div>
+            <button
+              className="ghost"
+              aria-label="刷新工程"
+              title="刷新工程"
+              onClick={refresh}
+            >
               ↻
             </button>
           </div>
-          <nav>
-            <button
-              className={tab === "native" ? "active" : ""}
-              onClick={() => setTab("native")}
-            >
-              <span>◇</span>模型与图纸
-            </button>
-            <button
-              className={tab === "design" ? "active" : ""}
-              onClick={() => setTab("design")}
-            >
-              <span>∑</span>设计计算
-            </button>
-            <button
-              className={tab === "tasks" ? "active" : ""}
-              onClick={() => setTab("tasks")}
-            >
-              <span>☷</span>任务
-              <span className="count">
-                {tasks.filter((t) => t.status === "running").length || ""}
+          <div className="project-actions">
+            <button onClick={() => choose(false)}>打开工程</button>
+            <button onClick={() => choose(true)}>新建工程</button>
+          </div>
+          <div className="side-scroll">
+            <div className="section-title">
+              设计流程
+              <span className="num">
+                {
+                  STAGES.filter(
+                    (s) => stageState(r, project, s.id).state === "done",
+                  ).length
+                }{" "}
+                / {STAGES.length}
               </span>
-            </button>
-          </nav>
-          <div className="section-title">
-            工程文件 <span>{project?.files?.length || 0}</span>
-          </div>
-          <div className="files">
-            {(project?.files || []).map((item: Data) => (
-              <button
-                key={item.path}
-                title={item.path}
-                className={file?.path === item.path ? "selected" : ""}
-                onClick={() => readFile(item)}
-              >
-                <span className="file-type">
-                  {item.kind?.slice(0, 4) || "FILE"}
-                </span>
-                <span>{item.name}</span>
-              </button>
-            ))}
-            {project && !project.files?.length && (
-              <p className="muted">工程还没有文件</p>
-            )}
-          </div>
-          <div className="connections">
-            <div className="section-title">原生连接</div>
+            </div>
+            <nav className="flow">
+              {STAGES.map((s) => {
+                const st = stageState(r, project, s.id);
+                return (
+                  <button
+                    key={s.id}
+                    className={`step ${st.state} ${tab === s.id ? "on" : ""}`}
+                    onClick={() => setTab(s.id)}
+                  >
+                    <span className="mk" />
+                    {s.name}
+                    <em>{st.note}</em>
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="section-title">原生模型</div>
             {["freecad", "solidworks", "autocad"].map((name) => {
               const h = hosts.find((h) => h.host === name);
               return (
-                <div key={name}>
-                  <span className={`dot ${h?.connected ? "green" : ""}`} />
+                <button
+                  key={name}
+                  className={
+                    "host" +
+                    (tab === "native" && hostKind === name ? " on" : "")
+                  }
+                  onClick={() => {
+                    setHostKind(name);
+                    setTab("native");
+                  }}
+                >
+                  <span className={`led ${h?.connected ? "on" : ""}`} />
                   {
                     (
                       {
@@ -366,24 +453,85 @@ function App() {
                       } as Data
                     )[name]
                   }
-                  <small>{h?.connected ? "已连接" : "未连接"}</small>
-                </div>
+                  <em>
+                    {name === "freecad" && native.document
+                      ? native.document
+                      : h?.connected
+                        ? "已连接"
+                        : "未连接"}
+                  </em>
+                </button>
               );
             })}
+            <button
+              className="section-title files-toggle"
+              aria-expanded={filesOpen}
+              onClick={() => setFilesOpen(!filesOpen)}
+            >
+              工程文件{" "}
+              <span className="num">
+                {project?.files?.length || 0} {filesOpen ? "▾" : "▸"}
+              </span>
+            </button>
+            {filesOpen && (
+              <div className="files">
+                {(project?.files || []).map((item: Data) => (
+                  <button
+                    key={item.path}
+                    title={item.path}
+                    className={file?.path === item.path ? "selected" : ""}
+                    onClick={() => readFile(item)}
+                  >
+                    <span className="file-type">
+                      {item.kind?.slice(0, 4) || "FILE"}
+                    </span>
+                    <span>{item.name}</span>
+                  </button>
+                ))}
+                {project && !project.files?.length && (
+                  <p className="muted">工程还没有文件</p>
+                )}
+              </div>
+            )}
           </div>
+          <button className="settings-link" onClick={() => setSettings(true)}>
+            模型服务
+            <small>设置</small>
+          </button>
         </aside>
         <main>
-          <div className="workspace-title">
-            <h1>
-              {tab === "native"
-                ? "模型与图纸"
-                : tab === "design"
-                  ? "设计计算"
-                  : tab === "tasks"
-                    ? "任务"
-                    : file?.name}
-            </h1>
-            <span>{busy || ""}</span>
+          <div className="workspace-title drag">
+            <button
+              className="ghost sidebar-toggle"
+              aria-label={sidebar ? "隐藏侧栏" : "显示侧栏"}
+              title={(sidebar ? "隐藏侧栏" : "显示侧栏") + "（⌘/Ctrl+\\）"}
+              onClick={() => setSidebar(!sidebar)}
+            >
+              ▤
+            </button>
+            <div className="titles">
+              <div className="eyebrow">{eyebrow}</div>
+              <h1>{title}</h1>
+            </div>
+            <span className="busy">{busy || ""}</span>
+            {r && (
+              <button
+                className={
+                  "check-summary" +
+                  (failedCount ? " fail" : criticalCount ? " warn" : "")
+                }
+                onClick={() => setTab("checks")}
+                title="查看全部校核"
+              >
+                <span className="led on" />
+                <b className="num">{allChecks.length}</b> 项校核
+                {failedCount ? (
+                  <span> · {failedCount} 项未通过</span>
+                ) : (
+                  <span> · {criticalCount} 项临界</span>
+                )}
+              </button>
+            )}
           </div>
           {error && (
             <div role="alert" className="error">
@@ -407,6 +555,8 @@ function App() {
               </div>
               {hostKind === "freecad" ? (
                 <Native
+                  inspector={inspector}
+                  onInspect={() => setCheck(null)}
                   project={project}
                   run={run}
                   onContext={setNative}
@@ -423,31 +573,92 @@ function App() {
               )}
             </>
           )}
-          {tab === "design" &&
+          {(stageIndex >= 0 || tab === "checks") &&
             (project ? (
-              <Design
-                project={project}
-                setProject={setProject}
-                run={run}
-                refresh={refresh}
-              />
+              <div className="scroll paper">
+                {tab === "task" ? (
+                  <TaskForm
+                    project={project}
+                    setProject={setProject}
+                    run={run}
+                    refresh={refresh}
+                    onResult={setResult}
+                  />
+                ) : tab === "checks" ? (
+                  r ? (
+                    <>
+                      <Spectrum
+                        checks={allChecks}
+                        selected={check?.item}
+                        onSelect={selectCheck}
+                      />
+                      <div className="checks">
+                        {[...allChecks]
+                          .sort(
+                            (a, b) =>
+                              Number(a.ok) - Number(b.ok) ||
+                              (b.utilization ?? -1) - (a.utilization ?? -1),
+                          )
+                          .map((c, i) => (
+                            <CheckRow
+                              key={c.item + i}
+                              check={c}
+                              selected={check?.item === c.item}
+                              onSelect={() => selectCheck(c)}
+                            />
+                          ))}
+                      </div>
+                    </>
+                  ) : (
+                    <NeedCalc go={() => setTab("task")} />
+                  )
+                ) : (
+                  <StageView
+                    id={tab as StageId}
+                    r={r}
+                    project={project}
+                    check={check}
+                    onCheck={selectCheck}
+                    openFile={readFile}
+                    go={setTab}
+                  />
+                )}
+                {stageIndex >= 0 && stageIndex < STAGES.length - 1 && (
+                  <div className="nextline">
+                    <p>
+                      {stageState(r, project, STAGES[stageIndex].id).state ===
+                      "warn"
+                        ? "本阶段有临界项：通过，但裕度不足 15%，答辩常被追问。可以接受，也可以回到任务书调整条件。"
+                        : stageState(r, project, STAGES[stageIndex].id)
+                              .state === "fail"
+                          ? "本阶段有未通过的校核，需要先调整条件再继续。"
+                          : "本阶段的数值和校核如上。"}
+                    </p>
+                    <button
+                      className="primary"
+                      onClick={() => setTab(STAGES[stageIndex + 1].id)}
+                    >
+                      继续：{STAGES[stageIndex + 1].name} →
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <Empty
                 title="从一个工程开始"
-                body="将原生模型、图纸和计算结果放在同一个工程里。"
-                action="新建工程"
+                body="课程设计按任务书、方案、传动零件、轴系、箱体、图纸、说明书的顺序进行；每一步的数值和校核都保存在工程里。"
+                action="开始新工程"
                 onAction={() => choose(true)}
               />
             ))}
           {tab === "tasks" && (
-            <div className="scroll">
+            <div className="scroll paper">
               <TaskList tasks={tasks} run={run} />
             </div>
           )}
           {tab === "file" && file && (
             <div className="file-view">
               <div className="toolbar">
-                <span>{file.path}</span>
                 <button
                   onClick={() =>
                     run("定位文件", () => window.gongke.reveal(file.path))
@@ -463,13 +674,7 @@ function App() {
                   )}
               </div>
               {file.kind === "svg" ? (
-                <img
-                  className="drawing"
-                  src={
-                    "data:image/svg+xml;charset=utf-8," +
-                    encodeURIComponent(file.content)
-                  }
-                />
+                <DrawingViewer svg={file.content} />
               ) : file.content === null ? (
                 <Empty
                   title={file.name}
@@ -486,95 +691,129 @@ function App() {
           )}
         </main>
         <aside className="agent">
-          <div className="agent-heading">
-            <strong>工程助手</strong>
-            <span
-              className={`dot ${status.agent?.connection === "已完成模型请求" ? "green" : ""}`}
-            />
-          </div>
-          <div className="conversation">
-            {!messages.length && (
-              <div className="agent-welcome">
-                <span className="agent-symbol">✦</span>
-                <h2>一起完成这个工程</h2>
-                <p>
-                  读取当前模型、核对条件、计算和修改。操作结果直接进入工作区。
+          <section className="inspector-pane">
+            <div className="pane-heading">检查器</div>
+            <div className="inspector" ref={setInspector}>
+              {check && tab !== "native" ? (
+                <CheckInspector check={check} />
+              ) : tab === "file" && file ? (
+                <div className="insp-in">
+                  <div className="crumb">文件</div>
+                  <h4>{file.name}</h4>
+                  <dl className="kv">
+                    <dt>类型</dt>
+                    <dd>{(file.kind || "file").toUpperCase()}</dd>
+                    <dt>位置</dt>
+                    <dd className="path">{file.path}</dd>
+                  </dl>
+                </div>
+              ) : tab !== "native" ? (
+                <p className="hint">
+                  点任意一项校核，这里显示利用率、依据和结论。
                 </p>
-                <button onClick={() => setSettings(true)}>连接模型服务</button>
-                <button
-                  className="suggestion"
-                  onClick={() =>
-                    setPrompt(
-                      "读取当前工程，说明已知条件和还缺少什么。先不要修改模型。",
-                    )
-                  }
-                >
-                  核对当前工程的条件{" "}
-                  <span className="inline-icon" aria-hidden="true">
-                    ↗
-                  </span>
-                </button>
+              ) : null}
+            </div>
+          </section>
+          <section className="agent-pane">
+            <div className="pane-heading">
+              工程助手
+              <span
+                className={`led ${status.agent?.connection === "已完成模型请求" ? "on" : ""}`}
+              />
+            </div>
+            <div className="conversation">
+              {!messages.length && (
+                <div className="agent-welcome">
+                  <p>
+                    读取当前模型、核对条件、计算和修改。操作结果直接进入工作区。
+                  </p>
+                  <button
+                    className="suggestion"
+                    onClick={() =>
+                      setPrompt(
+                        check
+                          ? `解释「${check.item}」的依据，并说明怎样提高它的裕度。先不要修改。`
+                          : "读取当前工程，说明已知条件和还缺少什么。先不要修改模型。",
+                      )
+                    }
+                  >
+                    {check ? `解释「${check.item}」` : "核对当前工程的条件"}{" "}
+                    <span className="inline-icon" aria-hidden="true">
+                      ↗
+                    </span>
+                  </button>
+                  {!status.agent?.configured && (
+                    <button className="link" onClick={() => setSettings(true)}>
+                      连接模型服务
+                    </button>
+                  )}
+                </div>
+              )}
+              {messages.map((message) => (
+                <div key={message.id} className={"message " + message.role}>
+                  <small>
+                    {message.role === "user"
+                      ? "你"
+                      : message.role === "tool"
+                        ? "工程操作"
+                        : "工程助手"}
+                  </small>
+                  <div>
+                    <StreamText
+                      content={
+                        typeof message.content === "string"
+                          ? message.content
+                          : text(message.content)
+                      }
+                      fragments={message.fragments}
+                      streaming={message.streaming === true}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {check && tab !== "native" && (
+              <div className="context-line">
+                上下文 <b>{check.item}</b>
               </div>
             )}
-            {messages.map((message) => (
-              <div key={message.id} className={"message " + message.role}>
-                <small>
-                  {message.role === "user"
-                    ? "你"
-                    : message.role === "tool"
-                      ? "工程操作"
-                      : "工程助手"}
-                </small>
-                <div>
-                  <StreamText
-                    content={
-                      typeof message.content === "string"
-                        ? message.content
-                        : text(message.content)
-                    }
-                    fragments={message.fragments}
-                    streaming={message.streaming === true}
+            <div className="compose">
+              <textarea
+                aria-label="工程任务"
+                placeholder="问助手，或描述要做的修改…"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+              />
+              <div>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={allowWrites}
+                    onChange={(e) => setAllowWrites(e.target.checked)}
                   />
-                </div>
+                  执行任务内的修改
+                </label>
+                <button
+                  className="primary"
+                  disabled={!project || !prompt.trim() || !!busy}
+                  onClick={send}
+                >
+                  发送 <span className="inline-icon">↑</span>
+                </button>
               </div>
-            ))}
-          </div>
-          <div className="compose">
-            <textarea
-              aria-label="工程任务"
-              placeholder="描述你要完成的工程任务…"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-            />
-            <div>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={allowWrites}
-                  onChange={(e) => setAllowWrites(e.target.checked)}
-                />
-                执行任务内的修改
-              </label>
-              <button
-                className="primary"
-                disabled={!project || !prompt.trim() || !!busy}
-                onClick={send}
-              >
-                发送 <span className="inline-icon">↑</span>
-              </button>
             </div>
-          </div>
+          </section>
         </aside>
       </div>
       <footer>
         <span>
-          <span className={`dot ${status.online ? "green" : ""}`} />
+          <span className={`led ${status.online ? "on" : ""}`} />
           {status.online ? "工程服务运行中" : "工程服务未运行"}
         </span>
         {!status.online && (
@@ -589,7 +828,26 @@ function App() {
             重新启动
           </button>
         )}
-        <span>{native.document || "未读取原生文档"}</span>
+        <span className="revs">
+          {(project?.results || [])
+            .slice(-4)
+            .map((x: Data, i: number, all: Data[]) => (
+              <span
+                key={i}
+                className={"rev" + (i === all.length - 1 ? " cur" : "")}
+                title={x.directory || x.output_dir || x.path || ""}
+              >
+                <i />r{(project?.results?.length || 0) - all.length + i + 1}
+                {x.name && x.name !== x.kind ? " " + x.name : " 出图"}
+              </span>
+            ))}
+        </span>
+        <button
+          className={"rail-tasks" + (tab === "tasks" ? " on" : "")}
+          onClick={() => setTab("tasks")}
+        >
+          任务{running ? ` · ${running} 个执行中` : ""}
+        </button>
         <span className="footer-end">
           {project?.teaching
             ? "教学示例 · 条件须核对"
@@ -630,19 +888,20 @@ function Empty({
     </div>
   );
 }
-function Design({
+function TaskForm({
   project,
   setProject,
   run,
   refresh,
+  onResult,
 }: {
   project: Data;
   setProject: (p: Data) => void;
   run: any;
   refresh: () => Promise<void>;
+  onResult: (r: Data) => void;
 }) {
   const [task, setTask] = useState<Data>(project.task || {}),
-    [result, setResult] = useState<Data | null>(null),
     [advanced, setAdvanced] = useState(false),
     [draft, setDraft] = useState("");
   useEffect(() => setTask(project.task || {}), [project.task]);
@@ -651,17 +910,16 @@ function Design({
   async function calculate() {
     await run("计算中", async () => {
       await call("project.set_task", { task });
-      setResult(await call("design.calculate", { task }));
+      onResult(await call("design.calculate", { task }));
       await refresh();
     });
   }
   return (
-    <div className="scroll design">
+    <div className="design">
       <div className="section-bar">
-        <div>
-          <h2>传动装置</h2>
-          <p>工程单位输入，确定性计算。</p>
-        </div>
+        <p className="lede">
+          填写任务书给定的工作条件，单位按工程习惯。计算是确定性的，同样的条件得到同样的结果。
+        </p>
         <button
           onClick={() =>
             run("载入教学条件", async () => {
@@ -790,84 +1048,246 @@ function Design({
           </div>
         </>
       )}
-      {result && <Results result={result} />}
-      {project.results?.length > 0 && (
-        <div className="result-history">
-          <h2>工程修订</h2>
-          {project.results.map((r: Data, i: number) => (
-            <div className="revision" key={i}>
-              <strong>{r.name || r.kind || r.path || "修订 " + (i + 1)}</strong>
-              <small>{r.created_at || r.directory || r.output_dir || ""}</small>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
-function Results({ result }: { result: Data }) {
-  const r = result.summary || result.result?.summary || result;
+function NeedCalc({ go }: { go: () => void }) {
   return (
-    <section className="results">
-      <h2>计算结果</h2>
-      {r.failed?.length > 0 && (
-        <p className="error">
-          {r.failed.length} 项校核未通过，请查看完整检查项。
-        </p>
-      )}
-      {r.motor && (
-        <div className="metrics">
-          <div>
-            <small>电动机</small>
-            <strong>{r.motor.model}</strong>
-          </div>
-          <div>
-            <small>额定功率</small>
-            <strong>
-              {r.motor.power_kw} <em>kW</em>
-            </strong>
-          </div>
-          <div>
-            <small>总传动比</small>
-            <strong>{r.ratios?.total?.toFixed(3)}</strong>
-          </div>
-        </div>
-      )}
-      {r.shaft_states && (
-        <table>
-          <thead>
-            <tr>
-              <th>轴</th>
-              <th>功率 / kW</th>
-              <th>转速 / rpm</th>
-              <th>转矩 / N·m</th>
-            </tr>
-          </thead>
-          <tbody>
-            {r.shaft_states.map((s: Data) => (
-              <tr key={s.name}>
-                <td>{s.name}</td>
-                <td>{s.power_kw.toFixed(3)}</td>
-                <td>{s.speed_rpm.toFixed(2)}</td>
-                <td>{s.torque_nm.toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <Collapsible title="完整结果与检查项">
-        <Json value={r} />
-      </Collapsible>
-    </section>
+    <Empty
+      title="还没有计算结果"
+      body="在任务书里填写条件并计算后，这一步的数值和校核会出现在这里。"
+      action="去填写任务书"
+      onAction={go}
+    />
   );
 }
+const fixed = (v: any, n = 2) =>
+  typeof v === "number" ? +v.toFixed(n) : (v ?? "—");
+function StageView({
+  id,
+  r,
+  project,
+  check,
+  onCheck,
+  openFile,
+  go,
+}: {
+  id: StageId;
+  r: Data | null;
+  project: Data;
+  check: Data | null;
+  onCheck: (c: Data) => void;
+  openFile: (f: Data) => void;
+  go: (tab: string) => void;
+}) {
+  const checks = (list: Data[], prefix = "", heading = "校核 · 利用率") =>
+    list.length > 0 && (
+      <div className="checks">
+        <h3>{heading}</h3>
+        {list.map((c, i) => (
+          <CheckRow
+            key={c.item + i}
+            check={c}
+            selected={check?.item === c.item}
+            onSelect={() => onCheck(c)}
+            prefix={prefix}
+          />
+        ))}
+      </div>
+    );
+  if (id === "drawings" || id === "report") {
+    const files = (project.files || []).filter((f: Data) =>
+      id === "drawings"
+        ? f.kind === "svg" && f.path.includes("/drawings/")
+        : /report\.(md|docx)$/.test(f.name),
+    );
+    return files.length ? (
+      <div className="sheet-grid">
+        {files.map((f: Data) => (
+          <button
+            key={f.path}
+            className="sheet-card"
+            onClick={() => openFile(f)}
+          >
+            <span className="sheet-thumb">{f.kind.toUpperCase()}</span>
+            <b>{f.name}</b>
+            <small>{f.path.split("/").slice(0, -1).join("/")}</small>
+          </button>
+        ))}
+      </div>
+    ) : (
+      <Empty
+        title={id === "drawings" ? "还没有图纸" : "还没有说明书"}
+        body="在任务书一步选择「生成模型与图纸」，生成的文件会出现在这里。"
+        action="去任务书"
+        onAction={() => go("task")}
+      />
+    );
+  }
+  if (!r) return <NeedCalc go={() => go("task")} />;
+  const own = stageChecks(r, id);
+  if (id === "plan")
+    return (
+      <>
+        <dl className="facts">
+          <Fact label="电动机" value={r.motor?.model} source="标" />
+          <Fact
+            label="额定功率"
+            value={r.motor?.power_kw}
+            unit="kW"
+            source="标"
+          />
+          <Fact
+            label="满载转速"
+            value={r.motor?.speed_rpm}
+            unit="r/min"
+            source="标"
+          />
+          <Fact
+            label="总传动比"
+            value={fixed(r.ratios?.total, 3)}
+            source="式"
+          />
+          <Fact label="高速级" value={fixed(r.ratios?.high, 3)} source="式" />
+          <Fact
+            label={r.ratios?.low ? "低速级" : "带传动"}
+            value={fixed(r.ratios?.low ?? r.ratios?.belt, 3)}
+            source="式"
+          />
+        </dl>
+        {r.shaft_states && (
+          <table>
+            <thead>
+              <tr>
+                <th>轴</th>
+                <th>功率 / kW</th>
+                <th>转速 / r·min⁻¹</th>
+                <th>转矩 / N·m</th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.shaft_states.map((s: Data) => (
+                <tr key={s.name}>
+                  <td>{s.name}</td>
+                  <td>{s.power_kw.toFixed(3)}</td>
+                  <td>{s.speed_rpm.toFixed(2)}</td>
+                  <td>{s.torque_nm.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {checks(own)}
+      </>
+    );
+  if (id === "gears") {
+    const pairs = Object.values(r.gears || {}).filter(Boolean) as Data[];
+    return (
+      <div className="columns">
+        {pairs.map((g) => (
+          <section key={g.name}>
+            <h2>
+              {g.name}
+              {g.z1 && (
+                <span>
+                  {g.z1} / {g.z2} 齿
+                  {g.beta_deg ? ` · β ${fixed(g.beta_deg)}°` : ""}
+                </span>
+              )}
+            </h2>
+            <dl className="facts">
+              {g.mn != null && (
+                <Fact label="法向模数" value={g.mn} unit="mm" source="标" />
+              )}
+              {g.a != null && (
+                <Fact label="中心距" value={fixed(g.a)} unit="mm" source="式" />
+              )}
+              {g.beta_deg != null && (
+                <Fact
+                  label="螺旋角"
+                  value={fixed(g.beta_deg)}
+                  unit="°"
+                  source="式"
+                />
+              )}
+              {g.d1 != null && (
+                <Fact
+                  label="小齿轮分度圆"
+                  value={fixed(g.d1)}
+                  unit="mm"
+                  source="式"
+                />
+              )}
+              {g.d2 != null && (
+                <Fact
+                  label="大齿轮分度圆"
+                  value={fixed(g.d2)}
+                  unit="mm"
+                  source="式"
+                />
+              )}
+              {g.b1 != null && (
+                <Fact
+                  label="齿宽 b₁ / b₂"
+                  value={`${fixed(g.b1)} / ${fixed(g.b2)}`}
+                  unit="mm"
+                  source="式"
+                />
+              )}
+            </dl>
+            {checks(
+              own.filter((c) => c.item.startsWith(g.name)),
+              g.name,
+            )}
+          </section>
+        ))}
+        {pairs.length === 0 && checks(own)}
+      </div>
+    );
+  }
+  if (id === "shafts")
+    return (
+      <div className="columns three">
+        {(r.shafts || []).map((s: Data) => (
+          <section key={s.name}>
+            <h2>
+              {s.name}
+              <span>轴承 {s.bearing}</span>
+            </h2>
+            <dl className="facts two">
+              {Object.entries(s.diameters || {})
+                .filter(([, d]) => d != null)
+                .map(([k, d]) => (
+                  <Fact
+                    key={k}
+                    label={k + "段直径"}
+                    value={fixed(d, 1)}
+                    unit="mm"
+                    source="式"
+                  />
+                ))}
+            </dl>
+            {checks(
+              own.filter((c) => c.item.startsWith(s.name)),
+              s.name,
+            )}
+          </section>
+        ))}
+      </div>
+    );
+  return checks(own) || <p className="hint">这一步没有单独的校核项。</p>;
+}
 function Native({
+  inspector,
+  onInspect,
   project,
   run,
   onContext,
   pendingOperation,
   setPendingOperation,
 }: {
+  inspector: HTMLElement | null;
+  onInspect: () => void;
   project: Data | null;
   run: any;
   onContext: (data: Data) => void;
@@ -885,9 +1305,18 @@ function Native({
     [page, setPage] = useState(""),
     [operation, setOperation] = useState(""),
     [connectionError, setConnectionError] = useState("");
+  // 读到原生场景后切到属性，对象列表在那里。
+  const hasScene = !!scene;
+  useEffect(() => {
+    if (hasScene) onInspect();
+  }, [hasScene]);
+  // 属性面板存在时渲染到右侧检查器，否则保留在视图旁。
+  const portal = (node: React.ReactElement) =>
+    inspector ? createPortal(node, inspector) : node;
   const select = useCallback(
     (id: string) => {
       setSelected(id);
+      onInspect();
       setObject(null);
       setPreview(null);
       setReview(null);
@@ -1103,14 +1532,9 @@ function Native({
                     body={scene.pages.find((p: Data) => p.name === page).error}
                   />
                 ) : (
-                  <img
-                    className="drawing"
-                    src={
-                      "data:image/svg+xml;charset=utf-8," +
-                      encodeURIComponent(
-                        scene.pages.find((p: Data) => p.name === page)?.svg ||
-                          "",
-                      )
+                  <DrawingViewer
+                    svg={
+                      scene.pages.find((p: Data) => p.name === page)?.svg || ""
                     }
                   />
                 )}
@@ -1151,108 +1575,110 @@ function Native({
             ) : (
               <ModelView scene={scene} selected={selected} onSelect={select} />
             )}
-            <div className="properties">
-              <h3>对象</h3>
-              {scene.objects?.map((o: Data) => (
-                <button
-                  className={selected === o.id ? "object active" : "object"}
-                  key={o.id}
-                  onClick={() => select(o.id)}
-                >
-                  {o.label}
-                </button>
-              ))}
-              {object?.supported ? (
-                <>
-                  <h3>原生尺寸</h3>
-                  {object.snapshot?.segments?.map((s: Data) => (
-                    <div key={s.segment_id} className="property">
-                      <span>{s.segment_id}</span>
-                      <strong>⌀ {(s.diameter_m * 1000).toFixed(2)} mm</strong>
-                    </div>
-                  ))}
-                  {segment && (
-                    <>
-                      <label>
-                        目标直径 / mm
-                        <input
-                          aria-label="目标直径"
-                          type="number"
-                          value={diameter}
-                          onChange={(e) => {
-                            setDiameter(e.target.value);
-                            setPreview(null);
-                          }}
-                        />
-                      </label>
-                      <button
-                        onClick={() =>
-                          run("比较修改", async () =>
-                            setPreview(
-                              await call("freecad.preview", {
-                                ...params,
-                                segment_id: segment,
-                                diameter_m: Number(diameter) / 1000,
-                              }),
-                            ),
-                          )
-                        }
-                      >
-                        计算修改影响
-                      </button>
-                    </>
-                  )}
+            {portal(
+              <div className="properties">
+                <h3>对象</h3>
+                {scene.objects?.map((o: Data) => (
                   <button
-                    onClick={() =>
-                      run("原生校核", async () =>
-                        setReview(await call("freecad.review", params)),
-                      )
-                    }
+                    className={selected === o.id ? "object active" : "object"}
+                    key={o.id}
+                    onClick={() => select(o.id)}
                   >
-                    校核当前模型
+                    {o.label}
                   </button>
-                </>
-              ) : (
-                <p className="muted">
-                  {object?.reason ||
-                    "选择已绑定的受支持轴，可读取工程条件并进行尺寸修改。"}
-                </p>
-              )}
-              {preview && (
-                <div className="candidate">
-                  <h3>修改比较</h3>
-                  <Json value={preview} />
-                  <button
-                    className="primary"
-                    disabled={!preview.change_id || !!pendingOperation}
-                    onClick={() =>
-                      run("应用原生修改", async () => {
-                        const operation_id = crypto.randomUUID();
-                        setPendingOperation({
-                          session_id: context.session_id,
-                          operation_id,
-                        });
-                        await call("freecad.apply", {
-                          session_id: context.session_id,
-                          change_id: preview.change_id,
-                          operation_id,
-                        });
-                        setPendingOperation(null);
-                        setOperation(operation_id);
-                        await refresh();
-                      })
-                    }
-                  >
-                    应用修改
-                  </button>
-                </div>
-              )}
-              {review && (
-                <Collapsible title="校核结果" defaultOpen>
-                  <Json value={review} />
-                </Collapsible>
-              )}
-            </div>
+                ))}
+                {object?.supported ? (
+                  <>
+                    <h3>原生尺寸</h3>
+                    {object.snapshot?.segments?.map((s: Data) => (
+                      <div key={s.segment_id} className="property">
+                        <span>{s.segment_id}</span>
+                        <strong>⌀ {(s.diameter_m * 1000).toFixed(2)} mm</strong>
+                      </div>
+                    ))}
+                    {segment && (
+                      <>
+                        <label>
+                          目标直径 / mm
+                          <input
+                            aria-label="目标直径"
+                            type="number"
+                            value={diameter}
+                            onChange={(e) => {
+                              setDiameter(e.target.value);
+                              setPreview(null);
+                            }}
+                          />
+                        </label>
+                        <button
+                          onClick={() =>
+                            run("比较修改", async () =>
+                              setPreview(
+                                await call("freecad.preview", {
+                                  ...params,
+                                  segment_id: segment,
+                                  diameter_m: Number(diameter) / 1000,
+                                }),
+                              ),
+                            )
+                          }
+                        >
+                          计算修改影响
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() =>
+                        run("原生校核", async () =>
+                          setReview(await call("freecad.review", params)),
+                        )
+                      }
+                    >
+                      校核当前模型
+                    </button>
+                  </>
+                ) : (
+                  <p className="muted">
+                    {object?.reason ||
+                      "选择已绑定的受支持轴，可读取工程条件并进行尺寸修改。"}
+                  </p>
+                )}
+                {preview && (
+                  <div className="candidate">
+                    <h3>修改比较</h3>
+                    <Json value={preview} />
+                    <button
+                      className="primary"
+                      disabled={!preview.change_id || !!pendingOperation}
+                      onClick={() =>
+                        run("应用原生修改", async () => {
+                          const operation_id = crypto.randomUUID();
+                          setPendingOperation({
+                            session_id: context.session_id,
+                            operation_id,
+                          });
+                          await call("freecad.apply", {
+                            session_id: context.session_id,
+                            change_id: preview.change_id,
+                            operation_id,
+                          });
+                          setPendingOperation(null);
+                          setOperation(operation_id);
+                          await refresh();
+                        })
+                      }
+                    >
+                      应用修改
+                    </button>
+                  </div>
+                )}
+                {review && (
+                  <Collapsible title="校核结果" defaultOpen>
+                    <Json value={review} />
+                  </Collapsible>
+                )}
+              </div>,
+            )}
           </div>
           <div className="native-status">
             {scene.modified ? "有未保存修改" : "文档已保存"} · 修订{" "}
@@ -1391,4 +1817,7 @@ function Settings({
     </div>
   );
 }
+document.documentElement.dataset.platform = navigator.userAgent.includes("Mac")
+  ? "mac"
+  : "other";
 createRoot(document.getElementById("root")!).render(<App />);

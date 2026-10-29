@@ -22,6 +22,19 @@ from gongke_core.layout import reducer as lay
 MM = 1e-3
 
 
+class Check(tuple):
+    """校核结论 (项目, 是否满足, 说明)。
+
+    仍按三元组解包；utilization 为利用率：≤ 型取 实际/许用，≥ 型取 要求/实际，
+    1 为恰好达到限值。无法用单一比值表达的项目为 None。
+    """
+
+    def __new__(cls, item: str, ok: bool, detail: str, utilization: float | None = None):
+        self = super().__new__(cls, (item, ok, detail))
+        self.utilization = utilization
+        return self
+
+
 # ---------------------------------------------------------------- 任务书
 
 
@@ -141,7 +154,7 @@ def stiffness_lines(s: ShaftResult) -> list[tuple[str, bool, str]]:
             txt = f"y = {w.value / MM:.4f} mm ≤ [y] = {w.allow / MM:.3f} mm（{w.label[:-2]}）"
         else:
             txt = f"θ = {w.value:.5f} rad ≤ [θ] = {w.allow:g} rad（{w.label[:-3]}）"
-        out.append((f"{s.layout.name}{title}", all(i.ok for i in items), txt))
+        out.append(Check(f"{s.layout.name}{title}", all(i.ok for i in items), txt, w.value / w.allow))
     return out
 
 
@@ -343,35 +356,39 @@ def _common_checks(kin: kinematics.Kinematics, stages: list[gear_calc.GearPair],
     """带速误差、V 带、各级齿轮强度、各轴强度/疲劳/轴承/键/刚度。"""
     checks: list[tuple[str, bool, str]] = []
     err = (kin.motor.speed_rpm / (kin.i_belt * math.prod(p.u for p in stages)) - kin.drum_speed_rpm) / kin.drum_speed_rpm
-    checks.append(("输送带速度误差", abs(err) <= 0.05, f"{err*100:+.2f}%，允许 ±5%"))
+    checks.append(Check("输送带速度误差", abs(err) <= 0.05, f"{err*100:+.2f}%，允许 ±5%", abs(err) / 0.05))
     if belt:
         checks.append(("V 带带速", 5 <= belt.v <= 25, f"v = {belt.v:.2f} m/s，应在 5～25 m/s"))
-        checks.append(("小带轮包角", belt.alpha1 >= 120, f"α1 = {belt.alpha1:.1f}° ≥ 120°"))
+        checks.append(Check("小带轮包角", belt.alpha1 >= 120, f"α1 = {belt.alpha1:.1f}° ≥ 120°", 120 / belt.alpha1))
         checks.append(("V 带根数", belt.z <= 5, f"z = {belt.z} ≤ 5"))
     for p in stages:
         c = p.check
-        checks.append((f"{p.inp.name}齿面接触疲劳强度", c.sigma_h <= c.sigma_h_allow,
-                       f"σH = {c.sigma_h/1e6:.1f} MPa ≤ [σH] = {c.sigma_h_allow/1e6:.1f} MPa"))
+        checks.append(Check(f"{p.inp.name}齿面接触疲劳强度", c.sigma_h <= c.sigma_h_allow,
+                            f"σH = {c.sigma_h/1e6:.1f} MPa ≤ [σH] = {c.sigma_h_allow/1e6:.1f} MPa",
+                            c.sigma_h / c.sigma_h_allow))
         for i in (0, 1):
-            checks.append((f"{p.inp.name}{'小' if i == 0 else '大'}齿轮齿根弯曲疲劳强度",
-                           c.sigma_f[i] <= c.sigma_f_allow[i],
-                           f"σF = {c.sigma_f[i]/1e6:.1f} MPa ≤ [σF] = {c.sigma_f_allow[i]/1e6:.1f} MPa"))
+            checks.append(Check(f"{p.inp.name}{'小' if i == 0 else '大'}齿轮齿根弯曲疲劳强度",
+                                c.sigma_f[i] <= c.sigma_f_allow[i],
+                                f"σF = {c.sigma_f[i]/1e6:.1f} MPa ≤ [σF] = {c.sigma_f_allow[i]/1e6:.1f} MPa",
+                                c.sigma_f[i] / c.sigma_f_allow[i]))
     for s in shafts:
         sc = s.strength
-        checks.append((f"{s.layout.name}弯扭合成强度", sc.ok,
-                       f"σca = {sc.critical.sigma_ca/1e6:.1f} MPa ≤ [σ−1b] = {sc.sigma_allow/1e6:.0f} MPa"))
+        checks.append(Check(f"{s.layout.name}弯扭合成强度", sc.ok,
+                            f"σca = {sc.critical.sigma_ca/1e6:.1f} MPa ≤ [σ−1b] = {sc.sigma_allow/1e6:.0f} MPa",
+                            sc.critical.sigma_ca / sc.sigma_allow))
         fc = s.fatigue
         if fc.critical is not None:
             c = fc.critical
-            checks.append((f"{s.layout.name}疲劳强度安全系数", fc.ok,
-                           f"Sca = {c.S_ca:.2f} ≥ [S] = {fc.S_required:g}（{c.label}，近似）"))
+            checks.append(Check(f"{s.layout.name}疲劳强度安全系数", fc.ok,
+                                f"Sca = {c.S_ca:.2f} ≥ [S] = {fc.S_required:g}（{c.label}，近似）",
+                                fc.S_required / c.S_ca))
         b = s.bearings
-        checks.append((f"{s.layout.name}轴承 {b.bearing.designation} 寿命", b.ok,
-                       f"L10h = {min(b.life):.0f} h ≥ {b.required:.0f} h"))
+        checks.append(Check(f"{s.layout.name}轴承 {b.bearing.designation} 寿命", b.ok,
+                            f"L10h = {min(b.life):.0f} h ≥ {b.required:.0f} h", b.required / min(b.life)))
         for k in s.keys:
-            checks.append((f"{k.location}平键挤压强度", k.ok,
-                           f"σp = {k.sigma_p/1e6:.1f} MPa ≤ [σp] = {k.sigma_allow/1e6:.0f} MPa"
-                           + ("（双键）" if k.count == 2 else "")))
+            checks.append(Check(f"{k.location}平键挤压强度", k.ok,
+                                f"σp = {k.sigma_p/1e6:.1f} MPa ≤ [σp] = {k.sigma_allow/1e6:.0f} MPa"
+                                + ("（双键）" if k.count == 2 else ""), k.sigma_p / k.sigma_allow))
         checks.extend(stiffness_lines(s))
     return checks
 
@@ -440,11 +457,13 @@ def run(task: ReducerTask) -> ReducerDesign:
     d3_max = max(seg.d for seg in shafts[2].layout.segments
                  if seg.z0 <= z_high + high.b2 / 2 and seg.z1 >= z_high - high.b2 / 2)
     gap = low.a - high.da2 / 2 - d3_max / 2
-    checks.append(("高速级大齿轮与低速轴间隙", gap >= 10 * MM, f"{gap/MM:.1f} mm ≥ 10 mm"))
+    checks.append(Check("高速级大齿轮与低速轴间隙", gap >= 10 * MM, f"{gap/MM:.1f} mm ≥ 10 mm",
+                        10 * MM / gap if gap > 0 else None))
     # 浸油润滑：高速级大齿轮浸油约一个齿高，低速级大齿轮浸油不超过其半径的 1/3
     dip = low.da2 / 2 - high.da2 / 2 + 2.25 * high.mn
     dip_ok = dip <= low.da2 / 2 / 3
-    checks.append(("浸油润滑深度", dip_ok, f"低速级大齿轮浸油 {dip/MM:.0f} mm ≤ R/3 = {low.da2/6/MM:.0f} mm"))
+    checks.append(Check("浸油润滑深度", dip_ok, f"低速级大齿轮浸油 {dip/MM:.0f} mm ≤ R/3 = {low.da2/6/MM:.0f} mm",
+                        dip / (low.da2 / 6)))
     if not dip_ok:
         warnings.append("两级大齿轮直径相差较大，可适当增大高速级传动比分配系数（ratio_split）或改用带油轮润滑。")
     warnings += _common_warnings([high, low], belt)
@@ -473,7 +492,8 @@ def _run_single(task: ReducerTask) -> ReducerDesign:
     checks = _common_checks(kin, [pair], shafts, belt)
     # 浸油润滑：大齿轮浸油 1～2 个齿高（不少于 10 mm），且不超过其半径的 1/3
     dip = max(10 * MM, 2 * 2.25 * pair.mn)  # 与 housing_detail 中的油面高度一致
-    checks.append(("浸油润滑深度", dip <= pair.da2 / 6, f"大齿轮浸油 {dip/MM:.0f} mm ≤ R/3 = {pair.da2/6/MM:.0f} mm"))
+    checks.append(Check("浸油润滑深度", dip <= pair.da2 / 6, f"大齿轮浸油 {dip/MM:.0f} mm ≤ R/3 = {pair.da2/6/MM:.0f} mm",
+                        dip / (pair.da2 / 6)))
     warnings = _common_warnings([pair], belt)
     if pair.u > 5:
         warnings.insert(0, f"齿轮传动比 u = {pair.u:.2f} 超过一级圆柱齿轮的推荐值 5，大齿轮和箱体偏大；"

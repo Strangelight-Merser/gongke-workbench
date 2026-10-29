@@ -126,15 +126,19 @@ async function serviceSnapshot(page) {
     }, project);
     await page.getByRole("button", { name: "新建工程", exact: true }).click();
     await page.locator("footer").getByText(project, { exact: true }).waitFor();
-    await page.getByRole("button", { name: "∑ 设计计算" }).click();
+    await page.getByRole("button", { name: /^任务书/ }).click();
     await page.getByRole("button", { name: "载入教学条件" }).click();
     await page.getByLabel("工作拉力 / N").waitFor();
     assert.equal(await page.getByLabel("工作拉力 / N").inputValue(), "2500");
     await page.getByRole("button", { name: "计算方案", exact: true }).click();
     await page.getByText("Y132S-4", { exact: true }).waitFor();
+    await page.getByRole("button", { name: /^传动零件/ }).click();
+    await page.locator(".ck").first().waitFor();
+    await page.waitForTimeout(700);
     await page.screenshot({ path: join(output, "desktop-calculation.png") });
+    await page.getByRole("button", { name: /^任务书/ }).click();
     await page.getByRole("button", { name: "生成模型与图纸" }).click();
-    await page.getByRole("button", { name: /☷任务|☷ 任务/ }).click();
+    await page.locator("footer").getByRole("button", { name: /^任务/ }).click();
     await page
       .locator(
         ".task-status.complete, .task-status.partial, .task-status.failed, .task-status.canceled, .task-status.interrupted",
@@ -159,6 +163,7 @@ async function serviceSnapshot(page) {
     );
     assert.equal(manifest.results.length, 1);
     assert.equal(manifest.results[0].exports_complete, true);
+    await page.getByRole("button", { name: /^工程文件/ }).click();
     const svg = page
       .locator(".files button")
       .filter({ hasText: ".svg" })

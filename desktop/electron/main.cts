@@ -118,7 +118,14 @@ else {
       minWidth: 1080,
       minHeight: 740,
       title: "构想引擎",
-      backgroundColor: "#131619",
+      backgroundColor: "#e6ebe3",
+      // macOS 内容延伸到标题栏，侧栏顶部与工作区标题行作为拖动区域。
+      ...(process.platform === "darwin"
+        ? {
+            titleBarStyle: "hiddenInset" as const,
+            trafficLightPosition: { x: 14, y: 15 },
+          }
+        : {}),
       webPreferences: {
         preload: join(__dirname, "preload.cjs"),
         nodeIntegration: false,

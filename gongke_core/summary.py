@@ -78,7 +78,8 @@ def summarize(d: ReducerDesign, fem=None) -> dict:
                          for s in k.shafts],
         "gears": gears,
         "shafts": shafts,
-        "checks": [{"item": n, "ok": ok, "detail": t} for n, ok, t in d.checks],
+        "checks": [{"item": c[0], "ok": c[1], "detail": c[2], "utilization": getattr(c, "utilization", None)}
+                   for c in d.checks],
         "warnings": d.warnings,
         "fem": None if fem is None else {
             "solver": fem.solver, "max_diff": fem.max_diff, "ok": fem.ok,

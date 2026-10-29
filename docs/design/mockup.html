@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="zh-CN" data-dir="paper">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>构想引擎视觉方向</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+<style>
+/* 布局：倒 L 外框（流程侧栏 + 阶段标题）包住工作对象；右侧检查器在上、助手在下；底部修订轴。 */
+:root {
+  /* 方向一「算稿纸」：课程设计计算纸的淡绿底、钢笔蓝墨水 */
+  color-scheme: light;
+  --bg: #e9eee7;         /* 侧栏、外框 */
+  --canvas: #f4f7f2;     /* 工作区 */
+  --raised: #fbfcfa;     /* 选中、弹层 */
+  --sunk: #e1e7de;       /* 输入、条槽 */
+  --rule: rgb(38 58 48 / 12%);
+  --grid: rgb(38 90 70 / 6%);
+  --ink: #1d2824;
+  --ink-2: #4a5852;
+  --ink-3: #7d8a84;
+  --accent: #23508a;     /* 钢笔蓝 */
+  --accent-soft: rgb(35 80 138 / 9%);
+  --on-accent: #f4f7f2;
+  --ok: #2f7a57;
+  --warn: #b0731a;
+  --bad: #b23b2a;
+  --shadow: 0 1px 2px rgb(30 50 40 / 8%), 0 10px 30px rgb(30 50 40 / 10%);
+  --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --display: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "IBM Plex Mono", "SF Mono", Menlo, Consolas, monospace;
+  --title-weight: 700;
+}
+[data-dir="machine"] {
+  /* 方向二「机床」：枪灰机身、量具黄指示、工业安全色只表状态 */
+  color-scheme: dark;
+  --bg: #1b1e21;
+  --canvas: #22262a;
+  --raised: #2b3035;
+  --sunk: #17191c;
+  --rule: rgb(220 228 236 / 8%);
+  --grid: rgb(220 228 236 / 3%);
+  --ink: #e6e9ec;
+  --ink-2: #a8b0b8;
+  --ink-3: #737c85;
+  --accent: #e9b949;     /* 游标卡尺黄 */
+  --accent-soft: rgb(233 185 73 / 12%);
+  --on-accent: #1b1e21;
+  --ok: #6cb08f;
+  --warn: #ec8a3c;
+  --bad: #ef5d4f;
+  --shadow: 0 0 0 1px rgb(255 255 255 / 5%), 0 18px 40px rgb(0 0 0 / 45%);
+  --display: "IBM Plex Mono", "Noto Sans SC", monospace;
+  --title-weight: 500;
+}
+[data-dir="dai"] {
+  /* 方向三「黛蓝」：黛蓝底、月白字、石青强调，藤黄与朱砂只表状态 */
+  color-scheme: dark;
+  --bg: #121925;
+  --canvas: #172030;
+  --raised: #1f2a3d;
+  --sunk: #0f1520;
+  --rule: rgb(214 227 234 / 8%);
+  --grid: rgb(214 227 234 / 3%);
+  --ink: #dde7ec;
+  --ink-2: #9fb0bd;
+  --ink-3: #6c7d8b;
+  --accent: #6fb3c9;     /* 石青 */
+  --accent-soft: rgb(111 179 201 / 12%);
+  --on-accent: #0f1520;
+  --ok: #5fb08f;         /* 石绿 */
+  --warn: #e2b04a;       /* 藤黄 */
+  --bad: #de6248;        /* 朱砂 */
+  --shadow: 0 0 0 1px rgb(214 227 234 / 6%), 0 18px 44px rgb(0 0 0 / 50%);
+  --display: "Noto Serif SC", "Songti SC", serif;
+  --title-weight: 600;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 13px/1.55 var(--sans); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; transition: background-color .35s, color .35s; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; border-radius: 6px; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.num { font-family: var(--mono); font-size: .96em; letter-spacing: -.01em; }
+.unit { color: var(--ink-3); font-size: 11px; margin-left: 3px; font-family: var(--sans); }
+
+.app { height: 100%; display: grid; grid-template-columns: 236px minmax(0, 1fr) 340px; grid-template-rows: minmax(0, 1fr) 34px; }
+
+/* 左侧：设计流程 */
+.side { grid-row: 1 / 3; display: flex; flex-direction: column; padding: 0 10px 10px; min-height: 0; }
+.wintop { height: 52px; display: flex; align-items: center; gap: 8px; padding-left: 72px; }
+.lights { display: flex; gap: 8px; position: absolute; left: 18px; top: 20px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: var(--rule); box-shadow: inset 0 0 0 1px var(--rule); }
+.proj { flex: 1; min-width: 0; }
+.proj b { display: block; font-weight: 600; font-size: 13px; }
+.proj small { color: var(--ink-3); font-size: 11px; }
+.find { display: flex; align-items: center; gap: 8px; padding: 7px 10px; margin: 6px 0 14px; border-radius: 8px; color: var(--ink-3); background: var(--sunk); width: 100%; text-align: left; }
+.find kbd { margin-left: auto; font: 11px var(--mono); }
+.label { font-size: 11px; letter-spacing: .08em; color: var(--ink-3); padding: 0 8px 6px; display: flex; justify-content: space-between; }
+.flow { position: relative; margin-bottom: 16px; }
+.flow::before { content: ""; position: absolute; left: 17px; top: 14px; bottom: 14px; width: 1px; background: var(--rule); }
+.step { position: relative; display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; text-align: left; color: var(--ink-2); }
+.step:hover { background: var(--accent-soft); }
+.step .mk { width: 9px; height: 9px; border-radius: 50%; justify-self: center; background: var(--bg); box-shadow: 0 0 0 1.5px var(--ink-3); transition: transform .2s; }
+.step.done .mk { background: var(--ok); box-shadow: 0 0 0 3px var(--bg); }
+.step.warn .mk { background: var(--warn); box-shadow: 0 0 0 3px var(--bg); }
+.step em { font-style: normal; font-size: 11px; color: var(--ink-3); }
+.step.warn em { color: var(--warn); }
+.step.on { color: var(--ink); background: var(--raised); box-shadow: 0 1px 2px rgb(0 0 0 / 6%); }
+.step.on .mk { transform: scale(1.25); }
+.host { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px; color: var(--ink-2); }
+.host em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--ink-3); }
+.led { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); opacity: .5; flex: none; }
+.led.on { background: var(--ok); opacity: 1; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.side-foot { margin-top: auto; }
+.dirs { display: flex; gap: 4px; padding: 4px; background: var(--sunk); border-radius: 9px; }
+.dirs button { flex: 1; padding: 5px 0; font-size: 12px; color: var(--ink-3); border-radius: 6px; }
+.dirs button.on { background: var(--raised); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 10%); }
+
+/* 中区：浮在外框上的一张纸 */
+.work { margin: 0 0 0 0; background: var(--canvas); border-radius: 12px 12px 0 0; box-shadow: 0 0 0 1px var(--rule); display: flex; flex-direction: column; min-width: 0; min-height: 0; margin-top: 8px; transition: background-color .35s; }
+.head { display: flex; align-items: flex-end; gap: 16px; padding: 22px 32px 14px; }
+.eyebrow { font-size: 11px; letter-spacing: .1em; color: var(--ink-3); }
+.head h1 { margin: 2px 0 0; font: var(--title-weight) 26px/1.15 var(--display); letter-spacing: -.01em; }
+.tabs { display: flex; gap: 2px; margin-left: auto; padding: 3px; background: var(--sunk); border-radius: 8px; position: relative; }
+.tabs button { padding: 4px 14px; font-size: 12px; color: var(--ink-3); position: relative; z-index: 1; transition: color .2s; }
+.tabs button.on { color: var(--ink); }
+.tabs .pill { position: absolute; top: 3px; bottom: 3px; border-radius: 6px; background: var(--raised); box-shadow: 0 1px 2px rgb(0 0 0 / 12%); transition: left .32s cubic-bezier(.3,1.3,.5,1), width .32s cubic-bezier(.3,1.3,.5,1); }
+.scroll { flex: 1; overflow: auto; padding: 4px 32px 40px; min-height: 0;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size: 20px 20px; background-position: -1px -1px; }
+
+/* 裕度谱：一眼看全部校核 */
+.spectrum { margin: 6px 0 28px; }
+.spectrum-top { display: flex; align-items: baseline; gap: 18px; margin-bottom: 12px; }
+.big { font: 500 34px/1 var(--mono); letter-spacing: -.03em; }
+.big small { font: 400 13px var(--sans); color: var(--ink-3); margin-left: 6px; letter-spacing: 0; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
+.track { position: relative; height: 46px; border-bottom: 1px solid var(--ink-3); }
+.zone { position: absolute; top: 0; bottom: 0; left: 85%; right: 0; background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--warn) 14%, transparent) 0 4px, transparent 4px 8px); border-left: 1px dashed color-mix(in srgb, var(--warn) 60%, transparent); }
+.tick { position: absolute; bottom: 0; width: 3px; margin-left: -1.5px; border-radius: 2px 2px 0 0; background: var(--ink-3); opacity: .55; transition: height .5s cubic-bezier(.2,.9,.3,1.2), opacity .15s, background-color .15s; padding: 0; }
+.tick.warn { background: var(--warn); opacity: 1; }
+.tick:hover, .tick.hot { opacity: 1; background: var(--accent); }
+.scale { position: relative; height: 18px; font: 10.5px var(--mono); color: var(--ink-3); }
+.scale span { position: absolute; transform: translateX(-50%); top: 4px; }
+.tip { position: absolute; bottom: 54px; transform: translateX(-50%); white-space: nowrap; background: var(--ink); color: var(--canvas); font-size: 11.5px; padding: 4px 8px; border-radius: 6px; pointer-events: none; opacity: 0; transition: opacity .12s; }
+.tip.show { opacity: 1; }
+
+/* 齿轮：两级并排，用对齐而不是卡片 */
+.stages { display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; }
+.stage-col h2 { margin: 0 0 4px; font: var(--title-weight) 17px/1.3 var(--display); display: flex; align-items: baseline; gap: 10px; }
+.stage-col h2 span { font: 400 12px var(--sans); color: var(--ink-3); }
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--rule); margin-top: 10px; }
+.fact { text-align: left; padding: 10px 10px 10px 0; border-bottom: 1px solid var(--rule); border-radius: 0; position: relative; transition: background-color .15s; }
+.fact:hover { background: var(--accent-soft); }
+.fact.sel::after { content: ""; position: absolute; inset: -1px auto -1px 0; width: 100%; border-bottom: 2px solid var(--accent); pointer-events: none; }
+.fact dt { font-size: 11.5px; color: var(--ink-3); display: flex; gap: 6px; align-items: center; }
+.fact dd { margin: 2px 0 0; font: 500 17px/1.3 var(--mono); letter-spacing: -.02em; }
+.src { font: 500 9.5px/14px var(--sans); padding: 0 4px; border-radius: 3px; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--rule); }
+.src.near { color: var(--warn); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 45%, transparent); }
+.checks { margin-top: 18px; }
+.checks h3 { margin: 0 0 4px; font-size: 11px; letter-spacing: .08em; font-weight: 500; color: var(--ink-3); }
+.ck { display: grid; grid-template-columns: 1fr 140px 52px; gap: 14px; align-items: center; padding: 7px 0; width: 100%; text-align: left; border-radius: 0; border-bottom: 1px dashed var(--rule); }
+.ck:hover .ck-n, .ck.sel .ck-n { color: var(--ink); }
+.ck-n { color: var(--ink-2); font-size: 12.5px; }
+.ck.sel .ck-n { font-weight: 500; }
+.bar { position: relative; height: 6px; background: var(--sunk); border-radius: 3px; }
+.bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--ok); transition: width .6s cubic-bezier(.2,.9,.3,1); }
+.bar i.warn { background: var(--warn); }
+.bar::after { content: ""; position: absolute; left: 85%; top: -3px; bottom: -3px; width: 1px; background: var(--ink-3); opacity: .5; }
+.ck-p { font: 500 13px var(--mono); text-align: right; }
+.ck-p.warn { color: var(--warn); }
+.nextline { margin-top: 30px; display: flex; align-items: center; gap: 20px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.nextline p { margin: 0; flex: 1; color: var(--ink-2); font-size: 12.5px; max-width: 62ch; text-wrap: pretty; }
+.nextline b { color: var(--ink); font-weight: 600; }
+.btn { padding: 6px 12px; font-size: 12.5px; border-radius: 7px; background: var(--sunk); color: var(--ink); transition: background-color .15s, transform .15s; }
+.btn:hover { background: var(--raised); box-shadow: 0 0 0 1px var(--rule); }
+.btn:active { transform: scale(.97); }
+.btn.primary { background: var(--accent); color: var(--on-accent); font-weight: 500; }
+.btn.primary:hover { box-shadow: none; filter: brightness(1.06); }
+
+.sheet-wrap { height: 100%; min-height: 460px; display: grid; place-items: center; }
+.sheet { width: min(86%, 760px); aspect-ratio: 1.414; background: #fdfdfb; color: #222; box-shadow: var(--shadow); display: grid; place-items: center; font: 12px var(--mono); position: relative; }
+.sheet::before { content: ""; position: absolute; inset: 14px 14px 14px 36px; border: 1.4px solid #222; }
+.sheet .mark { position: relative; padding: 2px 8px; outline: 2px solid #c8861c; outline-offset: 4px; border-radius: 2px; }
+
+/* 右侧 */
+.right { display: flex; flex-direction: column; min-height: 0; padding: 8px 0 0 0; }
+.ph { height: 44px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 18px; font-size: 11px; letter-spacing: .08em; color: var(--ink-3); }
+.ph .x { margin-left: auto; color: var(--ink-3); padding: 2px 6px; }
+.insp { padding: 0 18px 16px; overflow: auto; min-height: 0; flex: 1; }
+.insp-in { animation: fade .22s ease-out; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } }
+.insp .crumb { font-size: 11.5px; color: var(--ink-3); }
+.insp h4 { margin: 2px 0 10px; font: var(--title-weight) 18px/1.3 var(--display); }
+.gauge { display: flex; align-items: baseline; gap: 8px; }
+.gauge .big { font-size: 40px; }
+.gauge.warn .big { color: var(--warn); }
+.kv { display: grid; grid-template-columns: 52px 1fr; gap: 6px 12px; margin: 14px 0; font-size: 12.5px; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; }
+.eq { font: 12px/1.75 var(--mono); color: var(--ink-2); padding: 10px 12px; background: var(--sunk); border-radius: 8px; white-space: pre-wrap; }
+.acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+
+.agent { flex: none; height: 47%; display: flex; flex-direction: column; min-height: 0; margin: 0 10px 10px; background: var(--canvas); border-radius: 12px; box-shadow: 0 0 0 1px var(--rule); }
+.agent .ph { padding: 0 14px; }
+.convo { flex: 1; overflow: auto; padding: 0 14px; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.me { align-self: flex-end; max-width: 88%; background: var(--accent-soft); color: var(--ink); padding: 8px 11px; border-radius: 12px 12px 4px 12px; font-size: 12.5px; text-wrap: pretty; }
+.say { font-size: 12.5px; color: var(--ink-2); text-wrap: pretty; }
+.step-log { font-size: 12px; color: var(--ink-3); display: flex; flex-direction: column; gap: 4px; padding-left: 12px; border-left: 2px solid var(--rule); }
+.step-log span::before { content: "✓ "; color: var(--ok); }
+.prop { border-radius: 10px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); padding: 10px 12px; }
+.prop .t { font-size: 11px; letter-spacing: .06em; color: var(--accent); }
+.diff { display: grid; grid-template-columns: 1fr auto 14px auto; gap: 4px 8px; margin: 8px 0; font-size: 12.5px; align-items: baseline; }
+.diff s { color: var(--ink-3); font-family: var(--mono); }
+.diff b { font: 500 13px var(--mono); }
+.diff .arrow { color: var(--ink-3); text-align: center; }
+.prop .impact { font-size: 11.5px; color: var(--ink-3); margin-bottom: 10px; text-wrap: pretty; }
+.ctx { padding: 6px 14px 0; font-size: 11px; color: var(--ink-3); }
+.ctx b { font-weight: 500; color: var(--accent); }
+.compose { display: flex; align-items: flex-end; gap: 8px; margin: 6px 10px 10px; padding: 8px 8px 8px 12px; border-radius: 10px; background: var(--sunk); }
+.compose textarea { flex: 1; resize: none; height: 36px; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; }
+.compose:focus-within { box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent); }
+
+/* 修订轴 */
+.rail { grid-column: 2 / 4; display: flex; align-items: center; gap: 10px; padding: 0 16px; font-size: 11.5px; color: var(--ink-3); background: var(--canvas); box-shadow: 0 -1px 0 var(--rule); }
+.revs { display: flex; align-items: center; }
+.rev { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px; }
+.rev:hover { background: var(--sunk); color: var(--ink-2); }
+.rev i { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+.rev.cur { color: var(--ink); }
+.rev.cur i { background: var(--accent); box-shadow: none; }
+.rev.ghost { opacity: 0; transform: translateX(-6px); transition: opacity .25s, transform .25s; }
+.rev.ghost i { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.rev.ghost.show { opacity: .8; transform: none; }
+.link { width: 18px; height: 1px; background: var(--rule); }
+.rail .safe { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+/* 命令面板 */
+.scrim { position: fixed; inset: 0; background: rgb(8 12 16 / 30%); backdrop-filter: blur(2px); display: grid; place-items: start center; padding-top: 16vh; opacity: 0; pointer-events: none; transition: opacity .16s; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.palette { width: 560px; max-width: calc(100% - 32px); background: var(--raised); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; transform: scale(.97) translateY(-6px); transition: transform .22s cubic-bezier(.3,1.4,.5,1); }
+.scrim.open .palette { transform: none; }
+.palette input { width: 100%; border: 0; outline: 0; background: none; color: var(--ink); font: 15px var(--sans); padding: 15px 18px; border-bottom: 1px solid var(--rule); }
+.palette .sec { padding: 10px 18px 4px; font-size: 11px; letter-spacing: .08em; color: var(--ink-3); }
+.palette .it { display: flex; gap: 10px; padding: 8px 18px; font-size: 13px; color: var(--ink-2); }
+.palette .it.on { background: var(--accent-soft); color: var(--ink); }
+.palette .it small { margin-left: auto; color: var(--ink-3); }
+
+@media (prefers-reduced-motion: reduce) { *, *::before { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="wintop"><div class="proj"><b>带式输送机传动装置</b><small>课程设计 · 二级展开式</small></div></div>
+    <button class="find" onclick="palette(true)">⌕ 搜索零件、校核、命令<kbd>⌘K</kbd></button>
+    <div class="label">设计流程 <span>4 / 7</span></div>
+    <div class="flow" id="flow"></div>
+    <div class="label">原生模型</div>
+    <div class="host"><span class="led on"></span>FreeCAD<em>shaft-r3 · 工作副本</em></div>
+    <div class="host"><span class="led"></span>SOLIDWORKS<em>未连接</em></div>
+    <div class="host"><span class="led"></span>AutoCAD<em>未连接</em></div>
+    <div class="side-foot">
+      <div class="label">视觉方向（原型切换）</div>
+      <div class="dirs" id="dirs"><button data-d="paper" class="on">算稿纸</button><button data-d="machine">机床</button><button data-d="dai">黛蓝</button></div>
+    </div>
+  </aside>
+
+  <main class="work">
+    <div class="head">
+      <div><div class="eyebrow" id="eyebrow">第 3 步 · 传动零件</div><h1 id="h1">斜齿圆柱齿轮</h1></div>
+      <div class="tabs" id="tabs"><span class="pill"></span><button class="on">参数</button><button>三维</button><button>图纸</button></div>
+    </div>
+    <div class="scroll" id="scroll"></div>
+  </main>
+
+  <aside class="right">
+    <div class="ph">检查器<button class="x" title="折叠 ⌘I">—</button></div>
+    <div class="insp" id="insp"></div>
+    <section class="agent">
+      <div class="ph">工程助手 <span class="led on"></span><button class="x" title="折叠 ⌘J">—</button></div>
+      <div class="convo" id="convo">
+        <div class="me">高速级接触强度裕度太小，想留到 15% 以上，怎么改最省事？</div>
+        <div class="step-log"><span>读取高速级参数与校核</span><span>比较齿宽、材料、中心距 3 种改法</span></div>
+        <div class="say">加大齿宽影响最小：中心距和齿数不变，箱体不用改。</div>
+        <div class="prop" id="prop">
+          <div class="t">提议 · 尚未写入</div>
+          <div class="diff">
+            <span>小齿轮齿宽 b₁</span><s>50</s><span class="arrow">→</span><b>58 mm</b>
+            <span>大齿轮齿宽 b₂</span><s>45</s><span class="arrow">→</span><b>53 mm</b>
+            <span>接触利用率</span><s>92%</s><span class="arrow">→</span><b style="color:var(--ok)">84%</b>
+          </div>
+          <div class="impact">影响 2 项校核、2 张齿轮零件图、装配图和说明书 §4.2。生成新修订 r4，r3 保留。悬停预览。</div>
+          <div class="acts" style="margin:0"><button class="btn primary">在 r4 中应用</button><button class="btn">全部影响</button></div>
+        </div>
+      </div>
+      <div class="ctx">上下文 <b id="ctx">高速级 · 齿面接触疲劳</b></div>
+      <div class="compose"><textarea placeholder="问助手，或描述要做的修改"></textarea><button class="btn primary">↑</button></div>
+    </section>
+  </aside>
+
+  <footer class="rail">
+    修订
+    <div class="revs">
+      <button class="rev"><i></i>r1 初算</button><span class="link"></span>
+      <button class="rev"><i></i>r2 分配比 1.4</button><span class="link"></span>
+      <button class="rev cur"><i></i>r3 出图</button><span class="link"></span>
+      <button class="rev ghost" id="ghost"><i></i>r4 预览</button>
+    </div>
+    <span class="safe"><span class="led on"></span>原件受保护 · 0 个待确认操作</span>
+  </footer>
+</div>
+
+<div class="scrim" id="scrim">
+  <div class="palette">
+    <input value="齿宽" aria-label="命令" />
+    <div class="sec">零件参数</div>
+    <div class="it on">高速级 · 小齿轮齿宽 b₁ <span class="num">50 mm</span><small>传动零件</small></div>
+    <div class="it">低速级 · 小齿轮齿宽 b₁ <span class="num">79 mm</span><small>传动零件</small></div>
+    <div class="sec">操作</div>
+    <div class="it">修改齿宽系数并比较影响<small>助手</small></div>
+    <div class="it">打开 gear_high1 零件图<small>图纸</small></div>
+  </div>
+</div>
+
+<script>
+const G = {
+  high: { name: "高速级", mn: 1.5, z1: 28, z2: 149, beta: 18.52, a: 140, d1: 44.29, b1: 50, b2: 45, sh: [463.5, 505.6], sf1: [99.9, 309.0], sf2: [96.7, 242.8] },
+  low: { name: "低速级", mn: 2.0, z1: 35, z2: 142, beta: 16.91, a: 185, d1: 73.16, b1: 79, b2: 74, sh: [487.5, 527.8], sf1: [130.7, 319.5], sf2: [128.0, 249.7] },
+};
+// 全部 29 项校核的利用率（实际 / 许用；寿命、安全系数取许用 / 实际）
+const ALL = [
+  ["带速误差", 4], ["高速级 齿面接触", 92, "high.sh"], ["高速级 小齿轮弯曲", 32, "high.sf1"], ["高速级 大齿轮弯曲", 40, "high.sf2"],
+  ["低速级 齿面接触", 92, "low.sh"], ["低速级 小齿轮弯曲", 41, "low.sf1"], ["低速级 大齿轮弯曲", 51, "low.sf2"],
+  ["Ⅰ轴 弯扭合成", 12], ["Ⅰ轴 疲劳安全系数", 5], ["Ⅰ轴 轴承寿命", 18], ["Ⅰ轴 键挤压", 7], ["Ⅰ轴 挠度", 13], ["Ⅰ轴 偏转角", 3],
+  ["Ⅱ轴 弯扭合成", 73], ["Ⅱ轴 疲劳安全系数", 53], ["Ⅱ轴 轴承寿命", 41], ["Ⅱ轴 键挤压 1", 27], ["Ⅱ轴 键挤压 2", 55], ["Ⅱ轴 挠度", 59], ["Ⅱ轴 偏转角", 14],
+  ["Ⅲ轴 弯扭合成", 70], ["Ⅲ轴 疲劳安全系数", 51], ["Ⅲ轴 轴承寿命", 5], ["Ⅲ轴 齿轮键挤压", 71], ["Ⅲ轴 联轴器键挤压", 72], ["Ⅲ轴 挠度", 9], ["Ⅲ轴 偏转角", 2],
+  ["大齿轮与低速轴间隙", 30], ["浸油深度", 68],
+];
+const FLOW = [["任务书", "done", "已核对"], ["电动机与传动比", "done", "Y132S-4"], ["传动零件", "warn", "2 项临界"], ["轴系与轴承", "done", "3 根轴"], ["箱体与润滑", "", ""], ["图纸", "", "9 张"], ["说明书", "", ""]];
+let sel = "high.sh", tab = 0;
+const $ = (id) => document.getElementById(id);
+const pct = ([a, b]) => Math.round((a / b) * 100);
+
+$("flow").innerHTML = FLOW.map(([n, s, e], i) => `<button class="step ${s} ${i === 2 ? "on" : ""}"><span class="mk"></span>${n}<em>${e}</em></button>`).join("");
+
+function fact(key, label, val, unit, src) {
+  return `<button class="fact ${sel === key ? "sel" : ""}" data-k="${key}"><dl style="margin:0"><dt>${label}<span class="src ${src === "近" ? "near" : ""}">${src}</span></dt><dd>${val}<span class="unit">${unit}</span></dd></dl></button>`;
+}
+function ck(key, label, pair) {
+  const p = pct(pair), w = p >= 85 ? "warn" : "";
+  return `<button class="ck ${sel === key ? "sel" : ""}" data-k="${key}"><span class="ck-n">${label}</span><span class="bar"><i class="${w}" data-w="${p}" style="width:0"></i></span><span class="ck-p ${w}">${p}%</span></button>`;
+}
+function col(id) {
+  const g = G[id];
+  return `<div class="stage-col"><h2>${g.name}<span>mn ${g.mn} · ${g.z1}/${g.z2} 齿 · 8 级精度</span></h2>
+  <div class="facts">${fact(id + ".mn", "法向模数", g.mn, "mm", "标")}${fact(id + ".a", "中心距", g.a, "mm", "式")}${fact(id + ".beta", "螺旋角", g.beta, "°", "式")}${fact(id + ".d1", "小齿轮分度圆", g.d1, "mm", "式")}${fact(id + ".b", "齿宽 b₁/b₂", g.b1 + "/" + g.b2, "mm", "式")}${fact(id + ".k", "动载系数 Kv", "1.08", "", "近")}</div>
+  <div class="checks"><h3>校核 · 利用率</h3>${ck(id + ".sh", "齿面接触疲劳", g.sh)}${ck(id + ".sf1", "小齿轮齿根弯曲", g.sf1)}${ck(id + ".sf2", "大齿轮齿根弯曲", g.sf2)}</div></div>`;
+}
+function spectrum() {
+  const max = Math.max(...ALL.map((c) => c[1]));
+  return `<section class="spectrum"><div class="spectrum-top"><div class="big">29<small>项校核全部通过</small></div>
+  <div class="legend"><span><i style="background:var(--warn)"></i>临界 2 项（≥ 85%）</span><span><i style="background:var(--ink-3)"></i>最高 ${max}%</span><span><i style="background:transparent;box-shadow:inset 0 0 0 1px var(--warn)"></i>近似系数 2 处</span></div></div>
+  <div class="track" id="track"><div class="zone"></div>${ALL.map((c, i) => `<button class="tick ${c[1] >= 85 ? "warn" : ""} ${c[2] === sel ? "hot" : ""}" data-i="${i}" ${c[2] ? `data-k="${c[2]}"` : ""} style="left:${c[1]}%;height:0" data-h="${14 + c[1] * 0.3}" aria-label="${c[0]} ${c[1]}%"></button>`).join("")}<div class="tip" id="tip"></div></div>
+  <div class="scale">${[0, 25, 50, 75, 85, 100].map((v) => `<span style="left:${v}%">${v}%</span>`).join("")}</div></section>`;
+}
+function renderScroll() {
+  if (tab === 2) { $("scroll").innerHTML = `<div class="sheet-wrap"><div class="sheet"><span class="mark">齿宽 50 h11</span></div></div>`; return; }
+  if (tab === 1) { $("scroll").innerHTML = `<div class="sheet-wrap" style="color:var(--ink-3)">三维视图 · 与参数、检查器联动高亮</div>`; return; }
+  $("scroll").innerHTML = spectrum() + `<div class="stages">${col("high")}${col("low")}</div>
+  <div class="nextline"><p><b>两级齿面接触利用率都是 92%。</b>通过，但答辩最常追问；可以接受，也可以让助手把裕度提到 15% 以上。</p><button class="btn primary">继续：轴系与轴承 →</button></div>`;
+  requestAnimationFrame(() => {
+    document.querySelectorAll(".bar i").forEach((el) => (el.style.width = el.dataset.w + "%"));
+    document.querySelectorAll(".tick").forEach((el, i) => setTimeout(() => (el.style.height = el.dataset.h + "px"), i * 12));
+  });
+}
+const EQ = {
+  sh: ["齿面接触疲劳强度", "σH = ZH·ZE·Zε·Zβ·√( 2K·T₁/(b·d₁²) · (u+1)/u )", "σH", "GB/T 3480.2 计算方法；接触疲劳极限按材料与热处理取值"],
+  sf1: ["小齿轮齿根弯曲强度", "σF = 2K·T₁·YFa·YSa·Yε·Yβ / (b·mn·d₁)", "σF", "GB/T 3480.3 计算方法"],
+  sf2: ["大齿轮齿根弯曲强度", "σF = 2K·T₁·YFa·YSa·Yε·Yβ / (b·mn·d₁)", "σF", "GB/T 3480.3 计算方法"],
+};
+const PARAM = { mn: ["法向模数", "mn", "mm", "按齿根弯曲强度初算，取 GB/T 1357 第一系列"], a: ["中心距", "a", "mm", "a = mn(z₁+z₂) / (2cos β)，圆整到整数"], beta: ["螺旋角", "beta", "°", "中心距圆整后反算 β"], d1: ["小齿轮分度圆", "d1", "mm", "d₁ = mn·z₁ / cos β"], b: ["齿宽", "b1", "mm", "b = ψd·d₁，大齿轮比小齿轮窄 5 mm"], k: ["动载系数 Kv", null, "", "解析近似代替教材查图；正式提交前可填入查得值"] };
+function renderInsp() {
+  const [id, k] = sel.split("."), g = G[id];
+  let html;
+  if (EQ[k]) {
+    const [name, eq, sym, src] = EQ[k], pair = g[k], p = pct(pair), w = p >= 85;
+    $("ctx").textContent = `${g.name} · ${name}`;
+    html = `<div class="crumb">${g.name} · 校核</div><h4>${name}</h4>
+    <div class="gauge ${w ? "warn" : ""}"><span class="big">${p}%</span><span class="unit">利用率${w ? " · 临界" : ""}</span></div>
+    <dl class="kv"><dt>实际</dt><dd class="num">${sym} = ${pair[0]} MPa</dd><dt>许用</dt><dd class="num">[${sym}] = ${pair[1]} MPa</dd><dt>余量</dt><dd class="num">${(pair[1] - pair[0]).toFixed(1)} MPa</dd></dl>
+    <div class="eq">${eq}</div>
+    <dl class="kv"><dt>来源</dt><dd>${src}</dd><dt>敏感</dt><dd>齿宽 b、分度圆 d₁、材料硬度</dd></dl>
+    <div class="acts"><button class="btn">提升裕度</button><button class="btn">说明书中定位</button></div>`;
+  } else {
+    const [name, f, unit, how] = PARAM[k];
+    $("ctx").textContent = `${g.name} · ${name}`;
+    const v = f ? (k === "b" ? `${g.b1} / ${g.b2}` : g[f]) : "1.08";
+    html = `<div class="crumb">${g.name} · 参数</div><h4>${name}</h4>
+    <div class="gauge"><span class="big">${v}</span><span class="unit">${unit}</span></div>
+    <div class="eq" style="margin-top:14px">${how}</div>
+    <dl class="kv"><dt>引用</dt><dd>3 项校核 · 2 张零件图 · 说明书 §4</dd><dt>修订</dt><dd>r1 起未变</dd></dl>
+    <div class="acts"><button class="btn">修改并比较</button><button class="btn">图纸中定位</button></div>`;
+  }
+  $("insp").innerHTML = `<div class="insp-in">${html}</div>`;
+}
+function render() { renderScroll(); renderInsp(); }
+
+$("scroll").addEventListener("click", (e) => { const t = e.target.closest("[data-k]"); if (t) { sel = t.dataset.k; render(); } });
+$("scroll").addEventListener("mouseover", (e) => {
+  const t = e.target.closest(".tick"), tip = $("tip");
+  if (!t) { if (tip) tip.classList.remove("show"); return; }
+  const c = ALL[t.dataset.i]; tip.textContent = `${c[0]} · ${c[1]}%`; tip.style.left = c[1] + "%"; tip.classList.add("show");
+});
+// 视图切换：滑块用弹簧曲线移动
+function movePill() { const on = $("tabs").querySelector("button.on"), pill = $("tabs").querySelector(".pill"); pill.style.left = on.offsetLeft + "px"; pill.style.width = on.offsetWidth + "px"; }
+$("tabs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; [...$("tabs").querySelectorAll("button")].forEach((x, i) => { x.classList.toggle("on", x === b); if (x === b) tab = i; }); movePill(); renderScroll(); });
+// 悬停提议：预览 r4 与利用率变化
+$("prop").addEventListener("mouseenter", () => { $("ghost").classList.add("show"); const t = document.querySelector('.tick[data-k="high.sh"]'); if (t) { t.style.left = "84%"; t.classList.remove("warn"); } const b = document.querySelector('.ck[data-k="high.sh"] .bar i'); if (b) { b.style.width = "84%"; b.classList.remove("warn"); } });
+$("prop").addEventListener("mouseleave", () => { $("ghost").classList.remove("show"); const t = document.querySelector('.tick[data-k="high.sh"]'); if (t) { t.style.left = "92%"; t.classList.add("warn"); } const b = document.querySelector('.ck[data-k="high.sh"] .bar i'); if (b) { b.style.width = "92%"; b.classList.add("warn"); } });
+$("dirs").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; document.documentElement.dataset.dir = b.dataset.d; [...$("dirs").children].forEach((x) => x.classList.toggle("on", x === b)); try { localStorage.setItem("gk-dir", b.dataset.d); } catch {} });
+function palette(open) { $("scrim").classList.toggle("open", open); if (open) setTimeout(() => $("scrim").querySelector("input").focus(), 30); }
+$("scrim").addEventListener("click", (e) => { if (e.target === $("scrim")) palette(false); });
+addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); palette(!$("scrim").classList.contains("open")); } if (e.key === "Escape") palette(false); });
+try { const d = localStorage.getItem("gk-dir"); if (d) document.querySelector(`#dirs [data-d="${d}"]`)?.click(); } catch {}
+const want = new URLSearchParams(location.search).get("dir"); if (want) document.querySelector(`#dirs [data-d="${want}"]`)?.click();
+render(); requestAnimationFrame(movePill); document.fonts?.ready.then(movePill);
+</script>
+</body>
+</html>

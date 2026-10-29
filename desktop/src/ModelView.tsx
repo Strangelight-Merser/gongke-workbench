@@ -26,7 +26,7 @@ export function ModelView({
     element.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    world.add(new THREE.HemisphereLight(0xffffff, 0x475362, 3));
+    world.add(new THREE.HemisphereLight(0xffffff, 0x8a968f, 2.6));
     const light = new THREE.DirectionalLight(0xffffff, 3);
     light.position.set(2, 4, 3);
     world.add(light);
@@ -43,7 +43,7 @@ export function ModelView({
       geometry.setIndex(item.triangles.flat());
       geometry.computeVertexNormals();
       const material = new THREE.MeshStandardMaterial({
-        color: item.id === selected ? "#88cab0" : "#aebdc9",
+        color: item.id === selected ? "#23508a" : "#a9b6ae",
         metalness: 0.32,
         roughness: 0.46,
         side: THREE.DoubleSide,
