@@ -119,10 +119,34 @@ class InstanceLock:
         self.file.close()
 
 
+def _private_protocol_input():
+    """在 Windows 上把协议输入移到私有句柄，标准输入改指 NUL。
+
+    同步管道上有一个线程阻塞在 ReadFile 时，其他线程对同一句柄的 GetFileType
+    等调用也会阻塞。后台任务首次加载的原生库（NumPy、SciPy、OCCT 等）在 CRT
+    初始化时会查询标准句柄，因而与协议读取互锁（numpy/numpy#24290）。逐个预先
+    import 无法覆盖全部库，所以不让任何库再看到正在读取的管道句柄。
+    """
+    if sys.platform != "win32":
+        return sys.stdin
+    import ctypes
+    import msvcrt
+
+    private = os.dup(sys.stdin.fileno())
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, 0)
+    os.close(null)
+    STD_INPUT_HANDLE = -10
+    ctypes.windll.kernel32.SetStdHandle(STD_INPUT_HANDLE, msvcrt.get_osfhandle(0))
+    sys.stdin = open(os.devnull, encoding="utf-8")
+    return open(private, encoding="utf-8", newline="\n")
+
+
 def main():
     # Pipes use the Windows locale by default; the desktop protocol is always UTF-8.
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
+    protocol_input = _private_protocol_input()
     parser = argparse.ArgumentParser()
     parser.add_argument("--state-dir", type=Path, default=Path.home() / ".local/share/gongke/app")
     args = parser.parse_args()
@@ -151,15 +175,13 @@ def main():
             faulthandler.enable(file=diagnostic_file, all_threads=True)
             faulthandler.dump_traceback_later(60, repeat=True, file=diagnostic_file)
         instance = InstanceLock(args.state_dir)
-        # NumPy's Windows native initialization can deadlock against a concurrent
-        # pipe-stdin read (numpy/numpy#24290). SciPy loads a separate BLAS runtime
-        # for STEP geometry. Initialize both before workers and protocol reads.
+        # 协议输入已与标准句柄分离；预先加载数值库仍可缩短首次任务的等待。
         if importlib.util.find_spec("numpy") is not None:
             import numpy  # noqa: F401
         if importlib.util.find_spec("scipy") is not None:
             from scipy import linalg  # noqa: F401
         app = Application(args.state_dir, emit)
-        for line in sys.stdin:
+        for line in protocol_input:
             request_id = None
             try:
                 request = json.loads(line, parse_constant=lambda value: (_ for _ in ()).throw(ValueError("数值必须有限")))

@@ -267,7 +267,10 @@ def test_stdio_generates_drawings_and_step_while_input_pipe_stays_open(tmp_path)
             if record.get("status") in {"complete", "partial", "failed", "canceled"}:
                 terminal = record
                 break
-        assert terminal is not None, "drawing/STEP worker stalled while stdin remained open"
+        if terminal is None:
+            dump = tmp_path / "diagnostics/python-threads.log"
+            stacks = dump.read_text(encoding="utf-8", errors="replace")[-8000:] if dump.exists() else "(no thread dump)"
+            raise AssertionError("drawing/STEP worker stalled while stdin remained open\n" + stacks)
         assert terminal["status"] == "complete", terminal
         result = terminal["result"]
         assert result["exports_complete"] is True
