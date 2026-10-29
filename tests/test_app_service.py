@@ -222,6 +222,70 @@ def test_stdio_utf8_is_independent_of_host_codepage(tmp_path):
     assert json.loads(process.stdout.decode("utf-8"))["result"]["name"] == "机械课程"
 
 
+def test_stdio_generates_drawings_while_input_pipe_stays_open(tmp_path):
+    """The desktop keeps stdin open while its worker first imports native libraries."""
+    import queue
+
+    root = Path(__file__).resolve().parents[1]
+    requests = [
+        {"id": 1, "method": "project.create", "params": {"path": str(tmp_path / "project"), "teaching": True}},
+        {"id": 2, "method": "design.generate", "params": {"name": "drawing", "drawings": True, "report_docx": False}},
+    ]
+    process = subprocess.Popen(
+        [sys.executable, "-m", "gongke_app.service", "--state-dir", str(tmp_path / "state")],
+        cwd=root, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, encoding="utf-8", env={**os.environ, "GONGKE_TEST_DIAGNOSTICS_DIR": str(tmp_path / "diagnostics")},
+    )
+    output, stderr = queue.Queue(), []
+
+    def read_output():
+        for line in process.stdout:
+            try:
+                output.put(json.loads(line))
+            except json.JSONDecodeError:
+                output.put({"protocol_error": line})
+
+    reader = threading.Thread(target=read_output, daemon=True)
+    errors = threading.Thread(target=lambda: stderr.append(process.stderr.read()), daemon=True)
+    reader.start()
+    errors.start()
+    try:
+        process.stdin.write("".join(json.dumps(row) + "\n" for row in requests))
+        process.stdin.flush()
+        # No polling requests: waking stdin would mask the Windows import deadlock.
+        deadline, terminal = time.monotonic() + 90, None
+        while time.monotonic() < deadline:
+            try:
+                reply = output.get(timeout=max(0.01, deadline - time.monotonic()))
+            except queue.Empty:
+                break
+            assert "protocol_error" not in reply and "error" not in reply, reply
+            record = reply.get("task", {})
+            if record.get("status") in {"complete", "partial", "failed", "canceled"}:
+                terminal = record
+                break
+        assert terminal is not None, "drawing worker stalled while stdin remained open"
+        assert terminal["status"] == "complete", terminal
+        result = terminal["result"]
+        assert result["exports_complete"] is True
+        assert len(result["drawings"]) == 9
+        output_dir = tmp_path / "project/revisions/drawing/drawings"
+        for item in result["drawings"]:
+            assert (output_dir / item["dxf"]).stat().st_size > 0
+            assert (output_dir / item["svg"]).stat().st_size > 0
+        assert (output_dir / "drawings.pdf").read_bytes().startswith(b"%PDF-")
+    finally:
+        process.stdin.close()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+        reader.join(timeout=2)
+        errors.join(timeout=2)
+    assert process.returncode == 0, "".join(stderr)
+
+
 def test_native_commands_use_existing_bridge_and_copy_path(app, monkeypatch):
     from gongke_core import native_client
     calls = []

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -150,6 +151,11 @@ def main():
             faulthandler.enable(file=diagnostic_file, all_threads=True)
             faulthandler.dump_traceback_later(60, repeat=True, file=diagnostic_file)
         instance = InstanceLock(args.state_dir)
+        # NumPy's Windows native initialization can deadlock against a concurrent
+        # pipe-stdin read (numpy/numpy#24290). Load the installed drawing runtime
+        # before starting workers and entering the protocol input loop.
+        if importlib.util.find_spec("numpy") is not None:
+            import numpy  # noqa: F401
         app = Application(args.state_dir, emit)
         for line in sys.stdin:
             request_id = None
