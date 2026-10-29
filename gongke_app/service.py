@@ -152,10 +152,12 @@ def main():
             faulthandler.dump_traceback_later(60, repeat=True, file=diagnostic_file)
         instance = InstanceLock(args.state_dir)
         # NumPy's Windows native initialization can deadlock against a concurrent
-        # pipe-stdin read (numpy/numpy#24290). Load the installed drawing runtime
-        # before starting workers and entering the protocol input loop.
+        # pipe-stdin read (numpy/numpy#24290). SciPy loads a separate BLAS runtime
+        # for STEP geometry. Initialize both before workers and protocol reads.
         if importlib.util.find_spec("numpy") is not None:
             import numpy  # noqa: F401
+        if importlib.util.find_spec("scipy") is not None:
+            from scipy import linalg  # noqa: F401
         app = Application(args.state_dir, emit)
         for line in sys.stdin:
             request_id = None

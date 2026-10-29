@@ -222,14 +222,17 @@ def test_stdio_utf8_is_independent_of_host_codepage(tmp_path):
     assert json.loads(process.stdout.decode("utf-8"))["result"]["name"] == "机械课程"
 
 
-def test_stdio_generates_drawings_while_input_pipe_stays_open(tmp_path):
+def test_stdio_generates_drawings_and_step_while_input_pipe_stays_open(tmp_path):
     """The desktop keeps stdin open while its worker first imports native libraries."""
+    from importlib.util import find_spec
     import queue
 
+    if find_spec("build123d") is None:
+        pytest.skip("STEP generation requires the geometry or desktop extra")
     root = Path(__file__).resolve().parents[1]
     requests = [
         {"id": 1, "method": "project.create", "params": {"path": str(tmp_path / "project"), "teaching": True}},
-        {"id": 2, "method": "design.generate", "params": {"name": "drawing", "drawings": True, "report_docx": False}},
+        {"id": 2, "method": "design.generate", "params": {"name": "drawing", "drawings": True, "report_docx": False, "step": True}},
     ]
     process = subprocess.Popen(
         [sys.executable, "-m", "gongke_app.service", "--state-dir", str(tmp_path / "state")],
@@ -264,7 +267,7 @@ def test_stdio_generates_drawings_while_input_pipe_stays_open(tmp_path):
             if record.get("status") in {"complete", "partial", "failed", "canceled"}:
                 terminal = record
                 break
-        assert terminal is not None, "drawing worker stalled while stdin remained open"
+        assert terminal is not None, "drawing/STEP worker stalled while stdin remained open"
         assert terminal["status"] == "complete", terminal
         result = terminal["result"]
         assert result["exports_complete"] is True
@@ -274,6 +277,10 @@ def test_stdio_generates_drawings_while_input_pipe_stays_open(tmp_path):
             assert (output_dir / item["dxf"]).stat().st_size > 0
             assert (output_dir / item["svg"]).stat().st_size > 0
         assert (output_dir / "drawings.pdf").read_bytes().startswith(b"%PDF-")
+        step = (output_dir.parent / "reducer_assembly.step").read_bytes()
+        assert step.startswith(b"ISO-10303-21;")
+        assert step.rstrip().endswith(b"END-ISO-10303-21;")
+        assert result["artifacts"]["step"]["status"] == "complete"
     finally:
         process.stdin.close()
         try:
