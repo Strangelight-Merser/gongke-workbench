@@ -8,6 +8,7 @@ import {
   savedPending,
   registeredWorkingCopy,
 } from "./CommercialView";
+import { Collapsible, StreamText, streamFragment } from "./Motion";
 import "./style.css";
 
 const statuses: Data = {
@@ -105,26 +106,51 @@ function App() {
       }
       if (event.event === "agent.delta")
         setMessages((items) => {
-          const prior = items.find(
+          const index = items.findIndex(
             (x) => x.streaming && x.task_id === event.task_id,
           );
-          return [
-            ...items.filter(
-              (x) => !(x.streaming && x.task_id === event.task_id),
-            ),
-            {
-              role: "assistant",
-              task_id: event.task_id,
-              streaming: true,
-              content: (prior?.content || "") + event.content,
-            },
-          ];
+          const prior = items[index];
+          const fragment = streamFragment(event.content);
+          const message = {
+            ...prior,
+            id: prior?.id || crypto.randomUUID(),
+            role: "assistant",
+            task_id: event.task_id,
+            streaming: true,
+            content: (prior?.content || "") + event.content,
+            fragments: [...(prior?.fragments || []), fragment],
+          };
+          return index < 0
+            ? [...items, message]
+            : items.map((item, i) => (i === index ? message : item));
         });
       if (event.event === "agent.message")
-        setMessages((items) => [
-          ...items.filter((x) => !(x.streaming && x.task_id === event.task_id)),
-          event,
-        ]);
+        setMessages((items) => {
+          const index = items.findIndex(
+            (x) => x.streaming && x.task_id === event.task_id,
+          );
+          if (index < 0)
+            return [...items, { ...event, id: crypto.randomUUID() }];
+          const prior = items[index];
+          const content =
+            typeof event.content === "string"
+              ? event.content
+              : text(event.content);
+          const tail = content.startsWith(prior.content)
+            ? content.slice(prior.content.length)
+            : null;
+          const fragments =
+            tail === null
+              ? undefined
+              : tail
+                ? [...prior.fragments, streamFragment(tail)]
+                : prior.fragments;
+          return items.map((item, i) =>
+            i === index
+              ? { ...event, id: prior.id, streaming: false, fragments }
+              : item,
+          );
+        });
       if (event.event === "service.error") setError(event.error.message);
       if (event.event === "service.stopped") {
         setStatus({ online: false });
@@ -246,7 +272,10 @@ function App() {
   async function send() {
     if (!prompt.trim()) return;
     const message = prompt;
-    setMessages((items) => [...items, { role: "user", content: message }]);
+    setMessages((items) => [
+      ...items,
+      { id: crypto.randomUUID(), role: "user", content: message },
+    ]);
     setPrompt("");
     await run("提交任务", async () => {
       await call("agent.run", { message, allow_writes: allowWrites });
@@ -480,12 +509,15 @@ function App() {
                     )
                   }
                 >
-                  核对当前工程的条件 ↗
+                  核对当前工程的条件{" "}
+                  <span className="inline-icon" aria-hidden="true">
+                    ↗
+                  </span>
                 </button>
               </div>
             )}
-            {messages.map((message, index) => (
-              <div key={index} className={"message " + message.role}>
+            {messages.map((message) => (
+              <div key={message.id} className={"message " + message.role}>
                 <small>
                   {message.role === "user"
                     ? "你"
@@ -494,9 +526,15 @@ function App() {
                       : "工程助手"}
                 </small>
                 <div>
-                  {typeof message.content === "string"
-                    ? message.content
-                    : text(message.content)}
+                  <StreamText
+                    content={
+                      typeof message.content === "string"
+                        ? message.content
+                        : text(message.content)
+                    }
+                    fragments={message.fragments}
+                    streaming={message.streaming === true}
+                  />
                 </div>
               </div>
             ))}
@@ -528,7 +566,7 @@ function App() {
                 disabled={!project || !prompt.trim() || !!busy}
                 onClick={send}
               >
-                发送 ↑
+                发送 <span className="inline-icon">↑</span>
               </button>
             </div>
           </div>
@@ -711,6 +749,8 @@ function Design({
               生成模型与图纸
             </button>
             <button
+              aria-expanded={advanced}
+              aria-controls="advanced-conditions"
               onClick={() => {
                 setDraft(text(task));
                 setAdvanced(!advanced);
@@ -719,26 +759,35 @@ function Design({
               完整条件
             </button>
           </div>
-          {advanced && (
-            <div className="advanced">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-              />
-              <button
-                onClick={() =>
-                  run("保存条件", async () => {
-                    const next = JSON.parse(draft);
-                    setProject(await call("project.set_task", { task: next }));
-                    setTask(next);
-                    setAdvanced(false);
-                  })
-                }
-              >
-                保存条件
-              </button>
+          <div className="disclosure-grid" data-open={advanced}>
+            <div
+              id="advanced-conditions"
+              className="disclosure-content"
+              inert={!advanced}
+              aria-hidden={!advanced}
+            >
+              <div className="advanced disclosure-body">
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                />
+                <button
+                  onClick={() =>
+                    run("保存条件", async () => {
+                      const next = JSON.parse(draft);
+                      setProject(
+                        await call("project.set_task", { task: next }),
+                      );
+                      setTask(next);
+                      setAdvanced(false);
+                    })
+                  }
+                >
+                  保存条件
+                </button>
+              </div>
             </div>
-          )}
+          </div>
         </>
       )}
       {result && <Results result={result} />}
@@ -806,10 +855,9 @@ function Results({ result }: { result: Data }) {
           </tbody>
         </table>
       )}
-      <details>
-        <summary>完整结果与检查项</summary>
+      <Collapsible title="完整结果与检查项">
         <Json value={r} />
-      </details>
+      </Collapsible>
     </section>
   );
 }
@@ -1200,10 +1248,9 @@ function Native({
                 </div>
               )}
               {review && (
-                <details open>
-                  <summary>校核结果</summary>
+                <Collapsible title="校核结果" defaultOpen>
                   <Json value={review} />
-                </details>
+                </Collapsible>
               )}
             </div>
           </div>
@@ -1252,10 +1299,9 @@ function TaskList({ tasks, run }: { tasks: Data[]; run: any }) {
             </button>
           )}
           {task.result && (
-            <details>
-              <summary>结果</summary>
+            <Collapsible title="结果">
               <Json value={task.result} />
-            </details>
+            </Collapsible>
           )}
         </article>
       ))}

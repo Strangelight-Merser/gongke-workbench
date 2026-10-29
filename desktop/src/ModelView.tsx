@@ -17,7 +17,9 @@ export function ModelView({
     if (!mount.current) return;
     const element = mount.current,
       world = new THREE.Scene();
-    world.background = new THREE.Color("#1c2228");
+    world.background = new THREE.Color(
+      getComputedStyle(element).getPropertyValue("--surface-base").trim(),
+    );
     const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 1e7),
       renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));

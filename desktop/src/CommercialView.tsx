@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { call, Data, text } from "./api";
 import { ModelView } from "./ModelView";
+import { Collapsible } from "./Motion";
 
 const mutations = new Set([
   "parameter.change",
@@ -687,14 +688,19 @@ export function CommercialView({
         </div>
       )}
       {receipt && (
-        <details open className="native-receipt">
-          <summary>
-            原生回执
-            {receipt.result?.status === "needs_review" ? " · 需要复核" : ""}
-            {receipt.error?.outcome === "unknown" ? " · 结果待确认" : ""}
-          </summary>
+        <Collapsible
+          defaultOpen
+          className="native-receipt"
+          title={
+            <>
+              原生回执
+              {receipt.result?.status === "needs_review" ? " · 需要复核" : ""}
+              {receipt.error?.outcome === "unknown" ? " · 结果待确认" : ""}
+            </>
+          }
+        >
           <pre>{text(receipt)}</pre>
-        </details>
+        </Collapsible>
       )}
     </div>
   );
