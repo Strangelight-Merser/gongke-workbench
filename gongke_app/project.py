@@ -104,10 +104,25 @@ class Project:
             self.manifest["results"].append(result)
             self.save()
 
-    def register_copy(self, path, host, receipt):
-        self.register_copies([(path, receipt)], host)
+    def remember_copy_operation(self, operation):
+        """Persist the exact request before handing a new copy to a native host."""
+        with self.lock:
+            operations = self.manifest.setdefault("copy_operations", {})
+            operation_id = operation["operation_id"]
+            if operation_id in operations:
+                raise ValueError("该副本操作 ID 已提交；请查询原操作结果，不要重复写入")
+            operations[operation_id] = json.loads(json.dumps(operation, allow_nan=False))
+            self.save()
 
-    def register_copies(self, entries, host):
+    def copy_operation(self, operation_id):
+        with self.lock:
+            record = self.manifest.get("copy_operations", {}).get(operation_id)
+            return json.loads(json.dumps(record)) if record else None
+
+    def register_copy(self, path, host, receipt, *, operation_id=None):
+        self.register_copies([(path, receipt)], host, operation_id=operation_id)
+
+    def register_copies(self, entries, host, *, operation_id=None):
         records = []
         for path, receipt in entries:
             target = Path(path).resolve()
@@ -116,9 +131,15 @@ class Project:
             if not receipt.get("path") or Path(receipt["path"]).resolve() != target:
                 raise ValueError("原生保存回执路径与请求不一致；未授予该文件修改资格")
             relative = target.relative_to(self.path).as_posix()
-            records.append({"path": relative, "host": host, "receipt": receipt})
+            records.append({"path": relative, "host": host, "receipt": receipt,
+                            **({"operation_id": operation_id} if operation_id else {})})
         with self.lock:
+            operation = self.manifest["copy_operations"][operation_id] if operation_id else None
+            if operation and operation["state"] == "registered":
+                return
             self.manifest.setdefault("working_copies", []).extend(records)
+            if operation:
+                operation["state"] = "registered"
             self.save()
 
     def is_working_copy(self, path, host):

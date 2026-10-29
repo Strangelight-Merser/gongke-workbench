@@ -13,6 +13,7 @@ on:
       - pyproject.toml
       - tests/test_app_service.py
       - tests/test_host_paths.py
+      - tests/test_copy_receipt_recovery.py
       - .github/workflows/desktop.yml
   pull_request:
     paths:
@@ -26,6 +27,7 @@ on:
       - pyproject.toml
       - tests/test_app_service.py
       - tests/test_host_paths.py
+      - tests/test_copy_receipt_recovery.py
       - .github/workflows/desktop.yml
   workflow_dispatch:
 
@@ -64,13 +66,19 @@ jobs:
       - name: Install application dependencies
         run: python -m pip install ".[desktop]" pytest
       - name: Test application commands and agent protocol
-        run: python -m pytest -q tests/test_app_service.py tests/test_host_paths.py
+        run: python -m pytest -q tests/test_app_service.py tests/test_host_paths.py tests/test_copy_receipt_recovery.py
       - name: Build and test desktop
         working-directory: desktop
         run: |
           npm ci
           npm run build
           npm test
+      - name: Test recovery controls with a simulated native host
+        if: runner.os == 'macOS'
+        working-directory: desktop
+        run: |
+          npx playwright install chromium
+          node tests/commercial-flow.cjs
       - name: Test SOLIDWORKS protocol without proprietary references
         run: dotnet run --project adapters/solidworks/tests/ProtocolChecks.csproj -c Release
       - name: Test AutoCAD transport and operation receipts
@@ -117,6 +125,9 @@ jobs:
       - name: Package unpacked desktop application
         working-directory: desktop
         run: npx electron-builder --dir --publish never
+      - name: Verify macOS development bundle signature
+        if: runner.os == 'macOS'
+        run: codesign --verify --deep --strict desktop/release/mac*/构想引擎.app
       - name: Exercise packaged desktop with a fresh user directory
         timeout-minutes: 8
         shell: python

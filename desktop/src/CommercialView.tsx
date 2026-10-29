@@ -11,13 +11,31 @@ const mutations = new Set([
   "drawing.move_dimension_text",
 ]);
 const normalPath = (value: string) => value.replace(/\\/g, "/").toLowerCase();
-const pendingKey = (kind: string) => "gongke-native-unresolved-" + kind;
-function savedPending(kind: string): Data | null {
+export const pendingKey = (kind: string) => "gongke-native-unresolved-" + kind;
+export function savedPending(kind: string): Data | null {
   try {
     return JSON.parse(localStorage.getItem(pendingKey(kind)) || "null");
   } catch {
     return null;
   }
+}
+export async function registeredWorkingCopy(kind: string, request: Data) {
+  const project = await call("project.current");
+  const path = request.params.output_path || request.params.target_path;
+  const paths = [path, request.params.output_part_path].filter(Boolean);
+  if (
+    !path ||
+    !paths.every((target) =>
+      (project?.working_copies || []).some(
+        (copy: Data) =>
+          copy.host === kind &&
+          copy.operation_id === request.operation_id &&
+          normalPath(copy.path) === normalPath(target),
+      ),
+    )
+  )
+    throw new Error("工作副本尚未完成工程登记；保留原操作，请查询核对后继续");
+  return { project, path };
 }
 function operationResult(value: Data): Data {
   return (
@@ -43,7 +61,7 @@ export function CommercialView({
   const [selection, setSelection] = useState(""),
     [draft, setDraft] = useState(""),
     [position, setPosition] = useState<string[]>(["", "", ""]);
-  const [receipt, setReceipt] = useState<Data | null>(null),
+  const [receipt, setReceipt] = useState<Data | null>(() => savedPending(kind)),
     [pending, setPending] = useState<Data | null>(() => savedPending(kind)),
     [reviewRequired, setReviewRequired] = useState(false),
     [working, setWorking] = useState(false);
@@ -110,16 +128,11 @@ export function CommercialView({
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (
-        write &&
-        /超时|待确认|未响应|已退出|服务未运行|服务未能启动|EPIPE|ECONNRESET|Broken pipe/.test(
-          message,
-        )
-      ) {
+      if (write) {
         const record = { ...request, error: { message, outcome: "unknown" } };
         setReceipt(record);
         keepPending(record);
-      } else if (write) localStorage.removeItem(pendingKey(kind));
+      }
       throw error;
     }
     if (result?.error) {
@@ -149,10 +162,10 @@ export function CommercialView({
     }
     return result;
   }
-  async function refresh() {
+  async function refresh(targetHost = host?.host_id) {
     clearSnapshot();
     if (kind === "solidworks") {
-      const c = await invoke("document.context");
+      const c = await invoke("document.context", {}, targetHost);
       if (!c.active_document) throw new Error("SOLIDWORKS 中没有活动文档");
       const p = {
         document_path: c.active_document.path,
@@ -162,7 +175,7 @@ export function CommercialView({
         nextParameters: Data[] = [],
         nextSnapshot: Data | null = null;
       if (c.active_document.document_type === 1) {
-        const mesh = await invoke("preview.mesh", p);
+        const mesh = await invoke("preview.mesh", p, targetHost);
         nextScene = {
           objects: mesh.faces.map((face: Data, index: number) => ({
             id: face.persistent_reference || "unselectable-" + index,
@@ -182,11 +195,11 @@ export function CommercialView({
             ),
           })),
         };
-        nextParameters = await invoke("parameters.list", p);
+        nextParameters = await invoke("parameters.list", p, targetHost);
       } else if (c.active_document.document_type === 3)
-        nextSnapshot = await invoke("drawing.inspect", p);
+        nextSnapshot = await invoke("drawing.inspect", p, targetHost);
       else throw new Error("当前支持原生零件和工程图，请激活其中一个文档");
-      const current = await invoke("document.context");
+      const current = await invoke("document.context", {}, targetHost);
       if (
         !current.active_document ||
         normalPath(current.active_document.path) !==
@@ -201,12 +214,16 @@ export function CommercialView({
       setParameters(nextParameters);
       setSnapshot(nextSnapshot);
     } else {
-      const c = await invoke("documents.list");
+      const c = await invoke("documents.list", {}, targetHost);
       const active = c.documents.find((item: Data) => item.active);
       if (!active) throw new Error("AutoCAD 中没有活动图纸");
-      const next = await invoke("document.snapshot", {
-        document_id: active.document_id,
-      });
+      const next = await invoke(
+        "document.snapshot",
+        {
+          document_id: active.document_id,
+        },
+        targetHost,
+      );
       setSnapshot(next);
       setContext({ active_document: next.document });
     }
@@ -358,16 +375,45 @@ export function CommercialView({
         : ["completed", "failed", "cancelled_before_start"].includes(
             status.status,
           );
-    const outcome = result.error?.outcome || status.outcome;
+    const outcome = result.error?.outcome || result.outcome || status.outcome;
     if (!terminal || outcome === "unknown") return;
-    keepPending(null);
     clearSnapshot();
     if (
       result.status === "needs_review" ||
       result.rebuilt === false ||
       result.readback_matches === false
-    )
+    ) {
+      keepPending(null);
       setReviewRequired(true);
+      return;
+    }
+    const saved =
+      !result.error &&
+      (kind === "solidworks"
+        ? result.status === "saved"
+        : result.outcome === "committed");
+    if (
+      saved &&
+      ["document.save_copy", "drawing.import_dxf"].includes(pending.method)
+    ) {
+      const { path } = await registeredWorkingCopy(kind, pending);
+      await invoke(
+        "document.open",
+        {
+          operation_id: crypto.randomUUID(),
+          ...(kind === "solidworks"
+            ? {
+                document_path: path,
+                configuration: pending.params.configuration,
+                session_id: pending.params.session_id,
+              }
+            : { path }),
+        },
+        pending.host_id,
+      );
+      await refresh(pending.host_id);
+    }
+    keepPending(null);
   }
   async function moveDimension() {
     const coordinates = position.map(Number);
@@ -395,7 +441,7 @@ export function CommercialView({
       >
         查询原操作结果
       </button>
-      <p>查询不会再次执行原操作。保存结果只供核对，不自动授予副本修改资格。</p>
+      <p>查询不会再次执行原操作；确认并登记成功的工作副本会自动打开。</p>
     </div>
   );
   if (!host?.connected)

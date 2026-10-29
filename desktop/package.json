@@ -60,7 +60,9 @@
       "target": [
         "zip"
       ],
-      "identity": null
+      "identity": "-",
+      "sign": "./scripts/sign-development.cjs",
+      "hardenedRuntime": false
     },
     "win": {
       "target": [

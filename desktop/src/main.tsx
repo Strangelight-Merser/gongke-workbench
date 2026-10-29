@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { call, Data, errorText, text } from "./api";
 import { ModelView } from "./ModelView";
-import { CommercialView } from "./CommercialView";
+import {
+  CommercialView,
+  pendingKey,
+  savedPending,
+  registeredWorkingCopy,
+} from "./CommercialView";
 import "./style.css";
 
 const statuses: Data = {
@@ -30,6 +35,7 @@ function App() {
     [tasks, setTasks] = useState<Data[]>([]),
     [tab, setTab] = useState("native");
   const [hostKind, setHostKind] = useState("freecad");
+  const importingDxf = useRef(false);
   const [pendingNative, setPendingNative] = useState<Data | null>(() => {
     try {
       return JSON.parse(
@@ -153,6 +159,89 @@ function App() {
       );
       setTab("file");
     });
+  }
+  async function importDxf() {
+    if (importingDxf.current || !file) return;
+    importingDxf.current = true;
+    const showAutoCad = () => {
+      setHostKind("autocad");
+      setTab("native");
+    };
+    try {
+      await run("导入 AutoCAD", async () => {
+        if (savedPending("autocad")) {
+          showAutoCad();
+          throw new Error(
+            "上一次原生操作尚待确认，请查询原操作；本次未重复导入",
+          );
+        }
+        const host = hosts.find((h) => h.host === "autocad" && h.connected);
+        if (!host) throw new Error("AutoCAD 尚未连接");
+        const operation_id = crypto.randomUUID();
+        const request = {
+          host_id: host.host_id,
+          method: "drawing.import_dxf",
+          operation_id,
+          params: {
+            source_path: file.path,
+            target_path:
+              "revisions/dwg-" +
+              crypto.randomUUID().slice(0, 12) +
+              "/drawing.dwg",
+            operation_id,
+          },
+        };
+        const remember = (value: Data) =>
+          localStorage.setItem(pendingKey("autocad"), JSON.stringify(value));
+        remember({ ...request, state: "submitted" });
+        let result: Data;
+        try {
+          result = await call("host.command", {
+            host_id: request.host_id,
+            method: request.method,
+            params: request.params,
+          });
+        } catch (error) {
+          remember({
+            ...request,
+            error: { message: errorText(error), outcome: "unknown" },
+          });
+          showAutoCad();
+          throw error;
+        }
+        if (result.error) {
+          if (result.error.outcome === "unknown") {
+            remember({ ...request, ...result });
+            showAutoCad();
+          } else localStorage.removeItem(pendingKey("autocad"));
+          throw new Error(result.error.message);
+        }
+        remember({ ...request, result });
+        try {
+          if (result.outcome !== "committed")
+            throw new Error("导入结果尚未确认，请查询原操作回执");
+          const { project: updated, path } = await registeredWorkingCopy(
+            "autocad",
+            request,
+          );
+          setProject(updated);
+          const opened = await call("host.command", {
+            host_id: host.host_id,
+            method: "document.open",
+            params: { path, operation_id: crypto.randomUUID() },
+          });
+          if (opened.error) throw new Error(opened.error.message);
+          localStorage.removeItem(pendingKey("autocad"));
+          showAutoCad();
+          await refresh();
+        } catch (error) {
+          showAutoCad();
+          throw error;
+        }
+      });
+    } finally {
+      importingDxf.current = false;
+    }
   }
   async function send() {
     if (!prompt.trim()) return;
@@ -339,39 +428,7 @@ function App() {
                 </button>
                 {file.kind === "dxf" &&
                   hosts.some((h) => h.host === "autocad" && h.connected) && (
-                    <button
-                      onClick={() =>
-                        run("导入 AutoCAD", async () => {
-                          const host = hosts.find(
-                            (h) => h.host === "autocad" && h.connected,
-                          )!;
-                          const path =
-                            "revisions/dwg-" +
-                            crypto.randomUUID().slice(0, 12) +
-                            "/drawing.dwg";
-                          const r = await call("host.command", {
-                            host_id: host.host_id,
-                            method: "drawing.import_dxf",
-                            params: {
-                              source_path: file.path,
-                              target_path: path,
-                              operation_id: crypto.randomUUID(),
-                            },
-                          });
-                          if (r.error) throw new Error(r.error.message);
-                          const opened = await call("host.command", {
-                            host_id: host.host_id,
-                            method: "document.open",
-                            params: { path, operation_id: crypto.randomUUID() },
-                          });
-                          if (opened.error)
-                            throw new Error(opened.error.message);
-                          setHostKind("autocad");
-                          setTab("native");
-                          await refresh();
-                        })
-                      }
-                    >
+                    <button disabled={!!busy} onClick={importDxf}>
                       导入 AutoCAD 工作修订
                     </button>
                   )}

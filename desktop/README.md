@@ -32,7 +32,7 @@ npm ci
 npm run package
 ```
 
-产物位于 `desktop/release`。当前是未签名的开发构建；没有 Apple 公证或 Windows 安装实测声明。CI 构建 Windows/macOS 目录包，AutoCAD 另有 .NET 8 与 .NET 10 两种原生插件包。商业 CAD 安装与授权不包含在本应用中。
+产物位于 `desktop/release`。当前是开发构建：macOS 使用本地 ad hoc 签名并校验包完整性，没有 Apple Developer ID 或公证；Windows 未签名，安装过程仍待现场验证。CI 构建 Windows/macOS 目录包，AutoCAD 另有 .NET 8 与 .NET 10 两种原生插件包。商业 CAD 安装与授权不包含在本应用中。
 
 ## 验证
 
@@ -42,6 +42,9 @@ cd desktop
 npm run build
 npm test
 node tests/desktop-flow.cjs
+# 可选的商业 CAD 界面协议回归：替代宿主，不计作原生软件验收。
+npx playwright install chromium
+node tests/commercial-flow.cjs
 ```
 
 桌面验收使用真实 Electron、真实 Python 服务和真实文件：新建工程、计算、生成 STEP/图纸、SVG 预览、未配置模型时明确拒绝助手任务。结果与截图写入 `out/desktop-validation`。`tests/e2e/desktop_native_flow.py` 在单个真实 FreeCAD GUI 中核对网格、图纸、编辑、原生导出与重开。

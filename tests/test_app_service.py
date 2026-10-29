@@ -277,13 +277,14 @@ def test_no_project_required_for_freecad_read_and_teaching_label(app, monkeypatc
 
 
 def test_host_import_separates_source_and_target_and_does_not_overwrite(app, monkeypatch):
-    discovery = {"host_id": "autocad-1", "host": "autocad", "capabilities": []}
+    discovery = {"host_id": "autocad-1", "host": "autocad", "instance_id": "session", "capabilities": []}
     monkeypatch.setattr(app.hosts, "discover", lambda: [discovery])
     calls = []
-    def request(config, method, params):
+    def request(config, method, params, **kwargs):
         calls.append(params)
         Path(params["target_path"]).write_text("native DWG fixture")
-        return {"outcome": "committed", "path": params["target_path"]}
+        return {"outcome": "committed", "path": params["target_path"], "source_path": params["source_path"],
+                "operation_id": params["operation_id"], "original_preserved": True, "disk_reopen_verified": True}
     monkeypatch.setattr(app.hosts, "_request", request)
     source = app.project.path / "source.dxf"
     source.write_text("source")
@@ -294,10 +295,10 @@ def test_host_import_separates_source_and_target_and_does_not_overwrite(app, mon
     assert calls[0]["target_path"] == str(app.project.path / "revisions/copy.dwg")
     assert app.project.is_working_copy(calls[0]["target_path"], "autocad")
     (app.project.path / "revisions/copy.dwg").write_text("existing")
-    with pytest.raises(ValueError, match="已存在"):
-        app.dispatch("host.command", params)
-    with pytest.raises(ValueError, match="未获应用层支持"):
-        app.dispatch("host.command", {**params, "method": "document.save"})
+    rejected = app.dispatch("host.command", params)
+    assert rejected["error"]["outcome"] == "not_applied" and "已存在" in rejected["error"]["message"]
+    rejected = app.dispatch("host.command", {**params, "method": "document.save"})
+    assert rejected["error"]["outcome"] == "not_applied" and "未获应用层支持" in rejected["error"]["message"]
 
 
 def test_host_probe_error_does_not_claim_connection(app, monkeypatch):
@@ -326,16 +327,18 @@ def test_copy_registration_requires_matching_receipt_and_real_file(app):
 
 
 def test_solidworks_pair_registers_only_complete_verified_receipt(app, monkeypatch):
-    monkeypatch.setattr(app.hosts, "discover", lambda: [{"host_id": "sw-1", "host": "solidworks", "capabilities": []}])
+    monkeypatch.setattr(app.hosts, "discover", lambda: [{"host_id": "sw-1", "host": "solidworks", "session_id": "session", "capabilities": []}])
     verified = False
-    def save(config, method, params):
+    def save(config, method, params, **kwargs):
         for key in ("output_path", "output_part_path"):
             Path(params[key]).write_bytes(b"protocol file fixture")
         return {"status": "saved", "path": params["output_path"], "references_verified": verified,
+                "parameter_values_verified": True, "source_state_preserved": True, "reopen_verified": True,
                 "working_copies": [{"path": params[key], "verified": True} for key in ("output_path", "output_part_path")]}
     monkeypatch.setattr(app.hosts, "_request", save)
     def params(folder):
-        return {"host_id": "sw-1", "method": "document.save_copy", "params": {"operation_id": folder,
+        from uuid import uuid5, NAMESPACE_URL
+        return {"host_id": "sw-1", "method": "document.save_copy", "params": {"operation_id": str(uuid5(NAMESPACE_URL, folder)),
                 "output_path": folder + "/drawing.slddrw", "output_part_path": folder + "/shaft.sldprt"}}
     with pytest.raises(ValueError, match="未完整验证"):
         app.dispatch("host.command", params("unverified"))

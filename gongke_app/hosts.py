@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, TimeoutError
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import threading
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from gongke_core import native_client
 
@@ -15,6 +16,29 @@ READ_METHODS = {"host.info", "host.describe", "document.context", "documents.lis
                 "parameters.list", "drawing.inspect", "operation.get", "operation.status", "preview.mesh", "selection.get"}
 WRITE_METHODS = {"parameter.change", "drawing.update", "document.save_copy", "drawing.export",
                  "document.select", "selection.set", "drawing.edit_text", "drawing.move_dimension_text", "drawing.import_dxf", "document.open", "document.activate", "operation.cancel"}
+COPY_METHODS = {"document.save_copy", "drawing.import_dxf"}
+
+
+def _fingerprint(method, params):
+    # Native copy parameters are strings and integer revisions. Newtonsoft also
+    # escapes these three line separators in its default compact JSON output.
+    canonical = json.dumps(params, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    for character in ("\u0085", "\u2028", "\u2029"):
+        canonical = canonical.replace(character, "\\u" + format(ord(character), "04x"))
+    return hashlib.sha256((method + "\n" + canonical).encode("utf-8")).hexdigest()
+
+
+def _operation_id(host, value):
+    if not isinstance(value, str) or not value:
+        raise ValueError("操作 ID 必须是非空字符串")
+    return str(UUID(value)) if host == "solidworks" else value
+
+
+def _host_session(config):
+    value = config.get("session_id" if config["host"] == "solidworks" else "instance_id")
+    if not isinstance(value, str) or not value:
+        raise ValueError("宿主发现信息缺少会话身份，无法确认副本操作归属")
+    return value
 
 # These parameter contracts match the shipped native adapters. They travel with
 # discovery so the model can construct commands without guessing custom fields.
@@ -91,7 +115,7 @@ class Hosts:
             result.append(public)
         return {"platform_supported": os.name == "nt", "hosts": result}
 
-    def command(self, host_id, method, params, project):
+    def _prepare_command(self, host_id, method, params, project):
         if method not in READ_METHODS | WRITE_METHODS:
             raise ValueError("该宿主命令未获应用层支持")
         config = next((item for item in self.discover() if item["host_id"] == host_id), None)
@@ -120,30 +144,102 @@ class Hosts:
             if config["host"] == "solidworks" and method in {"parameter.change", "drawing.update"}:
                 if not project.is_working_copy(params.get("document_path"), "solidworks"):
                     raise ValueError("请先通过工作台保存并打开新的原生工作副本，再执行修改")
-            if config["host"] == "autocad" and method in {"drawing.edit_text", "drawing.move_dimension_text"}:
-                context = self._request(config, "documents.list", {})
-                document = next((item for item in context.get("documents", []) if item["document_id"] == params.get("document_id")), None)
-                if not document or not project.is_working_copy(document.get("path"), "autocad"):
-                    raise ValueError("请先通过工作台保存并打开新的 DWG 工作副本，再执行修改")
-        result = self._request(config, method, params)
-        if method in {"document.save_copy", "drawing.import_dxf"} and isinstance(result, dict):
-            success = result.get("status") == "saved" if config["host"] == "solidworks" else result.get("outcome") == "committed"
-            if success:
-                if config["host"] == "solidworks" and params.get("output_part_path"):
-                    copies = result.get("working_copies", [])
-                    expected = {Path(params["output_path"]).resolve(), Path(params["output_part_path"]).resolve()}
-                    if (result.get("references_verified") is not True or len(copies) != 2
-                            or any(not isinstance(item.get("path"), str) for item in copies)
-                            or {Path(item["path"]).resolve() for item in copies} != expected
-                            or any(item.get("verified") is not True for item in copies)):
-                        raise ValueError("关联工作副本回执未完整验证两个文件与引用关系；未授予修改资格")
-                    project.register_copies([(item["path"], item) for item in copies], config["host"])
-                else:
-                    target = params.get("output_path") or params.get("target_path")
-                    project.register_copy(target, config["host"], result)
+        operation = None
+        if method in COPY_METHODS:
+            operation = {"operation_id": _operation_id(config["host"], params["operation_id"]),
+                         "host": config["host"], "host_id": host_id, "host_session": _host_session(config),
+                         "method": method, "params": params, "fingerprint": _fingerprint(method, params),
+                         "request_id": uuid4().hex, "state": "unregistered"}
+            project.remember_copy_operation(operation)
+        return config, params, operation
+
+    def command(self, host_id, method, params, project):
+        try:
+            config, params, operation = self._prepare_command(host_id, method, params, project)
+        except (ValueError, TypeError, OSError) as exc:
+            return {"error": {"code": "command_not_submitted", "outcome": "not_applied", "message": str(exc)}}
+        if config["host"] == "autocad" and method in {"drawing.edit_text", "drawing.move_dimension_text"}:
+            # A transport failure stays unknown. A successful read proving this
+            # is an original document is a known refusal before any edit is sent.
+            context = self._request(config, "documents.list", {})
+            if "error" in context:
+                return context
+            document = next((item for item in context.get("documents", []) if item["document_id"] == params.get("document_id")), None)
+            if not document or not project.is_working_copy(document.get("path"), "autocad"):
+                return {"error": {"code": "command_not_submitted", "outcome": "not_applied",
+                                  "message": "请先通过工作台保存并打开新的 DWG 工作副本，再执行修改"}}
+        if operation is not None:
+            result = self._request(config, method, params, request_id=operation["request_id"])
+            self._register_copy_result(operation, result, project)
+        else:
+            result = self._request(config, method, params)
+            if method == ("operation.get" if config["host"] == "solidworks" else "operation.status"):
+                self._recover_copy(config, params, result, project)
         return result
 
-    def _request(self, config, method, params, timeout=30):
+    @staticmethod
+    def _register_copy_result(operation, result, project):
+        if not isinstance(result, dict) or "error" in result:
+            return
+        host, params, operation_id = operation["host"], operation["params"], operation["operation_id"]
+        if host == "solidworks":
+            if result.get("status") != "saved":
+                return
+            if params.get("output_part_path"):
+                copies = result.get("working_copies", [])
+                expected = {Path(params["output_path"]).resolve(), Path(params["output_part_path"]).resolve()}
+                if (any(result.get(flag) is not True for flag in ("references_verified", "parameter_values_verified", "source_state_preserved", "reopen_verified"))
+                        or not isinstance(copies, list) or len(copies) != 2
+                        or any(not isinstance(item, dict) or not isinstance(item.get("path"), str) for item in copies)
+                        or {Path(item["path"]).resolve() for item in copies} != expected
+                        or any(item.get("verified") is not True for item in copies)
+                        or not isinstance(result.get("path"), str)
+                        or Path(result["path"]).resolve() != Path(params["output_path"]).resolve()):
+                    raise ValueError("关联工作副本回执未完整验证两个文件与引用关系；未授予修改资格")
+                project.register_copies([(item["path"], item) for item in copies], host, operation_id=operation_id)
+                return
+            if result.get("file_exists") is not True or type(result.get("errors")) is not int or result["errors"] != 0:
+                raise ValueError("原生副本保存回执缺少可靠成功状态；未授予修改资格")
+        else:
+            if result.get("outcome") != "committed":
+                return
+            if (result.get("operation_id") != operation_id or result.get("disk_reopen_verified") is not True
+                    or result.get("original_preserved") is not True):
+                raise ValueError("原生副本保存回执与操作不匹配或未验证文件；未授予修改资格")
+            if operation["method"] == "drawing.import_dxf" and result.get("source_path") != params["source_path"]:
+                raise ValueError("导入副本回执的源文件不匹配；未授予修改资格")
+        target = params.get("output_path") or params.get("target_path")
+        project.register_copy(target, host, result, operation_id=operation_id)
+
+    def _recover_copy(self, config, params, result, project):
+        operation_id = _operation_id(config["host"], params.get("operation_id"))
+        operation = project.copy_operation(operation_id)
+        # A successful unrelated operation cannot grant permission to a file.
+        if operation is None:
+            return
+        if (operation["host"] != config["host"] or operation["host_id"] != config["host_id"]
+                or operation["host_session"] != _host_session(config)
+                or operation["method"] not in COPY_METHODS
+                or _operation_id(config["host"], operation["params"].get("operation_id")) != operation_id
+                or operation["fingerprint"] != _fingerprint(operation["method"], operation["params"])):
+            raise ValueError("副本操作与原请求或宿主会话不匹配；未授予修改资格")
+        if not isinstance(result, dict):
+            return
+        finished = result.get("state") == "finished" if config["host"] == "solidworks" else (
+            result.get("status") == "completed" and result.get("outcome") == "committed")
+        if not finished:
+            return
+        if (result.get("operation_id") != operation_id or (config["host"] == "solidworks" and (
+                result.get("session_id") != operation["host_session"] or result.get("fingerprint") != operation["fingerprint"]))):
+            raise ValueError("宿主回执的操作 ID、会话或命令参数指纹不匹配；未授予修改资格")
+        response = result.get("response")
+        if not isinstance(response, dict) or "error" in response:
+            return
+        if response.get("id") != operation["request_id"]:
+            raise ValueError("宿主回执与原请求 ID 不匹配；未授予修改资格")
+        self._register_copy_result(operation, response.get("result"), project)
+
+    def _request(self, config, method, params, timeout=30, request_id=None):
         if os.name != "nt":
             raise ValueError("该原生桥接需要在 Windows 上运行；发现文件不代表已连接")
         with self.lock:
@@ -151,6 +247,7 @@ class Hosts:
         if not lock.acquire(timeout=timeout):
             raise ValueError("上一次宿主操作尚未返回；请先确认结果，不应重复写入")
         future = Future()
+        wire_id = request_id or uuid4().hex
 
         def transact():
             try:
@@ -161,8 +258,7 @@ class Hosts:
                 kernel.WaitNamedPipeW.restype = ctypes.c_int
                 if not kernel.WaitNamedPipeW(pipe, int(timeout * 1000)):
                     raise ValueError("CAD 命名管道不可用；请检查插件加载状态")
-                request_id = uuid4().hex
-                payload = {"id": request_id, "method": method, "params": params, "token": config["token"]}
+                payload = {"id": wire_id, "method": method, "params": params, "token": config["token"]}
                 with open(pipe, "r+b", buffering=0) as stream:
                     stream.write((json.dumps(payload, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8"))
                     data = bytearray()
@@ -174,7 +270,7 @@ class Hosts:
                     if len(data) > 8 * 1024 * 1024:
                         raise ValueError("宿主响应超过大小上限")
                 reply = json.loads(data)
-                if reply.get("id") != request_id:
+                if reply.get("id") != wire_id:
                     raise ValueError("宿主响应 ID 不匹配")
                 if "error" in reply:
                     future.set_result({"error": reply["error"]})

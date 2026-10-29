@@ -137,7 +137,18 @@ def main():
 
     instance = None
     app = None
+    diagnostic_file = None
     try:
+        # Only the isolated desktop test enables stack-only diagnostics; no locals
+        # or request contents are recorded, and normal application runs create no log.
+        diagnostics = os.environ.get("GONGKE_TEST_DIAGNOSTICS_DIR")
+        if diagnostics:
+            import faulthandler
+            directory = Path(diagnostics).resolve()
+            directory.mkdir(parents=True, exist_ok=True)
+            diagnostic_file = (directory / "python-threads.log").open("a", encoding="utf-8")
+            faulthandler.enable(file=diagnostic_file, all_threads=True)
+            faulthandler.dump_traceback_later(60, repeat=True, file=diagnostic_file)
         instance = InstanceLock(args.state_dir)
         app = Application(args.state_dir, emit)
         for line in sys.stdin:
@@ -159,6 +170,10 @@ def main():
             app.close()
         if instance:
             instance.close()
+        if diagnostic_file:
+            faulthandler.cancel_dump_traceback_later()
+            faulthandler.disable()
+            diagnostic_file.close()
     return 0
 
 
