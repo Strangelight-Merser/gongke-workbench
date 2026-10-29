@@ -204,7 +204,7 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
             v.dim((xt, -rt), (xt, rt), (xt, 0), 90, "%%c<>", 2, tol=tol.deviations("h11", 2 * rt / 1e3))
             continue
         if seg.keyway or narrow:
-            # 文字放不下或与键槽重叠：把文字引到轴的下方
+            # 文字引到整根轴轮廓下方，避免横向移位后碰到相邻的较大齿部。
             xm = (a + b) / 2 if narrow else a + (b - a - seg.keyway[2] * 1e3) / 4
             lx, ly = v.P(xm, -d / 2)
             tx = lx - (24 if dev else 12) if seg.role == "轴承" else lx + 4  # 轴承段下方有基准符号，文字放左边
@@ -212,7 +212,7 @@ def draw(design: ReducerDesign, sr: ShaftResult, path: str | Path, drawing_no: s
                 tx += 7
             used_x.append(tx)
             sh.dim(v.P(xm, -d / 2), v.P(xm, d / 2), v.P(xm, 0), 90, txt, s, 1 if d % 1 else 0,
-                   location=(tx, ly - 9), tol=dev)
+                   location=(tx, min(ly, v.P(0, -d_max / 2)[1]) - 9), tol=dev)
         else:
             # 尺寸线沿轴线附近试几个位置，避开齿部轮廓、台阶的粗实线
             v.dim_auto((xm, -d / 2), (xm, d / 2), [(xm + off / s, 0) for off in (0, 3, -3, 6, -6, 10, -10)],

@@ -342,7 +342,8 @@ def _front(d, t: HousingDetail, v: View, sh: Sheet, tl: dict):
     v.dim((xo1 + fw, 0), (xo1 + fw, yb), (xr + 12 / s, 0), 90, "<>", 0)
     v.dim((xo1 + fw, -b), (xo1 + fw, 0), (xr + 4 / s, 0), 90, "<>", 0)
     xa_ = blocks[0][0]
-    v.dim((xa_, -hb), (xa_, 0), (xa_ - 6 / s, 0), 90, "<>", 0)  # 轴承旁凸台高度
+    # 轴承旁凸台高度：吊钩可能穿过原固定位置，沿外侧候选尺寸线避开轮廓。
+    v.dim_auto((xa_, -hb), (xa_, 0), [(xa_ - gap / s, 0) for gap in (6, 12, 18)], 90, "<>", 0)
     v.dim((xo0 - fw, yb), (xo0 - fw, yb + b2), (xo0 - fw - 8 / s, yb), 90, "<>", 0)
     # 轴承孔直径
     for i, (x, D) in enumerate(zip(xs, Ds)):
