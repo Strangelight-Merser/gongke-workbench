@@ -60,8 +60,14 @@ class Tasks:
 
     def list(self, project=None):
         with self.lock:
-            rows = [json.loads(row[0]) for row in self.db.execute("SELECT record FROM tasks ORDER BY rowid DESC LIMIT 100")]
-        return [row for row in rows if project is None or row["project"] == project]
+            rows = [json.loads(row[0]) for row in self.db.execute("SELECT record FROM tasks ORDER BY rowid DESC")]
+        return [row for row in rows if project is None or row["project"] == project][:100]
+
+    def active(self, project, kind=None):
+        with self.lock:
+            rows = [json.loads(row[0]) for row in self.db.execute("SELECT record FROM tasks")]
+        return any(row["project"] == project and row["status"] in {"queued", "running"}
+                   and (kind is None or row["kind"] == kind) for row in rows)
 
     def update(self, task_id, **changes):
         with self.lock:

@@ -35,6 +35,7 @@ const statuses: Data = {
   canceled: "已取消",
   interrupted: "已中断",
   partial: "部分完成",
+  needs_attention: "需检查",
 };
 const schemes: Data = {
   coupling: "二级圆柱齿轮 · 联轴器",
@@ -56,6 +57,29 @@ function App() {
     [filesOpen, setFilesOpen] = useState(false);
   const [hostKind, setHostKind] = useState("freecad");
   const importingDxf = useRef(false);
+  const currentProject = useRef("");
+  const loadHistory = useCallback(async () => {
+    const data = await call("agent.history");
+    if (data.project !== currentProject.current) return;
+    setMessages(
+      data.turns.flatMap((turn: Data) => [
+        { id: turn.task_id + "-user", role: "user", content: turn.user },
+        ...turn.messages
+          .filter((m: Data) => m.role === "assistant" && m.content)
+          .map((m: Data, i: number) => ({ ...m, id: turn.task_id + "-" + i })),
+        ...(turn.status !== "complete"
+          ? [
+              {
+                id: turn.task_id + "-status",
+                role: "assistant",
+                content:
+                  turn.error || "上次执行未完整结束，请核对任务回执后继续。",
+              },
+            ]
+          : []),
+      ]),
+    );
+  }, []);
   const [pendingNative, setPendingNative] = useState<Data | null>(() => {
     try {
       return JSON.parse(
@@ -113,7 +137,10 @@ function App() {
       call("hosts.list"),
     ]);
     if (s.status === "fulfilled") setStatus({ ...s.value, online: true });
-    if (p.status === "fulfilled") setProject(p.value);
+    if (p.status === "fulfilled") {
+      currentProject.current = p.value.path;
+      setProject(p.value);
+    }
     if (t.status === "fulfilled")
       setTasks(Array.isArray(t.value) ? t.value : t.value.tasks || []);
     if (h.status === "fulfilled")
@@ -134,7 +161,9 @@ function App() {
   useEffect(() => {
     refresh();
     const stop = window.gongke.onEvent((event) => {
+      if (event.project && event.project !== currentProject.current) return;
       if (event.event === "task.updated") {
+        if (event.task.project !== currentProject.current) return;
         setTasks((items) => [
           event.task,
           ...items.filter((item) => item.task_id !== event.task.task_id),
@@ -143,8 +172,11 @@ function App() {
           ["complete", "partial", "failed", "canceled"].includes(
             event.task.status,
           )
-        )
+        ) {
           refresh();
+          if (event.task.kind === "agent")
+            loadHistory().catch((e) => setError(errorText(e)));
+        }
       }
       if (event.event === "agent.delta")
         setMessages((items) => {
@@ -201,13 +233,24 @@ function App() {
       if (event.event === "agent.unavailable") setError(event.message);
     });
     return stop;
-  }, [refresh]);
+  }, [refresh, loadHistory]);
+  useEffect(() => {
+    currentProject.current = project?.path || "";
+    setMessages([]);
+    setPrompt("");
+    setNative({});
+    setFile(null);
+    setCheck(null);
+    setTab("task");
+    if (project) loadHistory().catch((e) => setError(errorText(e)));
+  }, [project?.path, loadHistory]);
   // 打开带条件的工程时做一次只读计算，侧栏阶段状态与校核汇总由它得出。
   const taskKey = project
-    ? project.path + JSON.stringify(project.task || {})
+    ? project.path + JSON.stringify([project.task, project.teaching])
     : "";
   useEffect(() => {
     setCheck(null);
+    setResult(null);
     if (!project?.task?.conveyor) {
       setResult(null);
       return;
@@ -215,7 +258,9 @@ function App() {
     let live = true;
     call("design.calculate", { task: project.task })
       .then((value) => live && setResult(value))
-      .catch(() => live && setResult(null));
+      .catch((e) => {
+        if (live) setError(errorText(e));
+      });
     return () => {
       live = false;
     };
@@ -228,6 +273,7 @@ function App() {
         path,
         ...(create ? { teaching: false } : {}),
       });
+      currentProject.current = result.path;
       setProject(result);
       setFile(null);
       await refresh();
@@ -330,18 +376,40 @@ function App() {
     }
   }
   async function send() {
-    if (!prompt.trim()) return;
+    if (
+      !prompt.trim() ||
+      tasks.some(
+        (t) => t.kind === "agent" && ["queued", "running"].includes(t.status),
+      )
+    )
+      return;
     const message = prompt;
-    setMessages((items) => [
-      ...items,
-      { id: crypto.randomUUID(), role: "user", content: message },
-    ]);
-    setPrompt("");
+    const id = crypto.randomUUID();
+    setMessages((items) => [...items, { id, role: "user", content: message }]);
     await run("提交任务", async () => {
-      await call("agent.run", { message, allow_writes: allowWrites });
+      try {
+        await call("agent.run", {
+          message,
+          allow_writes: allowWrites,
+          selection: {
+            stage: tab,
+            check: check || null,
+            file: file?.path || null,
+            native,
+            input_hash: project?.input_hash,
+          },
+        });
+        setPrompt("");
+      } catch (e) {
+        setMessages((items) => items.filter((item) => item.id !== id));
+        throw e;
+      }
       await refresh();
     });
   }
+  const fileRevision = project?.generations?.find((revision: Data) =>
+    file?.path.startsWith(revision.path + "/"),
+  );
   const r = summaryOf(result);
   const stageIndex = STAGES.findIndex((s) => s.id === tab);
   const allChecks: Data[] = r?.checks || [];
@@ -560,6 +628,7 @@ function App() {
                   project={project}
                   run={run}
                   onContext={setNative}
+                  onProjectChange={refresh}
                   pendingOperation={pendingNative}
                   setPendingOperation={setPendingNative}
                 />
@@ -659,6 +728,13 @@ function App() {
           {tab === "file" && file && (
             <div className="file-view">
               <div className="toolbar">
+                {fileRevision && (
+                  <span>
+                    {fileRevision.current
+                      ? "当前条件的成果"
+                      : "已过期 · 历史条件的成果"}
+                  </span>
+                )}
                 <button
                   onClick={() =>
                     run("定位文件", () => window.gongke.reveal(file.path))
@@ -801,7 +877,16 @@ function App() {
                 </label>
                 <button
                   className="primary"
-                  disabled={!project || !prompt.trim() || !!busy}
+                  disabled={
+                    !project ||
+                    !prompt.trim() ||
+                    !!busy ||
+                    tasks.some(
+                      (t) =>
+                        t.kind === "agent" &&
+                        ["queued", "running"].includes(t.status),
+                    )
+                  }
                   onClick={send}
                 >
                   发送 <span className="inline-icon">↑</span>
@@ -829,16 +914,19 @@ function App() {
           </button>
         )}
         <span className="revs">
-          {(project?.results || [])
-            .slice(-4)
+          {(project?.generations || [])
+            .slice(0, 4)
+            .reverse()
             .map((x: Data, i: number, all: Data[]) => (
               <span
                 key={i}
-                className={"rev" + (i === all.length - 1 ? " cur" : "")}
+                className={
+                  "rev" + (x.path === project?.delivery?.path ? " cur" : "")
+                }
                 title={x.directory || x.output_dir || x.path || ""}
               >
                 <i />r{(project?.results?.length || 0) - all.length + i + 1}
-                {x.name && x.name !== x.kind ? " " + x.name : " 出图"}
+                {" " + (!x.current ? "已过期" : statuses[x.status] || x.status)}
               </span>
             ))}
         </span>
@@ -901,15 +989,25 @@ function TaskForm({
   refresh: () => Promise<void>;
   onResult: (r: Data) => void;
 }) {
-  const [task, setTask] = useState<Data>(project.task || {}),
+  const blank = () => ({
+    scheme: "coupling",
+    conveyor: {},
+    life: { years: 10, days_per_year: 300, shifts: 2 },
+    bearing_life_years: 3,
+  });
+  const [task, setTask] = useState<Data>(project.task || blank()),
     [advanced, setAdvanced] = useState(false),
-    [draft, setDraft] = useState("");
-  useEffect(() => setTask(project.task || {}), [project.task]);
+    [draft, setDraft] = useState(""),
+    [teaching, setTeaching] = useState(!!project.teaching);
+  useEffect(() => {
+    setTask(project.task || blank());
+    setTeaching(!!project.teaching);
+  }, [JSON.stringify(project.task), project.teaching]);
   const change = (key: string, value: number) =>
     setTask({ ...task, conveyor: { ...task.conveyor, [key]: value } });
   async function calculate() {
     await run("计算中", async () => {
-      await call("project.set_task", { task });
+      setProject(await call("project.set_task", { task, teaching }));
       onResult(await call("design.calculate", { task }));
       await refresh();
     });
@@ -935,12 +1033,7 @@ function TaskForm({
           载入教学条件
         </button>
       </div>
-      {!task.conveyor ? (
-        <Empty
-          title="尚无计算条件"
-          body="从教学示例开始，或通过工程助手输入你的任务书。"
-        />
-      ) : (
+      {
         <>
           <div className="form-grid">
             <label>
@@ -961,7 +1054,7 @@ function TaskForm({
               <input
                 type="number"
                 min="1"
-                value={task.conveyor.belt_pull_N}
+                value={task.conveyor?.belt_pull_N ?? ""}
                 onChange={(e) => change("belt_pull_N", +e.target.value)}
               />
             </label>
@@ -971,7 +1064,7 @@ function TaskForm({
                 type="number"
                 step="0.1"
                 min="0.01"
-                value={task.conveyor.belt_speed_m_s}
+                value={task.conveyor?.belt_speed_m_s ?? ""}
                 onChange={(e) => change("belt_speed_m_s", +e.target.value)}
               />
             </label>
@@ -980,11 +1073,55 @@ function TaskForm({
               <input
                 type="number"
                 min="1"
-                value={task.conveyor.drum_diameter_mm}
+                value={task.conveyor?.drum_diameter_mm ?? ""}
                 onChange={(e) => change("drum_diameter_mm", +e.target.value)}
               />
             </label>
           </div>
+          <div className="form-grid">
+            {[
+              ["years", "使用年限 / 年"],
+              ["days_per_year", "每年工作天数"],
+              ["shifts", "每天班数（每班 8 小时）"],
+            ].map(([key, label]) => (
+              <label key={key}>
+                {label}
+                <input
+                  type="number"
+                  min="1"
+                  value={task.life?.[key] ?? ""}
+                  onChange={(e) =>
+                    setTask({
+                      ...task,
+                      life: { ...task.life, [key]: +e.target.value },
+                    })
+                  }
+                />
+              </label>
+            ))}
+            <label>
+              轴承检修期 / 年
+              <input
+                type="number"
+                min="1"
+                value={task.bearing_life_years ?? ""}
+                onChange={(e) =>
+                  setTask({ ...task, bearing_life_years: +e.target.value })
+                }
+              />
+            </label>
+          </div>
+          <label className="source-choice">
+            <input
+              type="checkbox"
+              checked={teaching}
+              onChange={(e) => setTeaching(e.target.checked)}
+            />{" "}
+            教学示例条件
+          </label>
+          <p className="hint">
+            未指定的材料、精度与系数采用课程计算默认值，完整条件和生成说明书保留取值依据；通过校核不代表专业验收。
+          </p>
           <div className="toolbar">
             <button className="primary" onClick={calculate}>
               计算方案
@@ -992,12 +1129,14 @@ function TaskForm({
             <button
               onClick={() =>
                 run("生成工程", async () => {
-                  await call("project.set_task", { task });
+                  setProject(
+                    await call("project.set_task", { task, teaching }),
+                  );
                   await call("design.generate", {
                     task,
                     step: true,
                     drawings: true,
-                    report_docx: false,
+                    report_docx: true,
                     full_teeth: false,
                   });
                   await refresh();
@@ -1034,7 +1173,10 @@ function TaskForm({
                     run("保存条件", async () => {
                       const next = JSON.parse(draft);
                       setProject(
-                        await call("project.set_task", { task: next }),
+                        await call("project.set_task", {
+                          task: next,
+                          teaching,
+                        }),
                       );
                       setTask(next);
                       setAdvanced(false);
@@ -1047,7 +1189,7 @@ function TaskForm({
             </div>
           </div>
         </>
-      )}
+      }
     </div>
   );
 }
@@ -1096,34 +1238,54 @@ function StageView({
       </div>
     );
   if (id === "drawings" || id === "report") {
-    const files = (project.files || []).filter((f: Data) =>
-      id === "drawings"
-        ? f.kind === "svg" && f.path.includes("/drawings/")
-        : /report\.(md|docx)$/.test(f.name),
-    );
-    return files.length ? (
-      <div className="sheet-grid">
-        {files.map((f: Data) => (
-          <button
-            key={f.path}
-            className="sheet-card"
-            onClick={() => openFile(f)}
-          >
-            <span className="sheet-thumb">{f.kind.toUpperCase()}</span>
-            <b>{f.name}</b>
-            <small>{f.path.split("/").slice(0, -1).join("/")}</small>
-          </button>
+    const revisions: Data[] = project.generations || [];
+    const groups = revisions.map((revision) => ({
+      revision,
+      files: (project.files || []).filter(
+        (f: Data) =>
+          f.path.startsWith(revision.path + "/") &&
+          (id === "drawings"
+            ? f.kind === "svg" && f.path.includes("/drawings/")
+            : /report\.(md|docx)$/.test(f.name)),
+      ),
+    }));
+    return groups.length ? (
+      <div>
+        {groups.map(({ revision, files }) => (
+          <section key={revision.path} className="revision-group">
+            <h3>
+              {revision.path.split("/").pop()} ·{" "}
+              {revision.current ? "当前条件" : "已过期 · 历史条件"}
+              {revision.status !== "complete"
+                ? " · " + (statuses[revision.status] || revision.status)
+                : ""}
+            </h3>
+            {!files.length && <p className="hint">此修订尚无可查看的产物。</p>}
+            <div className="sheet-grid">
+              {files.map((f: Data) => (
+                <button
+                  key={f.path}
+                  className="sheet-card"
+                  onClick={() => openFile(f)}
+                >
+                  <span className="sheet-thumb">{f.kind.toUpperCase()}</span>
+                  <b>{f.name}</b>
+                </button>
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     ) : (
       <Empty
         title={id === "drawings" ? "还没有图纸" : "还没有说明书"}
-        body="在任务书一步选择「生成模型与图纸」，生成的文件会出现在这里。"
+        body="保存任务书后生成模型与图纸，说明书会一并生成。"
         action="去任务书"
         onAction={() => go("task")}
       />
     );
   }
+
   if (!r) return <NeedCalc go={() => go("task")} />;
   const own = stageChecks(r, id);
   if (id === "plan")
@@ -1283,6 +1445,7 @@ function Native({
   project,
   run,
   onContext,
+  onProjectChange,
   pendingOperation,
   setPendingOperation,
 }: {
@@ -1291,6 +1454,7 @@ function Native({
   project: Data | null;
   run: any;
   onContext: (data: Data) => void;
+  onProjectChange: () => Promise<void>;
   pendingOperation: Data | null;
   setPendingOperation: (value: Data | null) => void;
 }) {
@@ -1316,6 +1480,7 @@ function Native({
   const select = useCallback(
     (id: string) => {
       setSelected(id);
+      onContext({ ...context, selected_object: id });
       onInspect();
       setObject(null);
       setPreview(null);
@@ -1443,6 +1608,7 @@ function Native({
                       "/shaft.FCStd",
                   });
                   await refresh();
+                  await onProjectChange();
                 })
               }
             >
@@ -1564,6 +1730,7 @@ function Native({
                             page_name: page,
                             expected_revision: context.revision,
                           });
+                          await onProjectChange();
                         })
                       }
                     >
@@ -1691,6 +1858,7 @@ function Native({
   );
 }
 function TaskList({ tasks, run }: { tasks: Data[]; run: any }) {
+  const [details, setDetails] = useState<Data>({});
   return (
     <div className="task-list">
       {!tasks.length && (
@@ -1724,6 +1892,33 @@ function TaskList({ tasks, run }: { tasks: Data[]; run: any }) {
               取消待执行操作
             </button>
           )}
+          <button
+            onClick={() =>
+              run("读取回执", async () => {
+                const detail = await call("task.get", {
+                  task_id: task.task_id,
+                });
+                setDetails((items) => ({ ...items, [task.task_id]: detail }));
+              })
+            }
+          >
+            查看操作回执
+          </button>
+          {details[task.task_id] && (
+            <div>
+              {details[task.task_id].receipts.length ? (
+                details[task.task_id].receipts.map(
+                  (receipt: Data, i: number) => (
+                    <Collapsible key={i} title={receipt.command}>
+                      <Json value={receipt} />
+                    </Collapsible>
+                  ),
+                )
+              ) : (
+                <p className="hint">此任务没有工具操作回执。</p>
+              )}
+            </div>
+          )}
           {task.result && (
             <Collapsible title="结果">
               <Json value={task.result} />
@@ -1747,6 +1942,7 @@ function Settings({
       base_url: "",
       model: "",
       api_key: "",
+      remember_key: false,
     }),
     [notice, setNotice] = useState("");
   useEffect(() => {
@@ -1788,6 +1984,15 @@ function Settings({
             onChange={(e) => setValues({ ...values, api_key: e.target.value })}
           />
         </label>
+        <label className="source-choice">
+          <input
+            type="checkbox"
+            checked={!!values.remember_key}
+            onChange={(e) => setValues({ ...values, remember_key: e.target.checked })}
+          />
+          在此设备保存密钥
+        </label>
+        <p className="muted">默认仅本次会话使用。保存密钥时，macOS 可能要求钥匙串授权。</p>
         {notice && <p>{notice}</p>}
         <div className="toolbar">
           <button
@@ -1798,7 +2003,9 @@ function Settings({
                 setNotice(
                   result.persisted
                     ? "已通过系统加密保存。连接将在首次任务时验证。"
-                    : "已载入本次会话；系统加密不可用，密钥不会保存。",
+                    : values.remember_key
+                      ? "已载入本次会话；系统加密不可用，密钥不会保存。"
+                      : "已载入本次会话，密钥未保存。",
                 );
                 setValues({
                   ...values,

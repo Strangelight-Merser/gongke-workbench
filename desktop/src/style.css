@@ -1558,3 +1558,21 @@ footer button {
     opacity: 1;
   }
 }
+
+.design .source-choice, .modal .source-choice {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 8px;
+}
+.design .source-choice input, .modal .source-choice input {
+  width: auto;
+  margin: 0;
+}
+.design .form-grid + .form-grid {
+  margin-top: 16px;
+}
+.revision-group + .revision-group {
+  margin-top: 24px;
+}

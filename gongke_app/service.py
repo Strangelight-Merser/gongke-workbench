@@ -38,6 +38,8 @@ class Application:
                     "packaged": bool(getattr(sys, "frozen", False)),
                     "agent": self.provider.status() if self.provider else {"configured": False, "connection": "未连接模型服务"},
                     "project": str(self.project.path) if self.project else None}
+        if method in {"project.create", "project.open"} and self.project and self.tasks.active(str(self.project.path)):
+            raise ValueError("当前工程仍有任务执行中，请等待结束或取消后切换工程")
         if method == "project.create":
             validate(params, schema({"path": TEXT, "name": TEXT, "teaching": BOOL}, ["path"]))
             self.project = Project.create(**params)
@@ -45,10 +47,16 @@ class Application:
         if method == "project.open":
             validate(params, schema({"path": TEXT}, ["path"]))
             self.project = Project.open(**params)
+            for record in self.project.manifest["results"]:
+                if record.get("status") == "running":
+                    self.project.update_result(record["path"], {"status": "interrupted", "error": "上次生成中断；已保留实际文件，请生成新修订"})
             return self.project.view()
         if method == "project.set_task":
             validate(params, schema({"task": TASK, "teaching": BOOL}, ["task"]))
-            return self.current().set_task(**params)
+            return self.commands.call(method, {"teaching": self.current().manifest["teaching"], **params}, self.current())
+        if method == "agent.history":
+            validate(params, schema())
+            return {"project": str(self.current().path), "turns": self.current().conversation()}
         if method == "task.list":
             validate(params, schema())
             return self.tasks.list(str(self.project.path) if self.project else None)
@@ -64,20 +72,24 @@ class Application:
             self.provider = None
             return {"configured": False}
         if method == "agent.run":
-            validate(params, schema({"message": TEXT, "allow_writes": BOOL}, ["message"]))
+            validate(params, schema({"message": TEXT, "allow_writes": BOOL, "selection": TASK}, ["message"]))
             if self.provider is None:
                 raise ValueError("未连接模型服务，请在设置中填写服务地址、模型名称和 API Key；手动工程操作仍可使用")
             if not params["message"].strip():
                 raise ValueError("请输入工程任务")
             project, provider = self.current(), self.provider
+            if self.tasks.active(str(project.path), "agent"):
+                raise ValueError("助手正在执行上一条任务，请等待结束或取消后继续")
             from gongke_app.agent.loop import run
             return self.tasks.start("agent", project.path, lambda ctx: run(
-                provider, self.commands, project, params["message"], params.get("allow_writes", False), ctx, self.emit))
+                provider, self.commands, project, params["message"], params.get("allow_writes", False), ctx, self.emit, params.get("selection")))
         if method == "design.generate":
             validate(params, self.commands.definitions[method][1])
             project = self.current()
-            project.task(params.get("task"))
-            return self.tasks.start("generation", project.path, lambda ctx: self.commands.call(method, params, project, ctx))
+            with project.lock:
+                params = {**params, "task": project.task(params.get("task"))}
+                teaching = project.manifest["teaching"]
+            return self.tasks.start("generation", project.path, lambda ctx: self.commands.generate(params, project, ctx, teaching))
         if method == "hosts.list":
             validate(params, schema())
             return self.hosts.list()

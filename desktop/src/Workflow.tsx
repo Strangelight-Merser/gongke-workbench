@@ -38,18 +38,41 @@ export function stageState(
       ? { state: "done", note: project.teaching ? "教学示例" : "已填写" }
       : { state: "", note: "待填写" };
   if (id === "drawings" || id === "report") {
-    const files = (project?.files || []).filter((f: Data) =>
-      id === "drawings"
-        ? f.kind === "svg" && f.path.includes("/drawings/")
-        : /report\.(md|docx)$/.test(f.name),
-    );
-    return files.length
-      ? {
-          state: "done",
-          note: id === "drawings" ? `${files.length} 张` : "已生成",
-        }
-      : { state: "", note: "" };
+    const delivery = project?.delivery;
+    if (!delivery)
+      return {
+        state: "",
+        note: project?.generations?.length ? "旧成果已过期" : "待生成",
+      };
+    if (delivery.status === "running") return { state: "", note: "生成中" };
+    if (id === "drawings" && delivery.drawing_check?.total > 0)
+      return {
+        state: "fail",
+        note: `${delivery.drawing_check.total} 处图检问题`,
+      };
+    const kinds = id === "drawings" ? ["drawings"] : ["markdown", "docx"];
+    const artifacts = kinds
+      .map((kind) => delivery.artifacts?.[kind])
+      .filter(Boolean);
+    if (
+      artifacts.length &&
+      artifacts.every((item) => item.status === "complete" && item.available)
+    ) {
+      const count = artifacts
+        .flatMap((item) => item.files)
+        .filter((name: string) => name.endsWith(".svg")).length;
+      return {
+        state: delivery.calculation_ok ? "done" : "warn",
+        note: !delivery.calculation_ok
+          ? "已生成 · 校核未通过"
+          : id === "drawings"
+            ? `${count} 张`
+            : "已生成",
+      };
+    }
+    return { state: "fail", note: "产物未完整生成" };
   }
+
   if (!r) return { state: "", note: "" };
   const checks = stageChecks(r, id);
   const failed = checks.filter((c) => !c.ok).length,

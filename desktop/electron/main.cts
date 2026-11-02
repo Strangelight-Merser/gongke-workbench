@@ -49,6 +49,8 @@ const allowed = new Set([
   "hosts.list",
   "host.command",
   "agent.run",
+  "agent.history",
+  "design.schema",
 ]);
 function settingsPath() {
   return join(app.getPath("userData"), "provider.json");
@@ -178,7 +180,7 @@ else {
         model: s.model.trim(),
         api_key: key,
       });
-      const secure = safeStorage.isEncryptionAvailable();
+      const secure = s.remember_key === true && safeStorage.isEncryptionAvailable();
       writeFileSync(
         settingsPath(),
         JSON.stringify({
@@ -201,6 +203,7 @@ else {
         base_url: s.base_url || "https://api.openai.com/v1",
         model: s.model || "",
         has_key: !!s.encryptedKey,
+        remember_key: !!s.encryptedKey,
       };
     });
     ipcMain.handle("restart-service", async (event) => {

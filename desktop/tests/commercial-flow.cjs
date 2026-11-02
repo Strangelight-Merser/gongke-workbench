@@ -87,6 +87,7 @@ const server = http.createServer((req, res) => {
         chooseProject: async () => null,
         settings: async () => ({}),
         request: async (method, params = {}) => {
+          if (method === "agent.history") return { project: "/fixture", turns: [] };
           if (method === "system.status")
             return { ready: true, agent: { configured: false } };
           if (method === "project.current")
@@ -290,6 +291,8 @@ const server = http.createServer((req, res) => {
       };
     });
     await page.goto("http://127.0.0.1:" + server.address().port);
+    // 应用默认打开任务书；从侧栏的原生连接进入原生视图
+    await page.getByRole("button", { name: /^AutoCAD/ }).click();
     await page.getByLabel("原生软件").selectOption("autocad");
     await page
       .getByRole("button", { name: "读取当前工程", exact: true })
@@ -428,6 +431,7 @@ const server = http.createServer((req, res) => {
       0,
     );
     // Import response loss must navigate to the existing pending UI, never replay the mutation.
+    await page.getByRole("button", { name: /^工程文件/ }).click();
     await page
       .locator(".files button")
       .filter({ hasText: "shaft.dxf" })

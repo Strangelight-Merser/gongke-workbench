@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 import threading
 from uuid import uuid4
@@ -76,9 +77,51 @@ class Project:
                          "kind": path.suffix.lower().lstrip("."), "size": path.stat().st_size})
         return rows
 
+    @staticmethod
+    def input_hash(task, teaching):
+        value = json.dumps({"task": task, "teaching": teaching}, sort_keys=True,
+                           ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
     def view(self):
         with self.lock:
-            return {**json.loads(json.dumps(self.manifest)), "path": str(self.path), "files": self.files()}
+            fingerprint = self.input_hash(self.manifest.get("task"), self.manifest["teaching"])
+            files = self.files()
+            sizes = {item["path"]: item["size"] for item in files}
+            generations = []
+            for record in reversed(self.manifest["results"]):
+                row = json.loads(json.dumps(record))
+                row["current"] = row.get("input_hash") == fingerprint
+                for artifact in row.get("artifacts", {}).values():
+                    artifact["available"] = bool(artifact.get("files")) and all(
+                        sizes.get(row["path"] + "/" + name, 0) > 0 for name in artifact["files"])
+                generations.append(row)
+            return {**json.loads(json.dumps(self.manifest)), "path": str(self.path), "files": files,
+                    "input_hash": fingerprint, "generations": generations,
+                    "delivery": next((row for row in generations if row["current"]), None)}
+
+    def conversation(self):
+        with self.lock:
+            path = self.path / ".gongke-conversation.json"
+            return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+    def save_turn(self, turn):
+        with self.lock:
+            turns = self.conversation()
+            index = next((i for i, item in enumerate(turns) if item["task_id"] == turn["task_id"]), None)
+            if index is None:
+                turns.append(turn)
+            else:
+                turns[index] = turn
+            temp = self.path / (".conversation-" + uuid4().hex + ".tmp")
+            temp.write_text(json.dumps(turns, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+            temp.replace(self.path / ".gongke-conversation.json")
+
+    def update_result(self, path, changes):
+        with self.lock:
+            record = next(item for item in self.manifest["results"] if item["path"] == path)
+            record.update(changes)
+            self.save()
 
     def task(self, supplied=None):
         with self.lock:

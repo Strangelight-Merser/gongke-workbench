@@ -128,7 +128,10 @@ async function serviceSnapshot(page) {
     await page.locator("footer").getByText(project, { exact: true }).waitFor();
     await page.getByRole("button", { name: /^任务书/ }).click();
     await page.getByRole("button", { name: "载入教学条件" }).click();
-    await page.getByLabel("工作拉力 / N").waitFor();
+    await page.waitForFunction(() => {
+      const label = [...document.querySelectorAll("label")].find((item) => item.textContent.includes("工作拉力 / N"));
+      return label?.querySelector("input")?.value === "2500";
+    });
     assert.equal(await page.getByLabel("工作拉力 / N").inputValue(), "2500");
     await page.getByRole("button", { name: "计算方案", exact: true }).click();
     await page.getByText("Y132S-4", { exact: true }).waitFor();
