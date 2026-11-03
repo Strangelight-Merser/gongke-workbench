@@ -133,3 +133,9 @@ python -m pytest adapters/solidworks/tests/test_app_contract.py tests/test_app_s
 - [OpenDoc6](https://help.solidworks.com/2019/english/api/sldworksapi/SOLIDWORKS.Interop.sldworks~SOLIDWORKS.Interop.sldworks.ISldWorks~OpenDoc6.html)：已打开文件可能复用内存对象，配置不存在时可能使用上次配置，因此重开前检查未打开，之后检查真实配置和路径。
 - [ActivateDoc3](https://help.solidworks.com/2023/english/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.ISldWorks~ActivateDoc3.html)：用含扩展名的文件名激活，再核对返回路径，避免同名零件/图纸混淆；返回值非空仍可能带重建警告。
 - [ReplaceReferencedDocument](https://help.solidworks.com/2018/English/api/sldworksapi/SolidWorks.Interop.sldworks~SolidWorks.Interop.sldworks.ISldWorks~ReplaceReferencedDocument.html)：引用方必须关闭；替换成功不证明内部 ID、尺寸或关系有效，因此在重开后核对实际引用与尺寸。
+
+## 通用只读建模检查
+
+新增 `model.context / model.inspect / model.section`，由应用层 `host.context / host.inspect / host.section / host.measure / host.check` 使用。读取绑定宿主实例、文档会话UUID、配置与修订；支持未保存零件，使用原生持久引用定位实体。截面仅对临时Body计算，不重建、不保存、不改变选择。特征参数范围为关联原生尺寸，不枚举任意 FeatureData 成员。
+
+公共参数、单位、条件示例、试验样本及 Windows 真机验收步骤见 [通用只读模型检查](../../docs/model-inspection.md)。本机编译通过不代表 Windows COM 行为通过。

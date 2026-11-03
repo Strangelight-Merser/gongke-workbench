@@ -104,7 +104,7 @@ def definitions():
     drawing_args = {"session_id": TEXT, "page_name": TEXT, "expected_revision": {"type": "integer"}}
     tools["freecad.update_drawing"] = ("重算指定TechDraw页面，绑定当前修订号", schema(drawing_args, drawing_args), True)
     tools["freecad.export_drawing"] = ("导出TechDraw到新的工作副本，绑定当前修订号", schema({**drawing_args, "path": TEXT}, drawing_args), True)
-    tools["hosts.list"] = ("探测实际可连接的SOLIDWORKS/AutoCAD宿主、能力与验证边界", schema(), False)
+    tools["hosts.list"] = ("探测实际可连接的 FreeCAD/SOLIDWORKS/AutoCAD 宿主与能力", schema(), False)
     tools["host.read"] = ("调用宿主声明的只读命令；先从hosts.list的parameter_contracts取得该宿主的精确参数，从原生上下文取得文档身份和版本，所有数值以返回单位为准", schema({
         "host_id": TEXT, "method": {"type": "string", "enum": sorted(READ_METHODS)}, "params": TASK}, ["host_id", "method", "params"]), False)
     tools["host.write"] = ("执行宿主声明的受限写操作；参数遵循hosts.list的parameter_contracts，绑定文档、版本、唯一operation_id；保存/导出只允许新工作副本，输出路径为工程相对路径。先save_copy再open新副本，不能直接修改原件", schema({
@@ -118,4 +118,6 @@ def definitions():
         "revision.inspect": ("严格只读核对已有轴与图纸；不绑定、不重算、不保存。capture 是离线采集，不代表当前 CAD；previous 用于判断旧结论适用性", schema(REVISION_ARGS, ["case"]), False),
         "revision.export": ("严格只读检查原生模型，将检查记录保存为工程内新目录的 revision.json；不覆盖已有证据", schema({**REVISION_ARGS, "path": TEXT}, ["case", "path"]), True),
     })
+    from gongke_app.inspection import definitions as inspection_definitions
+    tools.update(inspection_definitions())
     return tools

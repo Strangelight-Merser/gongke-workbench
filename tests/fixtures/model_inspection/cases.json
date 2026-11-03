@@ -1,0 +1,194 @@
+{
+  "p7": [
+    {
+      "id": "bore_diameter",
+      "measurement": {
+        "kind": "diameter",
+        "selectors": [
+          {
+            "kind": "cylinder",
+            "inward": true,
+            "direction": [
+              0,
+              0,
+              1
+            ],
+            "point": [
+              0.032,
+              0,
+              0
+            ]
+          }
+        ]
+      },
+      "expected": 14,
+      "tolerance": 0.01,
+      "unit": "mm",
+      "source": "drawing-to-model-study/dimensions.json 已复核尺寸；仅试验单位假定 mm"
+    },
+    {
+      "id": "slot_position",
+      "measurement": {
+        "kind": "coordinate",
+        "axis": 0,
+        "selectors": [
+          {
+            "kind": "cylinder",
+            "inward": true,
+            "direction": [
+              0,
+              0,
+              1
+            ],
+            "radius": 0.003,
+            "near": [
+              0.014,
+              0,
+              0
+            ],
+            "within": 0.002
+          }
+        ]
+      },
+      "expected": 14,
+      "tolerance": 0.01,
+      "unit": "mm",
+      "source": "drawing-to-model-study/dimensions.json 已复核尺寸；仅试验单位假定 mm"
+    },
+    {
+      "id": "slot_ends",
+      "measurement": {
+        "kind": "count",
+        "selectors": [
+          {
+            "kind": "cylinder",
+            "inward": true,
+            "direction": [
+              0,
+              0,
+              1
+            ],
+            "radius": 0.003
+          }
+        ]
+      },
+      "expected": 2,
+      "tolerance": 0,
+      "unit": "1",
+      "source": "drawing-to-model-study/dimensions.json 已复核尺寸；仅试验单位假定 mm"
+    },
+    {
+      "id": "base_thickness",
+      "measurement": {
+        "kind": "plane_distance",
+        "selectors": [
+          {
+            "kind": "plane",
+            "direction": [
+              0,
+              0,
+              1
+            ],
+            "offset": 0
+          },
+          {
+            "kind": "plane",
+            "direction": [
+              0,
+              0,
+              1
+            ],
+            "offset": 0.008
+          }
+        ]
+      },
+      "expected": 8,
+      "tolerance": 0.1,
+      "unit": "mm",
+      "source": "drawing-to-model-study/dimensions.json 已复核尺寸；仅试验单位假定 mm"
+    },
+    {
+      "id": "tube_height",
+      "measurement": {
+        "kind": "coordinate",
+        "axis": 2,
+        "selectors": [
+          {
+            "kind": "plane",
+            "direction": [
+              0,
+              0,
+              1
+            ],
+            "near": [
+              0,
+              0,
+              0.028
+            ],
+            "within": 0.009
+          }
+        ]
+      },
+      "expected": 20,
+      "tolerance": 0.01,
+      "unit": "mm",
+      "source": "drawing-to-model-study/dimensions.json 已复核尺寸；仅试验单位假定 mm"
+    }
+  ],
+  "p8": [
+    {
+      "id": "rib_section",
+      "measurement": {
+        "kind": "section_area",
+        "plane": {
+          "origin": [
+            0,
+            0,
+            0.01
+          ],
+          "normal": [
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      "expected": 416,
+      "tolerance": 0.001,
+      "unit": "mm^2",
+      "source": "drawing-to-model-study/dimensions.json 已复核尺寸；仅试验单位假定 mm"
+    },
+    {
+      "id": "base_holes",
+      "measurement": {
+        "kind": "count",
+        "selectors": [
+          {
+            "kind": "cylinder",
+            "inward": true,
+            "direction": [
+              0,
+              0,
+              1
+            ],
+            "radius": 0.004
+          }
+        ]
+      },
+      "expected": 3,
+      "tolerance": 0,
+      "unit": "1",
+      "source": "drawing-to-model-study/dimensions.json 已复核尺寸；仅试验单位假定 mm"
+    }
+  ],
+  "expected": {
+    "p7_reference": "pass",
+    "p8_reference": "pass",
+    "p7_slot_shift_1": "slot_position",
+    "p7_bore_12": "bore_diameter",
+    "p7_no_slot": "slot_ends",
+    "p7_height_28": "tube_height",
+    "p8_no_rib": "rib_section",
+    "p8_two_base_holes": "base_holes"
+  }
+}
