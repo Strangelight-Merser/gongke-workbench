@@ -143,6 +143,7 @@ class DocumentState:
     def get_display_scene(self):
         """只从当前原生形体取显示网格；网格编号不作为写入定位依据。"""
         from freecad.gongke.native_display import drawing_pages
+        from freecad.gongke.native_inspection import world_shape
 
         doc = App.ActiveDocument
         context = self._context(doc)
@@ -166,11 +167,18 @@ class DocumentState:
             # Body 已包含 Tip，避免把内部特征再次叠画成另一零件。
             if obj.TypeId != "PartDesign::Body" and obj.getParentGeoFeatureGroup() is not None:
                 continue
-            vertices, triangles = obj.Shape.tessellate(0.2)
+            shape = world_shape(obj)
+            vertices, triangles = shape.tessellate(0.2)
+            faces = []
+            for index, face in enumerate(shape.Faces, 1):
+                points, facets = face.tessellate(0.2)
+                faces.append({"native_ref": f"{obj.Name}.Face{index}",
+                              "vertices": [[p.x, p.y, p.z] for p in points],
+                              "triangles": [list(t) for t in facets]})
             objects.append({"id": obj.Name, "label": obj.Label,
                             "entity_id": getattr(obj, "GkEntityId", None),
                             "vertices": [[p.x, p.y, p.z] for p in vertices],
-                            "triangles": [list(t) for t in triangles]})
+                            "triangles": [list(t) for t in triangles], "faces": faces})
         return {"session_id": context["session_id"], "revision": context["revision"],
                 "document": doc.Name, "path": doc.FileName, "unit": "mm",
                 "modified": bool(Gui.getDocument(doc.Name).Modified),

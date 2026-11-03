@@ -49,6 +49,8 @@ const allowed = new Set([
   "freecad.export_drawing",
   "hosts.list",
   "host.command",
+  "host.context",
+  "host.inspect",
   "design.schema",
 ]);
 function startService() {

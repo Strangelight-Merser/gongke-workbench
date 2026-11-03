@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { Data } from "../api";
 
@@ -127,9 +128,10 @@ export function ModelView({
         new THREE.Float32BufferAttribute(item.vertices.flat(), 3),
       );
       geometry.setIndex(item.triangles.flat());
-      geometry.computeVertexNormals();
+      const shaded = toCreasedNormals(geometry, Math.PI / 6);
+      geometry.dispose();
       const mesh = new THREE.Mesh(
-        geometry,
+        shaded,
         new THREE.MeshStandardMaterial({
           color: "#a9b4c0",
           metalness: 0.32,
@@ -204,61 +206,34 @@ export function ModelView({
           line(edge.samples || [edge.start, edge.end], "#e54b4b");
           continue;
         }
-        const face = snapshots
-          .flatMap((s: Data) => s.faces || [])
+        const face = (scene.objects || [])
+          .flatMap((o: Data) => o.faces || [])
           .find((f: Data) => f.native_ref === location.native_ref);
-        const plane =
-          location.plane ||
-          (face?.kind === "plane"
-            ? { origin: face.point, normal: face.direction }
-            : null);
-        const material = () =>
-          new THREE.MeshBasicMaterial({
-            color: "#e54b4b",
-            transparent: true,
-            opacity: 0.18,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-            depthTest: false,
-          });
-        if (plane) {
-          const normal = vector(plane.normal).normalize(),
-            origin = vector(plane.origin).multiplyScalar(1000);
-          const marker = new THREE.Mesh(
-            new THREE.PlaneGeometry(size, size),
-            material(),
+        if (face?.triangles?.length) {
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute(
+            "position",
+            new THREE.Float32BufferAttribute(face.vertices.flat(), 3),
           );
-          marker.position
-            .copy(center)
-            .addScaledVector(normal, origin.sub(center).dot(normal));
-          marker.quaternion.setFromUnitVectors(
-            new THREE.Vector3(0, 0, 1),
-            normal,
+          geometry.setIndex(face.triangles.flat());
+          const marker = new THREE.Mesh(
+            geometry,
+            new THREE.MeshBasicMaterial({
+              color: "#e54b4b",
+              transparent: true,
+              opacity: 0.42,
+              side: THREE.DoubleSide,
+              depthWrite: false,
+              polygonOffset: true,
+              polygonOffsetFactor: -2,
+              polygonOffsetUnits: -2,
+            }),
           );
           marker.renderOrder = 3;
           v.overlays.add(marker);
-        } else if (face?.kind === "cylinder") {
-          const axis = vector(face.direction).normalize(),
-            point = vector(face.point).multiplyScalar(1000);
-          point.addScaledVector(axis, center.clone().sub(point).dot(axis));
-          const marker = new THREE.Mesh(
-            new THREE.CylinderGeometry(
-              face.radius * 1000,
-              face.radius * 1000,
-              size,
-              48,
-              1,
-              true,
-            ),
-            material(),
-          );
-          marker.position.copy(point);
-          marker.quaternion.setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            axis,
-          );
-          marker.renderOrder = 3;
-          v.overlays.add(marker);
+        } else if (location.edges) {
+          for (const edge of location.edges)
+            line(edge.samples || [edge.start, edge.end], "#e54b4b");
         } else if (detail?.object_ref === location.native_ref) {
           for (const e of detail?.edges || [])
             line(e.samples || [e.start, e.end], "#e54b4b");
