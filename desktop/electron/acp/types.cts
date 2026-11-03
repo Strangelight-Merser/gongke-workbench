@@ -4,6 +4,9 @@ import type {
   NewSessionResponse,
   RequestPermissionRequest,
   SessionUpdate,
+  InitializeResponse,
+  PromptResponse,
+  RequestPermissionResponse,
 } from "@agentclientprotocol/sdk";
 
 export type StdioCommand = {
@@ -15,9 +18,20 @@ export type AgentProfile = StdioCommand & { id: string; name: string };
 export type AgentSettings = { agents: AgentProfile[]; mcp: StdioCommand };
 export type AgentEvent =
   | { type: "update"; update: SessionUpdate }
-  | { type: "user"; text: string }
+  | {
+      type: "user";
+      text: string;
+      images?: { path: string; mimeType: string; sha256: string }[];
+    }
+  | { type: "request"; method: string; params: Record<string, unknown> }
+  | { type: "config-result"; configOptions: NonNullable<NewSessionResponse["configOptions"]> }
+  | { type: "turn-result"; result: PromptResponse }
   | { type: "permission"; id: string; request: RequestPermissionRequest }
-  | { type: "permission-resolved"; id: string }
+  | {
+      type: "permission-resolved";
+      id: string;
+      outcome: RequestPermissionResponse["outcome"];
+    }
   | { type: "notice"; text: string };
 export type AgentSnapshot = {
   phase:
@@ -31,10 +45,13 @@ export type AgentSnapshot = {
   project: string;
   agentId: string;
   authMethods: AuthMethod[];
+  initialization?: InitializeResponse;
   session?: NewSessionResponse;
   events: AgentEvent[];
   error?: string;
   errorDetails?: AgentDiagnostic;
+  stderr?: string;
+  stderrLogPath?: string;
 };
 export type AgentAPI = {
   settings(): Promise<AgentSettings>;
@@ -43,7 +60,8 @@ export type AgentAPI = {
   start(agentId: string): Promise<void>;
   authenticate(methodId: string): Promise<void>;
   newSession(): Promise<void>;
-  prompt(text: string): Promise<void>;
+  setConfigOption(id: string, value: string): Promise<void>;
+  prompt(text: string, referencePaths?: string[]): Promise<void>;
   cancel(): Promise<void>;
   disconnect(): Promise<void>;
   permission(id: string, optionId: string | null): Promise<void>;

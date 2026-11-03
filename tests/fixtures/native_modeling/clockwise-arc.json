@@ -1,0 +1,197 @@
+{
+  "source": "Round 6 P7 vision first sketch, 2026-11-03; original mixed clockwise/counterclockwise endpoints",
+  "sketch": {
+    "name": "Sketch_Base",
+    "support": {
+      "plane": "XY",
+      "offset": 0
+    },
+    "geometry": [
+      {
+        "kind": "arc",
+        "start": [
+          0,
+          0.01
+        ],
+        "mid": [
+          -0.01,
+          0
+        ],
+        "end": [
+          0,
+          -0.01
+        ]
+      },
+      {
+        "kind": "line",
+        "start": [
+          0,
+          0.01
+        ],
+        "end": [
+          0.032,
+          0.01
+        ]
+      },
+      {
+        "kind": "arc",
+        "start": [
+          0.032,
+          0.01
+        ],
+        "mid": [
+          0.042,
+          0
+        ],
+        "end": [
+          0.032,
+          -0.01
+        ]
+      },
+      {
+        "kind": "line",
+        "start": [
+          0.032,
+          -0.01
+        ],
+        "end": [
+          0,
+          -0.01
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "coincident",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "start"
+          },
+          {
+            "geometry": 1,
+            "point": "start"
+          }
+        ]
+      },
+      {
+        "kind": "coincident",
+        "entities": [
+          {
+            "geometry": 1,
+            "point": "end"
+          },
+          {
+            "geometry": 2,
+            "point": "start"
+          }
+        ]
+      },
+      {
+        "kind": "coincident",
+        "entities": [
+          {
+            "geometry": 2,
+            "point": "end"
+          },
+          {
+            "geometry": 3,
+            "point": "start"
+          }
+        ]
+      },
+      {
+        "kind": "coincident",
+        "entities": [
+          {
+            "geometry": 3,
+            "point": "end"
+          },
+          {
+            "geometry": 0,
+            "point": "end"
+          }
+        ]
+      },
+      {
+        "kind": "horizontal",
+        "entities": [
+          {
+            "geometry": 1,
+            "point": "whole"
+          }
+        ]
+      },
+      {
+        "kind": "horizontal",
+        "entities": [
+          {
+            "geometry": 3,
+            "point": "whole"
+          }
+        ]
+      },
+      {
+        "kind": "horizontal",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "center"
+          },
+          {
+            "geometry": 2,
+            "point": "center"
+          }
+        ]
+      },
+      {
+        "kind": "radius",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "whole"
+          }
+        ],
+        "value": 0.01,
+        "name": "base_end_r"
+      },
+      {
+        "kind": "equal",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "whole"
+          },
+          {
+            "geometry": 2,
+            "point": "whole"
+          }
+        ]
+      },
+      {
+        "kind": "distance",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "center"
+          },
+          {
+            "geometry": 2,
+            "point": "center"
+          }
+        ],
+        "value": 0.032,
+        "name": "tube_axis_x"
+      },
+      {
+        "kind": "fixed",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "center"
+          }
+        ]
+      }
+    ]
+  }
+}

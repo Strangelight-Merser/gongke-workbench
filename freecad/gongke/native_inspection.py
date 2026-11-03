@@ -166,7 +166,8 @@ def inspect(obj, reference):
             point = vector(face.CenterOfMass, .001)
             row.update(kind="plane", point=[v*dot(point, axis) for v in axis], direction=axis)
         faces.append(row)
-    bb = shape.BoundBox
+    # 显示网格可能在打开文档后才生成；工程尺寸不依赖三角网格的采样极值。
+    bb = shape.optimalBoundingBox(False, False)
     return {"document": reference, "object_ref": obj.Name, "coordinate_system": "document", "length_unit": "m",
             "angle_unit": "rad", "state": "needs_rebuild" if issues else "ready", "issues": issues,
             "features": features, "faces": faces,

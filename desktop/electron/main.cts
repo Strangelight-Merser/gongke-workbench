@@ -1,5 +1,9 @@
+import { preparePrompt } from "./prompt-input.cjs";
 import { mcpForMode } from "./agent-mode.cjs";
-import { readDocument, importDocuments } from "./documents.cjs";
+import {
+  readDocument,
+  importDocuments,
+} from "./documents.cjs";
 import { registerOnboarding } from "./onboarding/ipc.cjs";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { join, resolve, relative, isAbsolute } from "node:path";
@@ -23,6 +27,7 @@ const allowed = new Set([
   "project.current",
   "project.files",
   "project.read_file",
+  "project.read_drawing",
   "project.set_task",
   "design.example",
   "design.calculate",
@@ -79,6 +84,8 @@ function requireMainFrame(event: Electron.IpcMainInvokeEvent) {
   if (event.senderFrame !== window.webContents.mainFrame)
     throw new Error("无效的命令来源");
 }
+if (process.env.GONGKE_DESKTOP_USER_DATA)
+  app.setPath("userData", process.env.GONGKE_DESKTOP_USER_DATA);
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on("second-instance", () => {
@@ -86,10 +93,11 @@ else {
     window?.focus();
   });
   app.whenReady().then(async () => {
-    if (process.env.GONGKE_DESKTOP_USER_DATA)
-      app.setPath("userData", process.env.GONGKE_DESKTOP_USER_DATA);
+    if (process.env.GONGKE_TRIAL_BACKGROUND === "1" && process.env.GONGKE_DESKTOP_USER_DATA && process.platform === "darwin")
+      app.setActivationPolicy("prohibited");
     startService();
     window = new BrowserWindow({
+      show: process.env.GONGKE_TRIAL_BACKGROUND !== "1",
       width: 1440,
       height: 960,
       minWidth: 1080,
@@ -108,6 +116,7 @@ else {
         nodeIntegration: false,
         contextIsolation: true,
         sandbox: true,
+        backgroundThrottling: process.env.GONGKE_TRIAL_BACKGROUND !== "1",
       },
     });
     installCadEmbedding(window);
@@ -148,7 +157,7 @@ else {
         filters: [
           {
             name: "图纸",
-            extensions: ["pdf", "png", "jpg", "jpeg", "webp", "svg", "dxf"],
+            extensions: ["pdf", "png", "jpg", "jpeg", "webp", "svg", "dxf", "json", "txt"],
           },
         ],
       });
@@ -174,9 +183,13 @@ else {
           )
         : undefined,
     );
-    agent = new AgentClient((state) => {
-      if (!window.isDestroyed()) window.webContents.send("acp-state", state);
-    }, join(app.getPath("userData"), "agent-errors.jsonl"));
+    agent = new AgentClient(
+      (state) => {
+        if (!window.isDestroyed()) window.webContents.send("acp-state", state);
+      },
+      join(app.getPath("userData"), "agent-errors.jsonl"),
+      join(app.getPath("userData"), "agent-events.jsonl"),
+    );
     async function connectAgent(id: string) {
       if (!projectRoot) throw new Error("请先打开工程");
       if (agentMode === "practice" && id !== "deepseek")
@@ -234,8 +247,13 @@ else {
     handle("start", connectAgent);
     handle("authenticate", (id) => agent.authenticate(id));
     handle("new-session", () => agent.newSession());
-    handle("prompt", async (text) => {
-      await agent.prompt(text);
+    handle("set-config-option", (id, value) => agent.setConfigOption(id, value));
+    handle("prompt", async (text, referencePaths: string[] = []) => {
+      const root = projectRoot;
+      const input = await preparePrompt(root, text, referencePaths,
+        (method, params) => service.request(method, params));
+      if (root !== projectRoot) throw new Error("工程已切换，请重新选择图纸");
+      await agent.prompt(input.text, input.images);
     });
     handle("cancel", () => agent.cancel());
     handle("disconnect", () => agent.disconnect());

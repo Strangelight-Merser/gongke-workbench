@@ -103,6 +103,11 @@ class Commands:
             return project.files()
         if method == "project.read_file":
             return project.read(**params)
+        if method == "project.read_drawing":
+            from gongke_app.drawing_input import read_drawing
+            return read_drawing(project, **params)
+        if method == "project.read_image":
+            return project.read_image(**params)
         if method == "design.schema":
             return api.task_schema()
         if method == "design.example":

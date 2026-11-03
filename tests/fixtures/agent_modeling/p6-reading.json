@@ -1,0 +1,35 @@
+{
+  "kind": "drawing-dimensions",
+  "part": "p6",
+  "extraction": "人工局部读图；源图上部被裁，候选读数和空间解释待复核，不是参考模型答案",
+  "unit": "mm",
+  "unit_status": "assumed_for_local_trial_no_title_block",
+  "tolerance": null,
+  "values": {
+    "overall_length": 80,
+    "overall_width": 52,
+    "overall_height": 52,
+    "inner_width": 40,
+    "inner_drop": 40,
+    "right_end_drop": 12,
+    "right_platform_length": 15,
+    "right_transition_span": 35,
+    "front_platform_width": 21
+  },
+  "confirmed_fields": ["right_platform_length"],
+  "coordinate_system": "左前下角为原点；X沿总长向右，Y从前向后，Z向上",
+  "evidence": [
+    {"fields": ["right_platform_length"], "region_px": [602, 1238, 635, 1262], "text": "15", "status": "visually_rechecked"},
+    {"fields": ["overall_length", "overall_width", "inner_width", "right_transition_span", "front_platform_width"], "status": "candidate_reading", "reason": "小字低分辨率；暂按80、52、40、35、21试建，需清晰原图或人工确认"},
+    {"fields": ["overall_height", "inner_drop", "right_end_drop"], "status": "assumption", "reason": "源图正视图上缘已被裁切，暂按52、40、12试建，不能算作明确读数"}
+  ],
+  "view_interpretation": [
+    "轴测图表现为直角底座和后侧立壁，右侧有平台及斜面过渡；不含孔或圆弧。",
+    "俯视图外框为长方形，内边界左侧为沿X方向的直线，向右经斜线连接平台边界。",
+    "暂把inner_drop解释为从最高顶面到左侧内底面的落差，把right_end_drop解释为最高顶面到右侧平台的落差。",
+    "right_transition_span暂解释为右端平台与其左侧斜面在X方向的总跨度，right_platform_length为其中水平平台长度。",
+    "因源图裁边，俯视斜线与正视斜线是否代表同一个平面及其边界仍需交叉复核；自行选择一致的空间解释，明确说明假设。"
+  ],
+  "unconfirmed": ["除15外的候选数字", "正视图顶边及竖向尺寸界线被裁切", "斜面和后壁的交界形状", "无单位、公差、材料及圆角标注"],
+  "requires_drawing_review": true
+}

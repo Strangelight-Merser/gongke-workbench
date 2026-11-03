@@ -4,19 +4,67 @@ import {
   failedTools,
   logDiagnostic,
   redact,
+  redactRecord,
   secretValues,
 } from "./diagnostics.cjs";
 import { agentError } from "../onboarding/errors.cjs";
 import { spawnAgent, stopAgent } from "./process.cjs";
 import { type ChildProcessWithoutNullStreams } from "node:child_process";
 import { Readable, Writable } from "node:stream";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
+import { appendFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type {
   ClientConnection,
+  SetSessionConfigOptionRequest,
   NewSessionRequest,
   RequestPermissionResponse,
+  PromptRequest,
+  RequestPermissionRequest,
 } from "@agentclientprotocol/sdk";
-import type { AgentProfile, AgentSnapshot, StdioCommand } from "./types.cjs";
+import type {
+  AgentEvent,
+  AgentProfile,
+  AgentSnapshot,
+  StdioCommand,
+} from "./types.cjs";
+
+/** ACP 授权只需带 toolCallId；显示信息从同一次调用的增量事件取得。 */
+export function permissionTool(
+  events: AgentEvent[],
+  request: RequestPermissionRequest,
+) {
+  let tool: RequestPermissionRequest["toolCall"] = {
+    toolCallId: request.toolCall.toolCallId,
+  };
+  for (const event of events) {
+    if (event.type !== "update") continue;
+    const update = event.update;
+    if (
+      (update.sessionUpdate === "tool_call" ||
+        update.sessionUpdate === "tool_call_update") &&
+      update.toolCallId === tool.toolCallId
+    ) {
+      const { sessionUpdate, ...fields } = update;
+      tool = {
+        ...tool,
+        ...Object.fromEntries(
+          Object.entries(fields).filter(
+            ([, value]) => value !== undefined && value !== null,
+          ),
+        ),
+      };
+    }
+  }
+  return {
+    ...tool,
+    ...Object.fromEntries(
+      Object.entries(request.toolCall).filter(
+        ([, value]) => value !== undefined && value !== null,
+      ),
+    ),
+  };
+}
 
 /** ACP 只负责会话与授权；不实现文件写入或 terminal 执行。 */
 export class AgentClient {
@@ -43,11 +91,39 @@ export class AgentClient {
   constructor(
     private publish: (state: AgentSnapshot) => void,
     private logPath?: string,
+    private tracePath?: string,
   ) {}
+  private tracedEvents = 0;
   snapshot() {
-    return structuredClone(this.state);
+    return structuredClone({ ...this.state,
+      stderr: redact(this.stderr, this.secrets),
+      stderrLogPath: this.logPath ? join(dirname(this.logPath), "agent-stderr.log") : undefined,
+    });
   }
   private changed() {
+    if (this.tracePath) {
+      const events = this.state.events.slice(this.tracedEvents);
+      appendFileSync(
+        this.tracePath,
+        events
+          .map(
+            (event) =>
+              JSON.stringify(
+                redactRecord(
+                  {
+                    at: new Date().toISOString(),
+                    sessionId: this.state.session?.sessionId,
+                    event,
+                  },
+                  this.secrets,
+                ),
+              ) + "\n",
+          )
+          .join(""),
+        { mode: 0o600 },
+      );
+    }
+    this.tracedEvents = this.state.events.length;
     this.publish(this.snapshot());
   }
   private requireConnection() {
@@ -87,6 +163,7 @@ export class AgentClient {
         authMethods: [],
         events: [],
       };
+      this.tracedEvents = 0;
       this.changed();
       const child = spawnAgent(profile.command, profile.args, {
         cwd,
@@ -96,10 +173,21 @@ export class AgentClient {
       this.child = child;
       // 保留有界尾部，在生成诊断时整体脱敏，避免跨 chunk 的凭据漏出。
       child.stderr.setEncoding("utf8");
+      const stderrPath = this.snapshot().stderrLogPath;
+      const stderrSecrets = [...this.secrets];
+      let pendingStderr = "";
+      const flushStderr = (finished = false) => {
+        const end = finished ? pendingStderr.length : pendingStderr.lastIndexOf("\n") + 1;
+        if (end && stderrPath) appendFileSync(stderrPath, redact(pendingStderr.slice(0, end), stderrSecrets), { mode: 0o600 });
+        pendingStderr = pendingStderr.slice(end);
+      };
       child.stderr.on("data", (chunk: string) => {
         if (this.child === child)
           this.stderr = (this.stderr + chunk).slice(-24000);
+        pendingStderr += chunk;
+        flushStderr();
       });
+      child.stderr.on("end", () => flushStderr(true));
       const connection = sdk
         .client({ name: "gongke-workbench" })
         .onNotification(sdk.methods.client.session.update, ({ params }) => {
@@ -109,6 +197,8 @@ export class AgentClient {
             params.sessionId !== this.state.session.sessionId
           )
             return;
+          if (this.state.session && params.update.sessionUpdate === "config_option_update")
+            this.state.session.configOptions = params.update.configOptions;
           this.state.events.push({ type: "update", update: params.update });
           this.changed();
         })
@@ -127,7 +217,11 @@ export class AgentClient {
               const finish = (value: RequestPermissionResponse) => {
                 signal.removeEventListener("abort", abort);
                 this.pending.delete(id);
-                this.state.events.push({ type: "permission-resolved", id });
+                this.state.events.push({
+                  type: "permission-resolved",
+                  id,
+                  outcome: value.outcome,
+                });
                 this.changed();
                 resolve(value);
               };
@@ -140,7 +234,10 @@ export class AgentClient {
               this.state.events.push({
                 type: "permission",
                 id,
-                request: params,
+                request: {
+                  ...params,
+                  toolCall: permissionTool(this.state.events, params),
+                },
               });
               this.changed();
             });
@@ -197,6 +294,7 @@ export class AgentClient {
         if (response.protocolVersion !== sdk.PROTOCOL_VERSION)
           throw new Error("Agent 不支持 ACP v1");
         this.state.authMethods = response.authMethods || [];
+        this.state.initialization = response;
         this.state.phase = "connected";
         this.changed();
         await this.createSession();
@@ -286,6 +384,7 @@ export class AgentClient {
     this.state.errorDetails = undefined;
     this.state.session = undefined;
     this.state.events = [];
+    this.tracedEvents = 0;
     this.changed();
     try {
       const request: NewSessionRequest = {
@@ -318,7 +417,29 @@ export class AgentClient {
       throw error;
     }
   }
-  async prompt(text: string) {
+  async setConfigOption(configId: string, value: string) {
+    if (this.state.phase !== "ready" || !this.state.session)
+      throw new Error("请在会话就绪后切换模型");
+    const connection = this.connection;
+    const params: SetSessionConfigOptionRequest = { sessionId: this.state.session.sessionId, configId, value };
+    this.state.events.push({ type: "request", method: "session/set_config_option", params });
+    this.changed();
+    try {
+      const result = await this.requireConnection().request("session/set_config_option", params);
+      if (connection !== this.connection || !this.state.session) return;
+      this.state.session.configOptions = result.configOptions;
+      this.state.events.push({ type: "config-result", configOptions: result.configOptions });
+      this.state.error = undefined;
+      this.state.errorDetails = undefined;
+      this.changed();
+    } catch (error) {
+      throw this.fail(error, "session/set_config_option");
+    }
+  }
+  async prompt(
+    text: string,
+    images: { path: string; mimeType: string; data: string }[] = [],
+  ) {
     if (this.state.phase !== "ready" || !text.trim())
       throw new Error("请先建立会话并输入任务");
     const agent = this.requireConnection();
@@ -327,14 +448,49 @@ export class AgentClient {
     this.state.error = undefined;
     this.state.errorDetails = undefined;
     const firstEvent = this.state.events.length;
-    this.state.events.push({ type: "user", text });
+    this.state.events.push({
+      type: "user",
+      text,
+      ...(images.length
+        ? {
+            images: images.map(({ path, mimeType, data }) => ({
+              path,
+              mimeType,
+              sha256: createHash("sha256")
+                .update(Buffer.from(data, "base64"))
+                .digest("hex"),
+            })),
+          }
+        : {}),
+    });
     this.changed();
     try {
-      const result = await agent.request("session/prompt", {
+      const request: PromptRequest = {
         sessionId: this.state.session!.sessionId,
-        prompt: [{ type: "text", text }],
-      });
+        prompt: [
+          { type: "text" as const, text },
+          ...images.map(({ mimeType, data }) => ({
+            type: "image" as const,
+            mimeType,
+            data,
+          })),
+        ],
+      };
+      // 在实际 request 前记录内容块类型、字节数和哈希；不复制 base64 到日志。
+      this.state.events.push({ type: "request", method: "session/prompt", params: {
+        sessionId: request.sessionId,
+        advertisedImage: this.state.initialization?.agentCapabilities?.promptCapabilities?.image ?? false,
+        configOptions: this.state.session?.configOptions,
+        prompt: request.prompt.map((block) => block.type === "image" ? {
+          type: "image", mimeType: block.mimeType,
+          bytes: Buffer.from(block.data, "base64").length,
+          sha256: createHash("sha256").update(Buffer.from(block.data, "base64")).digest("hex"),
+        } : block),
+      } });
+      this.changed();
+      const result = await agent.request("session/prompt", request);
       if (connection !== this.connection) return;
+      this.state.events.push({ type: "turn-result", result });
       const completed =
         result.stopReason === "end_turn" &&
         this.state.events
@@ -402,6 +558,20 @@ export class AgentClient {
     // 等待 session/prompt 结束才重新开放发送，不能把取消通知当作完成。
   }
   async disconnect() {
+    this.resolvePermissions();
+    if (this.connection && this.state.session && this.state.phase !== "starting" &&
+        this.state.initialization?.agentCapabilities?.sessionCapabilities?.close) {
+      const params = { sessionId: this.state.session.sessionId };
+      this.state.events.push({ type: "request", method: "session/close", params });
+      this.changed();
+      try {
+        await this.requireConnection().request("session/close", params, {
+          cancellationSignal: AbortSignal.timeout(10_000), stopWaitingOnCancel: true,
+        });
+      } catch (error) {
+        this.fail(error, "session/close");
+      }
+    }
     this.epoch++;
     const child = this.child;
     this.child = undefined;

@@ -301,18 +301,20 @@ def test_named_constraint_creation_and_duplicate_rejection(native):
     module, _, _ = native
     class Sketch:
         GeometryCount = 1
+        Geometry = [SimpleNamespace(TypeId="Part::GeomCircle")]
         def __init__(self): self.Constraints = []
-        def addConstraint(self, constraint):
-            self.Constraints.append(constraint)
-            return len(self.Constraints)-1
+        def addConstraint(self, constraints):
+            indices = list(range(len(self.Constraints), len(self.Constraints)+len(constraints)))
+            self.Constraints.extend(constraints)
+            return indices
         def renameConstraint(self, index, name): self.Constraints[index].Name = name
     module.Sketcher.Constraint = lambda kind, *args: SimpleNamespace(Name="", Type=kind, Args=args)
     sketch = Sketch()
     constraint = {"kind": "diameter", "entities": [{"geometry": 0}], "value": .008, "name": "Diameter"}
-    assert module._constraint(sketch, constraint) == 0
+    assert module._constraints(sketch, [constraint]) == [0]
     assert sketch.Constraints[0].Name == "Diameter" and sketch.Constraints[0].Args == (0, 8)
     with pytest.raises(ValueError, match="名称重复"):
-        module._constraint(sketch, constraint)
+        module._constraints(sketch, [constraint])
 
 
 @pytest.mark.parametrize("kind,unit,value,native_value", [("Diameter", "Length", .012, 12), ("Angle", "Angle", 1.5707963267948966, 90)])

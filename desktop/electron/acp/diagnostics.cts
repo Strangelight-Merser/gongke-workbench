@@ -44,6 +44,24 @@ export function failedTools(events: AgentEvent[]) {
   );
   return failed.length ? JSON.stringify(failed.slice(-4)) : undefined;
 }
+/** 对结构化会话记录逐值脱敏；保留 JSON 类型和 token 用量数字。 */
+export function redactRecord(value: unknown, secrets: string[] = []): unknown {
+  if (typeof value === "string") return redact(value, secrets);
+  if (Array.isArray(value))
+    return value.map((item) => redactRecord(item, secrets));
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        /^(api[_-]?key|authorization|cookie|password|secret|access[_-]?token|refresh[_-]?token)$/i.test(
+          key,
+        )
+          ? "[REDACTED]"
+          : redactRecord(item, secrets),
+      ]),
+    );
+  return value;
+}
 export class AgentFailure extends Error {
   constructor(
     message: string,

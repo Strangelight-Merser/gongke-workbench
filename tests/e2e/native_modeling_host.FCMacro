@@ -25,5 +25,18 @@ for module in (bridge, native_inspection, native_modeling):
     sources[module.__name__] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 # 全局持有桥接，Qt timer 只在 GUI 主线程调度；不关闭或修改其他文档。
 GONGKE_MODELING_BRIDGE = bridge.Bridge(endpoint)
-(endpoint.parent / "bootstrap.json").write_text(json.dumps({"root": str(root), "freecad_version": App.Version(), "sources": sources}, indent=2), encoding="utf-8")
+(endpoint.parent / "bootstrap.json").write_text(json.dumps({"root": str(root), "pid": os.getpid(), "freecad_version": App.Version(), "sources": sources}, indent=2), encoding="utf-8")
 App.Console.PrintMessage("原生建模验收桥接已启动："+str(endpoint)+"\n")
+
+if os.environ.get("GONGKE_TRIAL_BACKGROUND") == "1":
+    Gui.getMainWindow().hide()
+if os.environ.get("GONGKE_TRIAL_EXIT"):
+    from PySide import QtCore
+    def finish_trial():
+        if Path(os.environ["GONGKE_TRIAL_EXIT"]).exists():
+            for name in list(App.listDocuments()):
+                App.closeDocument(name)
+            QtCore.QCoreApplication.instance().quit()
+    GONGKE_TRIAL_TIMER = QtCore.QTimer()
+    GONGKE_TRIAL_TIMER.timeout.connect(finish_trial)
+    GONGKE_TRIAL_TIMER.start(250)

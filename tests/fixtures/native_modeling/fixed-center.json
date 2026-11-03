@@ -1,0 +1,172 @@
+{
+  "source": "真实 dsh 第四轮 host.sketch 崩溃请求；只保留几何与约束，不含参考实体或建模答案。",
+  "operation_id": "4d5e6f7a-8b9c-4d0e-1f2a-3b4c5d6e7f8a",
+  "sketch": {
+    "name": "BaseProfile",
+    "support": {
+      "plane": "XY",
+      "offset": 0
+    },
+    "geometry": [
+      {
+        "kind": "arc",
+        "start": [
+          0,
+          -0.01
+        ],
+        "mid": [
+          -0.01,
+          0
+        ],
+        "end": [
+          0,
+          0.01
+        ]
+      },
+      {
+        "kind": "line",
+        "start": [
+          0,
+          0.01
+        ],
+        "end": [
+          0.032,
+          0.01
+        ]
+      },
+      {
+        "kind": "arc",
+        "start": [
+          0.032,
+          0.01
+        ],
+        "mid": [
+          0.042,
+          0
+        ],
+        "end": [
+          0.032,
+          -0.01
+        ]
+      },
+      {
+        "kind": "line",
+        "start": [
+          0.032,
+          -0.01
+        ],
+        "end": [
+          0,
+          -0.01
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "fixed",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "center"
+          }
+        ]
+      },
+      {
+        "kind": "coincident",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "end"
+          },
+          {
+            "geometry": 1,
+            "point": "start"
+          }
+        ]
+      },
+      {
+        "kind": "coincident",
+        "entities": [
+          {
+            "geometry": 1,
+            "point": "end"
+          },
+          {
+            "geometry": 2,
+            "point": "start"
+          }
+        ]
+      },
+      {
+        "kind": "coincident",
+        "entities": [
+          {
+            "geometry": 2,
+            "point": "end"
+          },
+          {
+            "geometry": 3,
+            "point": "start"
+          }
+        ]
+      },
+      {
+        "kind": "coincident",
+        "entities": [
+          {
+            "geometry": 3,
+            "point": "end"
+          },
+          {
+            "geometry": 0,
+            "point": "start"
+          }
+        ]
+      },
+      {
+        "kind": "horizontal",
+        "entities": [
+          {
+            "geometry": 1,
+            "point": "whole"
+          }
+        ]
+      },
+      {
+        "kind": "horizontal",
+        "entities": [
+          {
+            "geometry": 3,
+            "point": "whole"
+          }
+        ]
+      },
+      {
+        "kind": "radius",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "whole"
+          }
+        ],
+        "value": 0.01,
+        "name": "BaseEndRadius"
+      },
+      {
+        "kind": "distance",
+        "entities": [
+          {
+            "geometry": 0,
+            "point": "center"
+          },
+          {
+            "geometry": 2,
+            "point": "center"
+          }
+        ],
+        "value": 0.032,
+        "name": "BaseCenterDistance"
+      }
+    ]
+  }
+}

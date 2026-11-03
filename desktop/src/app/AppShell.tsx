@@ -382,6 +382,13 @@ export function AppShell() {
           <AgentPanel
             project={project?.path}
             context={excluded !== selection ? selection : undefined}
+            referencePath={
+              excluded !== selection &&
+              current?.type === "file" &&
+              /^(png|jpe?g|webp|pdf|dxf|svg|txt|json|md|yaml|yml)$/i.test(current.file!.kind)
+                ? current.file!.path
+                : undefined
+            }
             removeContext={() => setExcluded(selection)}
             mode={mode}
             onMode={setMode}
