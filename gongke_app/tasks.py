@@ -90,7 +90,8 @@ class Tasks:
         with self.lock:
             cursor = self.db.execute("INSERT INTO receipts VALUES (?,?,?)", (task_id, command, json.dumps(record, ensure_ascii=False, allow_nan=False)))
             self.db.commit()
-        self.emit({"event": "task.receipt", "task_id": task_id, "receipt": record})
+        self.emit({"event": "task.receipt", "project": self.get(task_id)["project"],
+                   "task_id": task_id, "receipt": record})
         return cursor.lastrowid
 
     def finish_receipt(self, task_id, receipt_id, result):
@@ -100,7 +101,8 @@ class Tasks:
             record.update(result=result, phase="finished", finished_at=now())
             self.db.execute("UPDATE receipts SET record=? WHERE rowid=?", (json.dumps(record, ensure_ascii=False, allow_nan=False), receipt_id))
             self.db.commit()
-        self.emit({"event": "task.receipt", "task_id": task_id, "receipt": record})
+        self.emit({"event": "task.receipt", "project": self.get(task_id)["project"],
+                   "task_id": task_id, "receipt": record})
 
     def start(self, kind, project, fn, *, inline=False, task_id=None):
         task_id, event = task_id or uuid4().hex, threading.Event()

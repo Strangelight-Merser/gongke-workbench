@@ -132,7 +132,7 @@ class Application:
             return self.commands.call(method, params, self.project)
         project = self.current()
         definition = self.commands.definitions.get(method)
-        if definition and (definition[2] or method in {"design.calculate", "revision.inspect", "freecad.review", "freecad.preview", "freecad.preview_fillet"}):
+        if definition and (definition[2] or method in {"design.calculate", "revision.inspect", "freecad.review", "freecad.preview", "freecad.preview_fillet", "host.check"}):
             return self.tasks.start("command", project.path,
                                     lambda ctx: self.commands.call(method, params, project, ctx), inline=True)
         return self.commands.call(method, params, project)

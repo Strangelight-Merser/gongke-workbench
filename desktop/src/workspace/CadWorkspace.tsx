@@ -26,9 +26,9 @@ export function CadWorkspace({
   setKind(kind: string): void;
   focusRequest: number;
 }) {
-  const [inspect, setInspect] = useState(!window.cadEmbed?.supported);
+  const [inspect, setInspect] = useState(true);
   useEffect(() => {
-    if (focusRequest && window.cadEmbed?.supported) setInspect(false);
+    if (focusRequest) setInspect(true);
   }, [focusRequest]);
   const freecadContext = useCallback(
     (value: Data) => {

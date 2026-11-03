@@ -43,6 +43,8 @@ import { AgentPanel } from "../agent/AgentPanel";
 import { ResizeHandle } from "../ui/ResizeHandle";
 import { call, Data } from "../api";
 
+import { ModelingProgress } from "../agent/ModelingProgress";
+
 export function AppShell() {
   const state = useProject();
   const {
@@ -176,6 +178,7 @@ export function AppShell() {
     </Tooltip>
   );
   return (
+    <ModelingProgress project={project?.path}>
     <FluentProvider
       theme={layout.dark ? darkTheme : lightTheme}
       className="workbench"
@@ -444,5 +447,6 @@ export function AppShell() {
         </span>
       </footer>
     </FluentProvider>
+    </ModelingProgress>
   );
 }
