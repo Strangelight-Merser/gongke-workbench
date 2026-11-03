@@ -1,7 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { resolve, join } = require("node:path");
-const { mkdtempSync, rmSync } = require("node:fs");
+const { mkdtempSync, rmSync, readFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { AgentClient } = require("../dist-electron/acp/client.cjs");
 const {
@@ -177,21 +177,37 @@ test("DeepSeek 官方插件策略：仅会话 MCP 可见，非工程工具拒绝
   );
 });
 
-
 test("ACP 开发版与打包版使用同一状态目录的绑定工程入口", () => {
   const root = resolve(__dirname, "../..");
   const directory = mkdtempSync(join(tmpdir(), "gongke-acp-settings-"));
   try {
-    const packaged = new AgentConfiguration(directory, root, process.execPath).read();
+    const packaged = new AgentConfiguration(
+      directory,
+      root,
+      process.execPath,
+    ).read();
     assert.deepEqual(packaged.mcp, {
       command: process.execPath,
-      args: ["mcp", "--state-dir", join(directory, "state"), "--project", "${project}"],
+      args: [
+        "mcp",
+        "--state-dir",
+        join(directory, "state"),
+        "--project",
+        "${project}",
+      ],
       env: {},
     });
     const configuration = new AgentConfiguration(directory, root);
     const settings = configuration.read();
-    assert.deepEqual(settings.mcp.args, ["-m", "gongke_app", "mcp", "--state-dir",
-      join(directory, "state"), "--project", "${project}"]);
+    assert.deepEqual(settings.mcp.args, [
+      "-m",
+      "gongke_app",
+      "mcp",
+      "--state-dir",
+      join(directory, "state"),
+      "--project",
+      "${project}",
+    ]);
     assert.equal(settings.mcp.env.PYTHONPATH, root);
     settings.agents = [profile];
     configuration.save(settings);
@@ -200,5 +216,49 @@ test("ACP 开发版与打包版使用同一状态目录的绑定工程入口", (
     assert.ok(!launch.mcp.args.includes("--allow-writes"));
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("首次对话保留 ACP 错误、stderr 和 MCP 原因，日志与界面详情不带凭据", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "gongke-diagnostics-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const log = join(directory, "agent-errors.jsonl");
+  const client = new AgentClient(() => {}, log);
+  const deepseek = {
+    ...profile,
+    id: "deepseek",
+    env: { FIXTURE_API_KEY: "opaque-private-value" },
+  };
+  try {
+    await assert.rejects(client.start(deepseek, process.cwd(), mcp));
+    await client.authenticate("login");
+    let thrown;
+    await assert.rejects(client.prompt("diagnostic"), (error) => {
+      thrown = error;
+      assert.equal(error.diagnostic.code, -32603);
+      assert.equal(error.diagnostic.operation, "session/prompt");
+      return true;
+    });
+    const state = client.snapshot();
+    assert.equal(state.phase, "ready");
+    assert.deepEqual(state.errorDetails, thrown.diagnostic);
+    assert.match(state.errorDetails.message, /first prompt failed/);
+    assert.match(state.errorDetails.details, /MCP connection refused/);
+    assert.match(state.errorDetails.stderr, /ModuleNotFoundError: mcp/);
+    assert.match(state.errorDetails.tools, /gongke MCP unavailable/);
+    for (const text of [
+      JSON.stringify(state.errorDetails),
+      readFileSync(log, "utf8"),
+    ]) {
+      assert.doesNotMatch(
+        text,
+        /stderr-private|opaque-private-value|data-private|header-private/,
+      );
+      assert.match(text, /REDACTED/);
+    }
+    await client.prompt("forbidden");
+    assert.equal(client.snapshot().errorDetails, undefined);
+  } finally {
+    await client.disconnect();
   }
 });

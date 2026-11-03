@@ -1,3 +1,6 @@
+import { AgentErrorDetails } from "./AgentErrorDetails";
+import { Link, Select } from "@fluentui/react-components";
+import { guideProgress, recoveryFor } from "./onboardingPresentation";
 import { Button, Input, Checkbox } from "../ui/controls";
 import { useEffect, useState } from "react";
 import type {
@@ -12,21 +15,24 @@ export function AgentOnboarding({
   onConnected,
   openRequest = 0,
   onStep,
+  hidden = false,
 }: {
   project?: string;
-  onConnected(): void;
+  onConnected(): Promise<void>;
+  hidden?: boolean;
   openRequest?: number;
   onStep(step: Step): void;
 }) {
   const [state, setState] = useState<OnboardingState>();
   const [error, setError] = useState("");
+  const [acting, setActing] = useState(false);
   const [consent, setConsent] = useState(false);
   const [taskId, setTaskId] = useState("");
   const [sawReply, setSawReply] = useState(false);
   const [expanded, setExpanded] = useState(true);
   async function act(action: OnboardingAction) {
     setError("");
-
+    setActing(true);
     try {
       const next = await window.gongke.onboarding.act(action);
       setState(next);
@@ -36,9 +42,11 @@ export function AgentOnboarding({
         next.selected === "deepseek" &&
         !next.error
       )
-        onConnected();
+        await onConnected();
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      setActing(false);
     }
   }
   useEffect(() => {
@@ -75,26 +83,52 @@ export function AgentOnboarding({
     if (openRequest) setExpanded(true);
   }, [openRequest]);
   if (!state)
-    return <p className="agent-onboarding">{error || "正在检测 Agent…"}</p>;
+    return (
+      <p className="agent-onboarding" hidden={hidden}>
+        {error || "正在检测 Agent…"}
+      </p>
+    );
   const p = state.agents[state.selected];
   if (p.step === "complete" && !expanded) return null;
   const dsh = state.selected === "deepseek";
   const release = state.releases.find((r) => r.provider === state.selected)!;
-  const busy = state.working;
+  const busy = state.working || acting;
+  const progress = guideProgress(state.selected, p.step);
+  const failure = error || state.error || "";
+  const recovery = recoveryFor(failure);
   const installed = dsh ? p.command : p.application;
   const button = (
     label: string,
     action: OnboardingAction,
     disabled = false,
   ) => (
-    <Button disabled={busy || disabled} onClick={() => act(action)}>
+    <Button
+      appearance="primary"
+      className="onboarding-primary-action"
+      disabled={busy || disabled}
+      onClick={() => act(action)}
+    >
       {label}
     </Button>
+  );
+  const secondary = (
+    label: string,
+    action: OnboardingAction,
+    disabled = false,
+  ) => (
+    <Link
+      as="button"
+      className="onboarding-link"
+      disabled={busy || disabled}
+      onClick={() => act(action)}
+    >
+      {label}
+    </Link>
   );
   const link = (
     label: string,
     name: "register" | "balance" | "keys" | "help" | "workbuddy",
-  ) => button(label, { type: "link", link: name });
+  ) => secondary(label, { type: "link", link: name });
   const labels = {
     detect: "检测 Agent",
     install: "安装 Agent",
@@ -106,13 +140,15 @@ export function AgentOnboarding({
   };
   return (
     <div
+      hidden={hidden}
+      data-step={p.step}
       className={
         "agent-onboarding" +
         (p.step !== "complete" ? " onboarding-primary" : "")
       }
     >
       {p.step !== "complete" ? (
-        <h3 className="onboarding-heading">{labels[p.step]}</h3>
+        <h3 className="onboarding-heading">连接你的 Agent</h3>
       ) : (
         <Button
           className="onboarding-heading"
@@ -124,37 +160,39 @@ export function AgentOnboarding({
       )}
       {(p.step !== "complete" || expanded) && (
         <div className="onboarding-body">
-          <div
-            className="onboarding-actions"
-            role="group"
-            aria-label="引导 Agent 选择"
+          <Select
+            aria-label="引导 Agent"
+            size="small"
+            value={state.selected}
+            disabled={busy}
+            onChange={(e) =>
+              act({
+                type: "select",
+                provider: e.target.value as "deepseek" | "workbuddy",
+              })
+            }
           >
-            <Button
-              aria-pressed={dsh}
-              disabled={busy}
-              onClick={() => act({ type: "select", provider: "deepseek" })}
-            >
-              DeepSeek Harness
-            </Button>
-            <Button
-              aria-pressed={!dsh}
-              disabled={busy}
-              onClick={() => act({ type: "select", provider: "workbuddy" })}
-            >
-              WorkBuddy
-            </Button>
-          </div>
-          {installed && (
-            <p className="onboarding-location" title={installed}>
-              {dsh ? "dsh" : "WorkBuddy"}
-              {p.version ? ` ${p.version}` : ""} · {installed}
-            </p>
+            <option value="deepseek">DeepSeek Harness</option>
+            <option value="workbuddy">WorkBuddy</option>
+          </Select>
+          <ol className="onboarding-steps" aria-label="连接引导步骤">
+            {progress.labels.map((label, index) => (
+              <li
+                key={label}
+                aria-current={index === progress.index ? "step" : undefined}
+                data-complete={index < progress.index}
+              >
+                <span>{index + 1}</span>
+                {label}
+              </li>
+            ))}
+          </ol>
+          {p.step === "detect" && (
+            <>
+              <p>检测已有的 Agent，或选择它的安装目录。</p>
+              {button("检测安装", { type: "detect" })}
+            </>
           )}
-          <div className="onboarding-actions">
-            {button("重新检测", { type: "detect" })}
-            {button("选择安装位置", { type: "locate" })}
-          </div>
-          {p.step === "detect" && <p>检测已有的 Agent，或选择它的安装目录。</p>}
           {p.step === "install" && (
             <>
               <p>
@@ -189,13 +227,24 @@ export function AgentOnboarding({
                   )}
                 </>
               ) : (
-                <p>
-                  自动安装目前支持 Windows
-                  x64。此电脑请先安装官方客户端，再重新检测或选择安装位置。
-                </p>
+                <>
+                  <p>
+                    自动安装目前支持 Windows
+                    x64。此电脑请先安装官方客户端，再重新检测或选择安装位置。
+                  </p>
+                  {button("检测已安装的 Agent", { type: "detect" })}
+                </>
               )}
               {!dsh && link("WorkBuddy 官网", "workbuddy")}
             </>
+          )}
+          {["detect", "install"].includes(p.step) && (
+            <div className="onboarding-actions">
+              {secondary("选择安装位置", { type: "locate" })}
+              {p.step === "install" &&
+                state.canInstall &&
+                secondary("已安装，重新检测", { type: "detect" })}
+            </div>
           )}
           {state.installing && (
             <div role="status">
@@ -216,22 +265,28 @@ export function AgentOnboarding({
           )}
           {dsh && p.step === "account" && (
             <>
-              <ol>
-                <li>
-                  {link("注册或登录 DeepSeek", "register")}
-                  <p>按平台提示完成账号验证。</p>
-                </li>
-                <li>
-                  {link("余额与充值", "balance")}
-                  <p>由你在平台付款，金额以平台页面为准。</p>
-                </li>
-                <li>{link("创建 API Key", "keys")}</li>
-              </ol>
-              {button("下一步：在 dsh 配置", {
-                type: "advance",
-                step: "credentials",
+              <p>
+                注册 DeepSeek API 账号，确认余额后创建 API Key。费用和充值由
+                DeepSeek 平台处理。
+              </p>
+              {button("注册或登录 DeepSeek", {
+                type: "link",
+                link: "register",
               })}
-              {button("已配置，直接连接", { type: "advance", step: "connect" })}
+              <div className="onboarding-actions">
+                {link("余额与充值", "balance")}
+                {link("创建 API Key", "keys")}
+              </div>
+              <div className="onboarding-actions">
+                {secondary("下一步：在 dsh 填 Key", {
+                  type: "advance",
+                  step: "credentials",
+                })}
+                {secondary("已配置，直接连接", {
+                  type: "advance",
+                  step: "connect",
+                })}
+              </div>
             </>
           )}
           {dsh && p.step === "credentials" && (
@@ -242,7 +297,10 @@ export function AgentOnboarding({
               </p>
               <div className="onboarding-actions">
                 {button("打开 dsh", { type: "open-agent" })}
-                {button("已保存，下一步", { type: "advance", step: "connect" })}
+                {secondary("已保存，下一步", {
+                  type: "advance",
+                  step: "connect",
+                })}
               </div>
             </>
           )}
@@ -269,7 +327,7 @@ export function AgentOnboarding({
                   API 用量。
                 </p>
                 {button("发送首次对话", { type: "verify" }, !project)}
-                {button("重新连接 dsh", { type: "connect" }, !project)}
+                {secondary("重新连接 dsh", { type: "connect" }, !project)}
               </>
             ) : (
               <>
@@ -281,7 +339,7 @@ export function AgentOnboarding({
                   project.current，告诉我当前工程名称、路径和状态，并列出工具返回的
                   task_id。
                 </blockquote>
-                {button("打开 WorkBuddy", { type: "open-agent" })}
+                {secondary("打开 WorkBuddy", { type: "open-agent" })}
                 <label className="onboarding-check">
                   <Checkbox
                     checked={sawReply}
@@ -304,7 +362,7 @@ export function AgentOnboarding({
                   { type: "confirm-workbuddy", taskId, sawReply: true },
                   !sawReply || !/^[a-f0-9]{32}$/.test(taskId),
                 )}
-                {button("重新生成配置", { type: "connect" }, !project)}
+                {secondary("重新生成配置", { type: "connect" }, !project)}
               </>
             ))}
           {p.step === "complete" && (
@@ -321,20 +379,31 @@ export function AgentOnboarding({
               )}
             </>
           )}
-          {(error || state.error) && (
-            <p role="alert" className="onboarding-error">
-              {error || state.error}
-            </p>
-          )}
-          {dsh && installed && (
-            <div className="onboarding-actions">
-              {button("去 dsh 更新 Key", { type: "open-agent" })}
-              {link("去充值", "balance")}
-              {link("API Keys", "keys")}
-              {link("官方帮助", "help")}
+          {failure && (
+            <div className="onboarding-error" role="alert">
+              <p>{failure}</p>
+              <AgentErrorDetails diagnostic={state.errorDetails} />
+              {dsh && installed && (
+                <div className="onboarding-actions">
+                  {recovery.key &&
+                    secondary("去 dsh 更新 Key", { type: "open-agent" })}
+                  {recovery.balance && link("去充值", "balance")}
+                </div>
+              )}
             </div>
           )}
-          <small>进度自动保存。可以先离开，返回后继续。</small>
+          <div className="onboarding-support">
+            {installed && (
+              <details>
+                <summary>安装信息</summary>
+                <p className="onboarding-url">
+                  {installed}
+                  {p.version ? ` · ${p.version}` : ""}
+                </p>
+              </details>
+            )}
+            {link("官方帮助", dsh ? "help" : "workbuddy")}
+          </div>
         </div>
       )}
     </div>

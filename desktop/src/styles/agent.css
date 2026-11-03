@@ -157,7 +157,7 @@
   padding: 8px 12px;
   color: var(--danger);
   font-size: var(--text-small);
-  max-height: 100px;
+  max-height: 240px;
   overflow: auto;
 }
 .compose {
@@ -257,21 +257,12 @@
   flex-wrap: wrap;
   margin: 8px 0;
 }
-.onboarding-actions button[aria-pressed="true"] {
-  background: var(--selection);
-  color: var(--accent);
-}
 .onboarding-check {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   margin: 12px 0;
   line-height: 1.6;
-}
-.onboarding-location {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .onboarding-url {
   overflow-wrap: anywhere;
@@ -280,12 +271,6 @@
 }
 .onboarding-error {
   color: var(--danger);
-}
-.onboarding-body small {
-  display: block;
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: var(--text-small);
 }
 .onboarding-body progress {
   width: 100%;
@@ -304,4 +289,76 @@
 }
 .onboarding-primary .onboarding-body {
   flex: 1;
+}
+
+.onboarding-steps {
+  list-style: none;
+  padding: 0 !important;
+  margin: 16px 0 24px;
+}
+.onboarding-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 5px 0;
+  color: var(--muted);
+}
+.onboarding-steps li > span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: var(--text-small);
+}
+.onboarding-steps li[aria-current="step"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+.onboarding-steps li[aria-current="step"] > span {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--selection);
+}
+.onboarding-steps li[data-complete="true"] > span {
+  color: var(--success);
+}
+.onboarding-link {
+  font-size: var(--text-small) !important;
+}
+.onboarding-support {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+.onboarding-support details {
+  min-width: 0;
+  flex: 1;
+}
+.onboarding-support summary {
+  cursor: pointer;
+}
+.onboarding-primary-action {
+  margin: 4px 0;
+}
+
+.agent-error-details {
+  color: var(--ink);
+  margin-top: 8px;
+  font-size: var(--text-small);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.agent-error-details summary {
+  cursor: pointer;
+}
+.agent-error-details pre {
+  white-space: pre-wrap;
+  font-family: "Cascadia Code", Consolas, monospace;
+  margin: 8px 0;
 }

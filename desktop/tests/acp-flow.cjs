@@ -50,7 +50,13 @@ if (!live)
       join(output, "project"),
     );
     await page.reload();
-    await page.getByRole("button", { name: "连接", exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "Agent 连接设置", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "使用已配置的 Agent", exact: true })
+      .click();
+    await page.getByLabel("选择 Agent", { exact: true }).waitFor();
     const settings = await page.evaluate(() => window.gongke.agent.settings());
     const evidence = [];
     for (const profile of settings.agents) {

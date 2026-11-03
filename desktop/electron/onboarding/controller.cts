@@ -1,8 +1,15 @@
+import { agentError } from "./errors.cjs";
+import {
+  AgentFailure,
+  diagnosticFor,
+  failedTools,
+  logDiagnostic,
+  redact,
+} from "../acp/diagnostics.cjs";
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentClient } from "../acp/client.cjs";
 import type { AgentConfiguration } from "../acp/settings.cjs";
-import { agentError } from "./errors.cjs";
 import { releases } from "./releases.cjs";
 import type {
   OnboardingAction,
@@ -60,6 +67,7 @@ export class Onboarding {
     agents: { deepseek: { step: "detect" }, workbuddy: { step: "detect" } },
   };
   private error?: string;
+  private errorDetails?: OnboardingState["errorDetails"];
   private installing?: OnboardingState["installing"];
   private abort?: AbortController;
   private working = false;
@@ -73,6 +81,7 @@ export class Onboarding {
     const state: OnboardingState = {
       ...structuredClone(this.data),
       error: this.error,
+      errorDetails: this.errorDetails,
       installing: this.installing,
       releases,
       canInstall: this.d.canInstall,
@@ -139,6 +148,7 @@ export class Onboarding {
     if (this.working) throw new Error("请等待当前引导操作结束");
     this.working = true;
     this.error = undefined;
+    this.errorDetails = undefined;
     this.publish();
     try {
       const provider = this.data.selected;
@@ -238,7 +248,11 @@ export class Onboarding {
             try {
               await this.d.agent.start(launch.profile, project, launch.mcp);
             } catch (error) {
-              throw new Error(agentError(error));
+              if (error instanceof AgentFailure) throw error;
+              throw new AgentFailure(
+                agentError(error),
+                diagnosticFor(error, "connect"),
+              );
             }
           } else {
             if (!p.application)
@@ -273,7 +287,11 @@ export class Onboarding {
           try {
             result = await this.d.agent.prompt(firstPrompt);
           } catch (error) {
-            throw new Error(agentError(error));
+            if (error instanceof AgentFailure) throw error;
+            throw new AgentFailure(
+              agentError(error),
+              diagnosticFor(error, "session/prompt"),
+            );
           }
           if (!result?.completed)
             throw new Error("首次对话未完成或已取消，请重试首次对话");
@@ -337,10 +355,18 @@ export class Onboarding {
           throw new Error("不支持的引导操作");
       }
     } catch (error) {
+      this.errorDetails = diagnosticFor(error, `onboarding/${action.type}`, {
+        project: this.d.project(),
+        tools: failedTools(this.d.agent.snapshot().events || []),
+      });
+      logDiagnostic(
+        this.errorDetails,
+        join(this.d.directory, "agent-errors.jsonl"),
+      );
       this.error = this.abort?.signal.aborted
         ? "下载已取消，可稍后重试。"
         : error instanceof Error
-          ? error.message
+          ? redact(error.message)
           : "操作失败，请重试";
     } finally {
       this.working = false;

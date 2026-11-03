@@ -1,3 +1,4 @@
+import type { AgentDiagnostic } from "../acp/diagnostics.cjs";
 export type Provider = "deepseek" | "workbuddy";
 export type Step =
   | "detect"
@@ -36,6 +37,7 @@ export type OnboardingState = {
     total: number;
   };
   error?: string;
+  errorDetails?: AgentDiagnostic;
   releases: Release[];
   canInstall: boolean;
 };

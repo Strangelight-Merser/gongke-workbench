@@ -4,14 +4,16 @@ const { AgentConfiguration } = require("../dist-electron/acp/settings.cjs");
 const { Onboarding } = require("../dist-electron/onboarding/controller.cjs");
 const { detect } = require("../dist-electron/onboarding/discovery.cjs");
 const { Service } = require("../dist-electron/service.cjs");
-const { mkdirSync, writeFileSync } = require("node:fs");
+const { mkdirSync, mkdtempSync, writeFileSync } = require("node:fs");
 const { resolve, join } = require("node:path");
 const assert = require("node:assert/strict");
 const root = resolve(__dirname, "../..");
-const output = resolve(
+const outputRoot = resolve(
   process.env.GONGKE_ONBOARDING_OUTPUT || join(root, "out/onboarding-smoke"),
 );
-mkdirSync(output, { recursive: true });
+mkdirSync(outputRoot, { recursive: true });
+const output = mkdtempSync(join(outputRoot, "run-"));
+console.log("output", output);
 const project = join(output, "学生工程");
 const service = new Service(
   process.env.GONGKE_PYTHON || "python3",
@@ -20,31 +22,35 @@ const service = new Service(
   { ...process.env, PYTHONPATH: root },
 );
 let approved = 0;
+let latestGuide;
 const handled = new Set();
-const agent = new AgentClient((state) => {
-  for (const e of state.events)
-    if (e.type === "permission" && !handled.has(e.id)) {
-      handled.add(e.id);
-      const tool = state.events.findLast(
-        (x) =>
-          x.type === "update" &&
-          x.update.sessionUpdate === "tool_call" &&
-          x.update.toolCallId === e.request.toolCall.toolCallId,
-      )?.update;
-      const read = /project.current|project_current/.test(
-        JSON.stringify(tool || e.request),
-      );
-      setImmediate(() => {
-        if (read) approved++;
-        agent.permission(
-          e.id,
-          read
-            ? e.request.options.find((o) => o.kind === "allow_once").optionId
-            : null,
+const agent = new AgentClient(
+  (state) => {
+    for (const e of state.events)
+      if (e.type === "permission" && !handled.has(e.id)) {
+        handled.add(e.id);
+        const tool = state.events.findLast(
+          (x) =>
+            x.type === "update" &&
+            x.update.sessionUpdate === "tool_call" &&
+            x.update.toolCallId === e.request.toolCall.toolCallId,
+        )?.update;
+        const read = /project.current|project_current/.test(
+          JSON.stringify(tool || e.request),
         );
-      });
-    }
-});
+        setImmediate(() => {
+          if (read) approved++;
+          agent.permission(
+            e.id,
+            read
+              ? e.request.options.find((o) => o.kind === "allow_once").optionId
+              : null,
+          );
+        });
+      }
+  },
+  join(output, "agent-errors.jsonl"),
+);
 (async () => {
   service.start();
   const timer = setTimeout(() => agent.disconnect(), 150000);
@@ -73,11 +79,15 @@ const agent = new AgentClient((state) => {
       configureWorkbuddy: () =>
         service.request("mcp.configure", { allow_writes: false }),
       task: (id) => service.request("task.get", { task_id: id }),
-      publish: () => {},
+      publish: (state) => {
+        latestGuide = state;
+      },
     });
     const detected = await flow.act({ type: "detect" });
     console.log("detected", JSON.stringify(detected.agents));
     const connected = await flow.act({ type: "connect" });
+    if (connected.error)
+      console.error(JSON.stringify(connected.errorDetails, null, 2));
     assert.equal(connected.error, undefined, connected.error);
     console.log(
       "connected",
@@ -103,6 +113,8 @@ const agent = new AgentClient((state) => {
       return;
     }
     const verified = await flow.act({ type: "verify" });
+    if (verified.error)
+      console.error(JSON.stringify(verified.errorDetails, null, 2));
     assert.equal(verified.error, undefined, verified.error);
     assert.equal(verified.agents.deepseek.step, "complete");
     const state = agent.snapshot();
@@ -121,6 +133,21 @@ const agent = new AgentClient((state) => {
     };
     writeFileSync(join(output, "result.json"), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));
+  } catch (error) {
+    writeFileSync(
+      join(output, "failure.json"),
+      JSON.stringify(
+        {
+          error: error.message,
+          diagnostic:
+            latestGuide?.errorDetails || agent.snapshot().errorDetails,
+        },
+        null,
+        2,
+      ),
+      { mode: 0o600 },
+    );
+    throw error;
   } finally {
     clearTimeout(timer);
     await agent.disconnect();

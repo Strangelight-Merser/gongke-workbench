@@ -1,3 +1,4 @@
+import { AgentErrorDetails } from "./AgentErrorDetails";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
@@ -68,6 +69,8 @@ export function AgentPanel({
   const [onboardingRequest, setOnboardingRequest] = useState(0);
   const [onboardingStep, setOnboardingStep] = useState<Step>();
   const onboardingComplete = onboardingStep === "complete";
+  const [configuredConnection, setConfiguredConnection] = useState(false);
+  const conversationVisible = onboardingComplete || configuredConnection;
   const [selected, setSelected] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
     JSON.parse(localStorage.getItem("gongke.agent.drafts") || "{}"),
@@ -182,7 +185,7 @@ export function AgentPanel({
     <section
       className="agent-panel"
       aria-label="Agent 面板"
-      data-onboarding={!onboardingComplete}
+      data-onboarding={!conversationVisible}
     >
       <div className="panel-heading">
         <strong>Agent</strong>
@@ -203,7 +206,15 @@ export function AgentPanel({
           <MenuPopover>
             <MenuList>
               <MenuItem onClick={() => setEditing(true)}>连接设置</MenuItem>
-              <MenuItem onClick={() => setOnboardingRequest((n) => n + 1)}>
+              <MenuItem onClick={() => setConfiguredConnection(true)}>
+                使用已配置的 Agent
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setConfiguredConnection(false);
+                  setOnboardingRequest((n) => n + 1);
+                }}
+              >
                 安装与连接引导
               </MenuItem>
             </MenuList>
@@ -212,17 +223,16 @@ export function AgentPanel({
       </div>
       <AgentOnboarding
         project={project}
+        hidden={configuredConnection}
         openRequest={onboardingRequest}
         onStep={setOnboardingStep}
-        onConnected={() => {
+        onConnected={async () => {
           setSelected("deepseek");
-          void perform(async () => {
-            setSettings(await window.gongke.agent.settings());
-            await window.gongke.agent.start("deepseek");
-          });
+          setSettings(await window.gongke.agent.settings());
+          await window.gongke.agent.start("deepseek");
         }}
       />
-      <div className="agent-controls" hidden={!onboardingComplete}>
+      <div className="agent-controls" hidden={!conversationVisible}>
         <Select
           aria-label="选择 Agent"
           value={selected}
@@ -277,7 +287,7 @@ export function AgentPanel({
       </div>
       <TabList
         className="agent-modes"
-        hidden={!onboardingComplete}
+        hidden={!conversationVisible}
         size="small"
         selectedValue={mode}
         onTabSelect={(_, d) => changeMode(d.value as "model" | "practice")}
@@ -290,12 +300,12 @@ export function AgentPanel({
           练习
         </Tab>
       </TabList>
-      {onboardingComplete && mode === "practice" && (
+      {conversationVisible && mode === "practice" && (
         <p className="mode-note">
           只讲解与检查；模型由你完成。工程工具为只读。
         </p>
       )}
-      {onboardingComplete && context && (
+      {conversationVisible && context && (
         <div className="agent-context">
           <div>
             <span title={context}>{context}</span>
@@ -326,14 +336,14 @@ export function AgentPanel({
       <div
         className="conversation"
         hidden={
-          !onboardingComplete &&
+          !conversationVisible &&
           !(onboardingStep === "verify" && rows.length > 0)
         }
         role="log"
         aria-label="工程对话"
         aria-live="polite"
       >
-        {onboardingComplete && !rows.length && (
+        {conversationVisible && !rows.length && (
           <div className="agent-welcome">
             <h3>{project ? "从一个具体任务开始" : "先打开工程"}</h3>
             <p>
@@ -463,9 +473,10 @@ export function AgentPanel({
       {(error || (active && state.error)) && (
         <div className="agent-error" role="alert">
           {error || state.error}
+          <AgentErrorDetails diagnostic={state.errorDetails} />
         </div>
       )}
-      <div className="compose" hidden={!onboardingComplete}>
+      <div className="compose" hidden={!conversationVisible}>
         <Textarea
           aria-label="工程任务"
           placeholder={

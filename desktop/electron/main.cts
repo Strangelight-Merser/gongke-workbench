@@ -176,7 +176,7 @@ else {
     );
     agent = new AgentClient((state) => {
       if (!window.isDestroyed()) window.webContents.send("acp-state", state);
-    });
+    }, join(app.getPath("userData"), "agent-errors.jsonl"));
     async function connectAgent(id: string) {
       if (!projectRoot) throw new Error("请先打开工程");
       if (agentMode === "practice" && id !== "deepseek")

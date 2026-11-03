@@ -30,21 +30,65 @@ mkdirSync(output, { recursive: true });
       join(output, "学生工程"),
     );
     await page.reload();
+    // 从真实菜单进入引导；再次运行时沿用输出目录中保存的引导进度。
+    await page
+      .getByRole("button", { name: "Agent 连接设置", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "安装与连接引导", exact: true })
+      .click();
+    await page
+      .getByLabel("引导 Agent", { exact: true })
+      .selectOption("deepseek");
     await page.waitForFunction(async () => {
       const s = await window.gongke.onboarding.state();
       return !s.working && !!s.agents.deepseek.command;
     });
     await page.screenshot({ path: join(output, "01-detected.png") });
+    let guide = await page.evaluate(() => window.gongke.onboarding.state());
+    assert.equal(guide.error, undefined, JSON.stringify(guide));
+    const step = guide.agents.deepseek.step;
+    if (step === "account") {
+      await page
+        .getByRole("button", { name: "已配置，直接连接", exact: true })
+        .click();
+    } else if (step === "credentials") {
+      await page
+        .getByRole("button", { name: "已保存，下一步", exact: true })
+        .click();
+    } else {
+      assert.ok(
+        ["connect", "verify", "complete"].includes(step),
+        `请先安装并配置 dsh，当前步骤：${step}`,
+      );
+    }
     await page
-      .getByRole("button", { name: "已配置，直接连接", exact: true })
+      .getByRole("button", {
+        name:
+          step === "verify" || step === "complete"
+            ? "重新连接 dsh"
+            : "连接 dsh",
+        exact: true,
+      })
       .click();
-    await page.getByRole("button", { name: "连接 dsh", exact: true }).click();
     await page.waitForFunction(
-      async () => !(await window.gongke.onboarding.state()).working,
+      async () => {
+        const state = await window.gongke.onboarding.state();
+        return (
+          !state.working &&
+          (state.agents.deepseek.step === "verify" || !!state.error)
+        );
+      },
       null,
       { timeout: 60000 },
     );
-    let guide = await page.evaluate(() => window.gongke.onboarding.state());
+    // 引导连接后按当前模式绑定工程 MCP，等待真实 ACP 就绪再验证。
+    await page.waitForFunction(
+      async () => (await window.gongke.agent.state()).phase === "ready",
+      null,
+      { timeout: 60000 },
+    );
+    guide = await page.evaluate(() => window.gongke.onboarding.state());
     assert.equal(guide.error, undefined, JSON.stringify(guide));
     assert.equal(guide.agents.deepseek.step, "verify");
     await page
