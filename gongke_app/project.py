@@ -100,23 +100,6 @@ class Project:
                     "input_hash": fingerprint, "generations": generations,
                     "delivery": next((row for row in generations if row["current"]), None)}
 
-    def conversation(self):
-        with self.lock:
-            path = self.path / ".gongke-conversation.json"
-            return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
-
-    def save_turn(self, turn):
-        with self.lock:
-            turns = self.conversation()
-            index = next((i for i, item in enumerate(turns) if item["task_id"] == turn["task_id"]), None)
-            if index is None:
-                turns.append(turn)
-            else:
-                turns[index] = turn
-            temp = self.path / (".conversation-" + uuid4().hex + ".tmp")
-            temp.write_text(json.dumps(turns, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
-            temp.replace(self.path / ".gongke-conversation.json")
-
     def update_result(self, path, changes):
         with self.lock:
             record = next(item for item in self.manifest["results"] if item["path"] == path)

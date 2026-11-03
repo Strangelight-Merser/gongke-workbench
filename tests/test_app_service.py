@@ -5,7 +5,6 @@ import subprocess
 import sys
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
@@ -67,9 +66,7 @@ def test_project_paths_and_originals_preserved(app, tmp_path):
         app.dispatch("project.create", {"path": str(app.project.path)})
 
 
-def test_missing_model_and_non_teaching_conditions_are_explicit(app, tmp_path):
-    with pytest.raises(ValueError, match="未连接模型"):
-        app.dispatch("agent.run", {"message": "计算轴"})
+def test_non_teaching_conditions_are_explicit(app, tmp_path):
     app.dispatch("project.create", {"path": str(tmp_path / "empty"), "teaching": False})
     with pytest.raises(ValueError, match="尚无计算条件"):
         app.dispatch("design.calculate", {})
@@ -107,92 +104,6 @@ def test_restart_marks_unfinished_tasks_interrupted(tmp_path):
     reopened = Tasks(tmp_path, lambda event: None)
     assert reopened.get("unfinished")["status"] == "interrupted"
     reopened.close()
-
-
-class ProviderFixture:
-    """Local HTTP protocol fixture; never presented as a live model account."""
-    def __init__(self, replies):
-        self.requests = []
-        fixture = self
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *args):
-                pass
-            def do_POST(self):
-                assert self.path == "/v1/chat/completions"
-                assert self.headers["Authorization"] == "Bearer fixture-secret"
-                payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                fixture.requests.append(payload)
-                chunks = replies[len(fixture.requests) - 1]
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
-                self.end_headers()
-                for delta, finish in chunks:
-                    value = {"choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
-                    self.wfile.write(("data: " + json.dumps(value) + "\n\n").encode())
-                    self.wfile.flush()
-                self.wfile.write(b"data: [DONE]\n\n")
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-
-    def configure(self, app):
-        return app.dispatch("agent.configure", {"base_url": f"http://127.0.0.1:{self.server.server_port}/v1",
-                                                "model": "protocol-fixture", "api_key": "fixture-secret"})
-
-    def close(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join()
-
-
-def tool_reply(name, arguments, call_id="call_1"):
-    # Fragmented arguments exercise actual SSE reconstruction.
-    text = json.dumps(arguments)
-    return [({"tool_calls": [{"index": 0, "id": call_id, "type": "function", "function": {"name": name, "arguments": text[:1]}}]}, None),
-            ({"tool_calls": [{"index": 0, "function": {"arguments": text[1:]}}]}, "tool_calls")]
-
-
-def test_agent_consumes_real_calculation_then_generates_files(app):
-    fixture = ProviderFixture([
-        tool_reply("design_calculate", {}),
-        tool_reply("design_generate", {"name": "agent-run", "drawings": False, "report_docx": False}, "call_2"),
-        [({"content": "已完成教学计算和文件生成。"}, "stop")],
-    ])
-    try:
-        configured = fixture.configure(app)
-        assert "api_key" not in configured
-        job = app.dispatch("agent.run", {"message": "计算当前教学示例并生成文件", "allow_writes": True})
-        record = finished(app, job["task_id"])
-        assert record["status"] == "complete", record
-        assert record["result"]["tool_calls"] == 2
-        assert (app.project.path / "revisions/agent-run/report.md").is_file()
-        calculation = json.loads(fixture.requests[1]["messages"][-1]["content"])
-        assert calculation["motor"]["power_kw"] > 0
-        assert calculation["teaching"] is True
-        generation = json.loads(fixture.requests[2]["messages"][-1]["content"])
-        assert generation["exports_complete"] is True
-        assert "fixture-secret" not in json.dumps(record)
-        assert "fixture-secret" not in (app.tasks.db.execute("SELECT record FROM tasks").fetchone()[0])
-    finally:
-        fixture.close()
-
-
-def test_agent_unauthorized_native_write_returns_error_without_execution(app, monkeypatch):
-    called = []
-    monkeypatch.setattr(app.commands, "call", lambda *args: called.append(args))
-    fixture = ProviderFixture([tool_reply("freecad_apply", {"session_id": "s", "change_id": "c", "operation_id": "o"}),
-                               [({"content": "缺少本次修改授权。"}, "stop")]])
-    try:
-        fixture.configure(app)
-        job = app.dispatch("agent.run", {"message": "查看工程"})
-        record = finished(app, job["task_id"])
-        assert record["status"] == "complete"
-        assert not called
-        assert "未授权" in record["receipts"][0]["result"]["error"]
-        names = {tool["function"]["name"] for tool in fixture.requests[0]["tools"]}
-        assert "freecad_apply" not in names
-    finally:
-        fixture.close()
 
 
 def test_stdio_process_contains_only_json_and_runs_actual_core(tmp_path):
@@ -421,57 +332,3 @@ def test_solidworks_pair_registers_only_complete_verified_receipt(app, monkeypat
     app.dispatch("host.command", params("verified"))
     assert app.project.is_working_copy(app.project.path / "verified/drawing.slddrw", "solidworks")
     assert app.project.is_working_copy(app.project.path / "verified/shaft.sldprt", "solidworks")
-
-
-def two_calls():
-    return [({"tool_calls": [
-        {"index": 0, "id": "one", "type": "function", "function": {"name": "freecad_apply", "arguments": "{}"}},
-        {"index": 1, "id": "two", "type": "function", "function": {"name": "freecad_apply", "arguments": "{}"}},
-    ]}, "tool_calls")]
-
-
-def test_unknown_native_outcome_stops_further_agent_actions(app, monkeypatch):
-    calls = []
-    def execute(*args):
-        calls.append(args)
-        return {"error": {"outcome": "unknown", "message": "timeout"}}
-    monkeypatch.setattr(app.commands, "agent_call", execute)
-    fixture = ProviderFixture([two_calls()])
-    try:
-        fixture.configure(app)
-        record = finished(app, app.dispatch("agent.run", {"message": "修改工作副本", "allow_writes": True})["task_id"])
-        assert len(calls) == 1 and len(record["receipts"]) == 1
-        assert record["status"] == "failed" and "结果待确认" in record["error"]
-        assert len(fixture.requests) == 1
-    finally:
-        fixture.close()
-
-
-def test_agent_cancel_preserves_completed_receipt_and_skips_next_action(app, monkeypatch):
-    calls = []
-    def execute(name, params, project, allow_writes, ctx):
-        calls.append(name)
-        app.tasks.cancel(ctx.task_id)
-        return {"applied": True}
-    monkeypatch.setattr(app.commands, "agent_call", execute)
-    fixture = ProviderFixture([two_calls()])
-    try:
-        fixture.configure(app)
-        record = finished(app, app.dispatch("agent.run", {"message": "修改工作副本", "allow_writes": True})["task_id"])
-        assert len(calls) == 1 and record["status"] == "canceled"
-        assert record["receipts"][0]["result"]["applied"] is True
-    finally:
-        fixture.close()
-
-
-def test_truncated_provider_tool_stream_is_never_executed(app, monkeypatch):
-    calls = []
-    monkeypatch.setattr(app.commands, "agent_call", lambda *args: calls.append(args))
-    fixture = ProviderFixture([[({"tool_calls": [{"index": 0, "id": "cut", "function": {"name": "freecad_apply", "arguments": "{}"}}]}, None)]])
-    try:
-        fixture.configure(app)
-        record = finished(app, app.dispatch("agent.run", {"message": "修改工作副本", "allow_writes": True})["task_id"])
-        assert record["status"] == "failed" and "未完整结束" in record["error"]
-        assert not calls and not record["receipts"]
-    finally:
-        fixture.close()

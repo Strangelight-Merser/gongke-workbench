@@ -90,23 +90,6 @@ class Commands:
         self.definitions["host.write"] = ("执行宿主声明的受限写操作；参数遵循hosts.list的parameter_contracts，绑定文档、版本、唯一operation_id；保存/导出只允许新工作副本，输出路径为工程相对路径。先save_copy再open新副本，不能直接修改原件", schema({
             "host_id": TEXT, "method": {"type": "string", "enum": sorted(WRITE_METHODS)}, "params": TASK}, ["host_id", "method", "params"]), True)
 
-    def agent_tools(self, allow_writes):
-        return [{"type": "function", "function": {"name": name.replace(".", "_"),
-                 "description": desc, "parameters": definition}}
-                for name, (desc, definition, write) in self.definitions.items() if allow_writes or not write]
-
-    def agent_call(self, name, params, project, allow_writes, ctx):
-        methods = {method.replace(".", "_"): method for method in self.definitions}
-        if name not in methods:
-            raise ValueError("该工具不在当前允许的工具列表中")
-        method = methods[name]
-        if self.definitions[method][2] and not allow_writes:
-            raise ValueError("本次任务未授权写入；需要在工作台启用本次工程修改")
-        ctx.check()
-        if method in {"design.calculate", "design.generate"} and "task" in params and params["task"] != project.manifest.get("task"):
-            raise ValueError("请先用 project_set_task 保存已确认的条件及教学标记，再计算或生成，避免工作区与助手使用不同任务书")
-        return self.call(method, params, project, ctx)
-
     def call(self, method, params, project, ctx=None):
         if method not in self.definitions:
             raise ValueError("未知应用命令：" + method)

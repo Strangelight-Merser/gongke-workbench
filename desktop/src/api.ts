@@ -1,11 +1,11 @@
+import type { AgentAPI } from "../electron/acp/types.cjs";
 export type Data = Record<string, any>;
 declare global {
   interface Window {
     gongke: {
       request: (method: string, params?: Data) => Promise<any>;
       chooseProject: (create: boolean) => Promise<string | null>;
-      configure: (settings: Data) => Promise<Data>;
-      settings: () => Promise<Data>;
+      agent: AgentAPI;
       restart: () => Promise<Data>;
       reveal: (path: string) => Promise<void>;
       onEvent: (callback: (event: Data) => void) => () => void;

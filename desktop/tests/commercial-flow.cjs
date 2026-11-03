@@ -83,13 +83,16 @@ const server = http.createServer((req, res) => {
         bounds: { min: [0, 0, 0], max: [10, 5, 0] },
       };
       window.gongke = {
+        agent: {
+          settings: async () => ({agents:[{id:"fixture", name:"Fixture",command:"fixture",args:[],env:{}}],mcp:{command:"fixture",args:[],env:{}}}),
+          state: async () => ({phase:"disconnected",project:"",agentId:"",authMethods:[],events:[]}),
+          onState: () => () => {},
+        },
         onEvent: () => () => {},
         chooseProject: async () => null,
-        settings: async () => ({}),
         request: async (method, params = {}) => {
-          if (method === "agent.history") return { project: "/fixture", turns: [] };
           if (method === "system.status")
-            return { ready: true, agent: { configured: false } };
+            return { ready: true };
           if (method === "project.current")
             return {
               name: "UI fixture",
