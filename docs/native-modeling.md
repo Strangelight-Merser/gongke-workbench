@@ -19,6 +19,8 @@ FreeCAD Body 局部基准面：XY 的 `(u,v,n)=(X,Y,+Z)`，XZ 为 `(X,Z,-Y)`，Y
 
 pad 沿草图正法向，pocket/hole 沿负法向，reversed 翻转。旋转轴取草图水平/竖直轴。线性阵列 spacing 是相邻间距；圆周阵列 angle 是总扫角，2π 表示整圆均布。参考体坐标与模型坐标必须一致后才能比较。
 
+pocket 切除范围二选一：`length` 表示定深；`through_all: true` 表示沿指定方向贯通，不能同时传 length。从 XY 底面向上切通孔用 `reversed: true`。固定高度的草图和定深切除不会自动随上游加高延长；应按零件设计意图选择贯通。FreeCAD 贯通切除不提供闲置 Length 的编辑入口。
+
 ## 工程语义决定
 
 - 工具粒度是一批草图和一个特征，避免逐线调用，也避免一次不可定位的大配方。P7/P8 各需 5 张草图和 5 个特征。
@@ -92,3 +94,29 @@ Python 环境需要项目 `[dev]` 依赖；也可用另一个已安装依赖的 
 - 使用本机已有官方 `SolidWorks.Interop.*` 程序集编译 .NET Framework 4.8 插件：0 warning、0 error。`out/native-modeling-validation/solidworks-build.log`。
 - 现有协议、回执和调度检查：51 passed。`out/native-modeling-validation/solidworks-protocol.log`。NuGet 漏洞源查询出现 NU1900 网络警告，协议程序正常结束。
 - 验收 Python 的 CLI 入口和语法已检查；本轮没有在沙箱启动 FreeCAD，没有执行 SOLIDWORKS COM。待 Claude 沙箱外运行并回传 `acceptance.json` 与失败时的 `calls.jsonl/service.log`，再修正实机问题；Windows 按上节逐项验证。
+
+## 合并主线检查模块后的修正（2026-11-03）
+
+六处文件冲突已清除。`freecad/gongke/native_inspection.py` 与 `docs/model-inspection.md` 按主线最终版保留，逐字节比对主仓库一致；其余四个冲突文件仅在主线基础上接入建模工具清单、能力声明和分派，未替换只读检查逻辑。本次未运行 git 命令，合并索引及提交由外部完成。
+
+依据 `/Users/huaiyi/.codex/worktrees/f755/gongke-workbench/out/model-inspection/api-probe.json`（FreeCAD 1.1.4），建模模块的约束枚举、约束重名检查、命名尺寸修改统一读取 `Constraint.Name` / `Constraint.Driving`，移除不存在的 `Sketch.getConstraintName()` / `Sketch.isDriving()`。探针中只有这两个历史方法报错；草图求解状态属性、`renameConstraint`、`setDatum`、`solve`、附着属性和特征状态方法均在实际 API 清单中。
+
+镜像与阵列的 `Originals`、`MirrorPlane`、`Direction`、`Axis`、`Length`、`Angle`、`Occurrences` 另与本机发布包 `PartDesignTests/TestMirrored.py`、`TestLinearPattern.py`、`TestPolarPattern.py` 对照；孔属性与 `TestHole.py` 对照。[Quantity 构造器](https://github.com/FreeCAD/FreeCAD/blob/1.1.4/src/Base/QuantityPyImp.cpp) 和 [setDatum 实现](https://github.com/FreeCAD/FreeCAD/blob/1.1.4/src/Mod/Sketcher/App/SketchObjectPyImp.cpp) 确认长度 Quantity 传 mm、角度 Quantity 传 deg，接口仍使用 m/rad。以上是 API 核查，未代替本轮原生几何运行。
+
+保留已修正的 P7/P8 `write(tool, **fields)`；补充特征验收脚本中的同类参数冲突也已修正，并增加命名草图直径修改后恢复的实机检查。新增回归不提供不存在的旧方法，覆盖驱动/引用尺寸、表达式锁定、命名/重名、尺寸单位转换、补充验收入口，以及桥接读写分派并存。
+
+本次普通 Python 回归 **78 passed、14 deselected**，日志 `out/native-modeling-validation/merge-python.log`，完整命令 `merge-tests-command.json`。首次完整运行的 14 项服务/MCP 测试因本地 socket 绑定被沙箱拒绝（`Operation not permitted`）而失败或初始化报错，保留在 `merge-all-python.log`；没有将其计为通过。冲突标记扫描和所改 Python 文件语法检查通过。下一步：重启沙箱外独立 FreeCAD 宿主，使用新的输出目录重跑上面的 P7/P8 和补充特征验收；回传 `acceptance.json` 与失败时的 `calls.jsonl/service.log`。
+
+## P7 加高后的通孔修正（run2）
+
+原始证据保持在 `out/native-modeling-run2/calls.jsonl`。第14次检查为 pass；第15次修改 Tube.Length，回执为 0.020 m，修订 423→446；第16次 `tube_height` 实际为 **unknown / ambiguous_entity**，同时返回 `Body.Face7` 的 z=0.028 m 和 `Body.Face18` 的 z=0.020 m，并非仍为 pass。新顶面已证明几何加高，参数名称、Pad 的 Length 模式与方向没有失效。
+
+根因是配方将 BoreSketch 固定在 XY+20 mm，Bore 用 20 mm 定深 Pocket 向下切。Tube 从 12 mm 加长至 20 mm 后，总高变为 28 mm，但孔只切到旧的 20 mm 位置，上方留下 8 mm 实心封顶。检查器按约定对两个候选面返回歧义；不应改成猜测其中一个面，也不应把 unknown 当成预期 fail。
+
+公共建模契约增加 pocket 的 `through_all: true`，与 length 互斥。FreeCAD 设置原生 `Type="ThroughAll"`，SOLIDWORKS 的 FeatureCut4 使用 `swEndCondThroughAll`。P7 BoreSketch 改在 XY 底面，反向向上贯穿；其余目标尺寸、图纸条件和原有失败/恢复断言不变。这样孔随筒加高继续贯穿，仍保持5张草图与5个特征。
+
+API 依据：[FreeCAD 1.1.4 Pocket](https://github.com/FreeCAD/FreeCAD/blob/1.1.4/src/Mod/PartDesign/App/FeaturePocket.cpp) 定义 Length/ThroughAll 并反转草图法向；[FeatureExtrude](https://github.com/FreeCAD/FreeCAD/blob/1.1.4/src/Mod/PartDesign/App/FeatureExtrude.cpp) 在 Length 模式读取固定 Length，在 ThroughAll 模式重新计算贯通长度，同时禁用 Length 编辑。本机发布包 `PartDesignTests/TestPocket.py::testPocketThroughAllCase` 也使用 `Type=1`。
+
+验收在修改后增加 host.inspect 记录，要求包围盒顶高为28 mm，体积增量为 `π × (10²−7²) × 8 mm³`，同时仍要求原 `tube_height` 明确 fail，修复后完整条件 pass。没有修改 `tests/fixtures/model_inspection/cases.json` 或只读检查实现。
+
+本次普通 Python：**43 passed、2 deselected**（已知沙箱禁止本地服务端口的两个 MCP 测试）；SolidWorks 官方 Interop 编译 **0 warning、0 error**。日志为 `out/native-modeling-validation/through-all-python.log`、`through-all-solidworks-build.log`；run2 诊断摘录为 `run2-diagnosis.json`。修正后的 FreeCAD 几何与完整 P7/P8 流程尚待重启沙箱外宿主、使用新输出目录验收。本次未运行 git 命令。

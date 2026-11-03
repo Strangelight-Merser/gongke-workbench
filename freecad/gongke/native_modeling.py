@@ -109,10 +109,13 @@ def _sketch_status(sketch):
 def _editable(ob):
     expressions = {path for path, _ in getattr(ob, "ExpressionEngine", [])}
     if ob.isDerivedFrom("Sketcher::SketchObject"):
-        return [{"name": ob.getConstraintName(i), "value": c.Value*(1 if c.Type == "Angle" else .001),
+        return [{"name": c.Name, "value": c.Value*(1 if c.Type == "Angle" else .001),
                  "unit": "rad" if c.Type == "Angle" else "m"}
-                for i, c in enumerate(ob.Constraints) if ob.getConstraintName(i) and ob.isDriving(i)
-                and not {"Constraints."+ob.getConstraintName(i), f"Constraints[{i}]"} & expressions and c.Type in {"Angle", "Diameter", "Radius", "Distance", "DistanceX", "DistanceY"}]
+                for i, c in enumerate(ob.Constraints) if c.Name and c.Driving
+                and not {"Constraints."+c.Name, f"Constraints[{i}]"} & expressions and c.Type in {"Angle", "Diameter", "Radius", "Distance", "DistanceX", "DistanceY"}]
+    if ob.TypeId == "PartDesign::Pocket" and ob.Type != "Length":
+        # ThroughAll 的 Length 是闲置属性，不能把它作为有效切深提供给 Agent。
+        return []
     return [{"name": key, "unit": unit, "value": float(getattr(ob, key).Value if unit != "1" else getattr(ob, key))*(.001 if unit == "m" else math.pi/180 if unit == "rad" else 1)}
             for key, unit in PARAMETERS.get(ob.TypeId, {}).items() if key not in expressions]
 
@@ -149,7 +152,7 @@ def _constraint(sketch, data):
         args.append(data["value"]*(1 if data["kind"] == "angle" else 1000))
     index = sketch.addConstraint(Sketcher.Constraint(names[data["kind"]], *args))
     if data.get("name"):
-        if any(sketch.getConstraintName(i) == data["name"] for i in range(index)):
+        if any(c.Name == data["name"] for c in sketch.Constraints[:index]):
             raise ValueError("草图约束名称重复")
         sketch.renameConstraint(index, data["name"])
     return index
@@ -218,7 +221,9 @@ def _feature(doc, p):
     if sketch:
         ob.Profile = sketch
         ob.Reversed = data.get("reversed", False)
-    if kind in {"pad", "pocket"}:
+    if kind == "pocket" and data.get("through_all"):
+        ob.Type = "ThroughAll"
+    elif kind in {"pad", "pocket"}:
         ob.Length = data["length"]*1000
     elif kind == "hole":
         ob.Diameter = data["diameter"]*1000
@@ -304,7 +309,7 @@ def _mutate(doc, method, p):
         if unit == "1" and (value < 2 or int(value) != value):
             raise ValueError("阵列数量须为至少2的整数")
         if ob.isDerivedFrom("Sketcher::SketchObject"):
-            index = next(i for i in range(ob.ConstraintCount) if ob.getConstraintName(i) == parameter)
+            index = next(i for i, c in enumerate(ob.Constraints) if c.Name == parameter)
             ob.setDatum(index, App.Units.Quantity(value*1000, App.Units.Length) if unit == "m" else App.Units.Quantity(math.degrees(value), App.Units.Angle))
             if ob.solve() != 0:
                 raise ValueError(json.dumps(_sketch_status(ob), ensure_ascii=False))

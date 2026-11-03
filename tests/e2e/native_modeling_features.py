@@ -8,9 +8,9 @@ async def exercise(call, host_instance):
     for kind in ("revolve", "hole", "fillet", "chamfer", "mirror", "linear_pattern", "polar_pattern"):
         result = await call("host.model_new", {"host_instance": host_instance, "operation_id": str(uuid4()), "name": "Body", "path": "features/"+kind+".FCStd"})
         document, body = result["document"], result["body_ref"]
-        async def write(name, **fields):
+        async def write(tool, **fields):
             nonlocal document
-            result = await call(name, {"document": document, "operation_id": str(uuid4()), **fields})
+            result = await call(tool, {"document": document, "operation_id": str(uuid4()), **fields})
             document = result["document"]
             return result
         async def sketch(name, geometry, constraints=(), offset=0):
@@ -30,6 +30,10 @@ async def exercise(call, host_instance):
             if kind == "hole":
                 hole = await sketch("HoleProfile", [{"kind": "circle", "center": [0, 0], "radius": .002}],
                                     [{"kind": "diameter", "entities": [{"geometry": 0}], "value": .004, "name": "HoleDiameter"}], .005)
+                for diameter in (.006, .004):
+                    edited = await write("host.feature_edit", feature_ref=hole["sketch_ref"], parameter="HoleDiameter", value=diameter)
+                    parameter = next(p for p in edited["editable_parameters"] if p["name"] == "HoleDiameter")
+                    assert abs(parameter["value"]-diameter) < 1e-12 and parameter["unit"] == "m"
                 made = await feature("Hole", {"kind": kind, "sketch_ref": hole["sketch_ref"], "length": .005, "diameter": .004})
                 expected -= math.pi*.002**2*.005
             elif kind in {"fillet", "chamfer"}:

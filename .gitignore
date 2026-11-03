@@ -25,3 +25,4 @@ desktop/service/
 # Local Python development environment
 .venv/
 *.egg-info/
+!tests/fixtures/**/*.step

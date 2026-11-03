@@ -439,7 +439,10 @@ namespace Gongke.SolidWorks
                         throw new CommandError("hole_profile_mismatch", "直孔草图需全圆且直径与 diameter 一致；先修改草图命名尺寸");
                     goto case "pocket";
                 case "pocket":
-                    feature = fm.FeatureCut4(true, false, reversed, 0, 0, Protocol.Number(data, "length"), 0,
+                    bool throughAll = (bool?)data["through_all"] == true;
+                    feature = fm.FeatureCut4(true, false, reversed,
+                        (int)(throughAll ? swEndConditions_e.swEndCondThroughAll : swEndConditions_e.swEndCondBlind), 0,
+                        throughAll ? 0 : Protocol.Number(data, "length"), 0,
                         false, false, false, false, 0, 0, false, false, false, false, false, true, false, false, false, false, 0, 0, false, false);
                     break;
                 case "revolve":

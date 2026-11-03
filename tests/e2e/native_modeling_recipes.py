@@ -28,7 +28,7 @@ def capsule(a, b, r):
 
 
 async def build(case, values, sketch_feature):
-    """sketch_feature(name, plane, offset_mm, geometry, constraints, kind, length_mm)。"""
+    """sketch_feature(..., kind, length_mm=None, **feature_options)；贯通切除不传切深。"""
     p = values
     if case == "p7":
         t, c = p["base_thickness"], p["slot_center_distance"]
@@ -39,8 +39,9 @@ async def build(case, values, sketch_feature):
                              [dimension("radius", 1, p["boss_radius"], "BossRadius")], "pad", p["boss_total_height"]-t)
         tube = await sketch_feature("Tube", "XY", t, [circle(x, 0, p["tube_outer_diameter"]/2)],
                                     [dimension("diameter", 0, p["tube_outer_diameter"], "OuterDiameter")], "pad", p["tube_total_height"]-t)
-        await sketch_feature("Bore", "XY", p["tube_total_height"], [circle(x, 0, p["tube_inner_diameter"]/2)],
-                             [dimension("diameter", 0, p["tube_inner_diameter"], "BoreDiameter")], "pocket", p["tube_total_height"])
+        # 通孔从底面向上贯穿：Tube 加高后仍贯通，不在旧筒顶留下盲孔底面。
+        await sketch_feature("Bore", "XY", 0, [circle(x, 0, p["tube_inner_diameter"]/2)],
+                             [dimension("diameter", 0, p["tube_inner_diameter"], "BoreDiameter")], "pocket", through_all=True, reversed=True)
         await sketch_feature("Slot", "XY", p["boss_total_height"], capsule(0, c, p["slot_radius"]),
                              [dimension("radius", 1, p["slot_radius"], "SlotRadius")], "pocket", p["boss_total_height"])
         return {"tube_feature": tube["feature_ref"]}

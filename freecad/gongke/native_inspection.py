@@ -102,10 +102,10 @@ def feature_tree(obj):
             for i, c in enumerate(item.Constraints):
                 typ = c.Type
                 unit = "rad" if typ in {"Angle", "AngleViaPoint"} else "m" if typ in {"Distance", "DistanceX", "DistanceY", "Radius", "Diameter"} else None
-                constraints.append({"index": i, "name": item.getConstraintName(i), "type": typ,
+                constraints.append({"index": i, "name": c.Name, "type": typ,
                                     "value": float(c.Value)*(.001 if unit == "m" else 1) if unit else None,
                                     "unit": unit, "first": c.First, "second": c.Second,
-                                    "driving": bool(item.isDriving(i)) if unit else None})
+                                    "driving": bool(c.Driving) if unit else None})
             row["sketch"] = {"fully_constrained": bool(item.FullyConstrained),
                              "degrees_of_freedom": int(item.DoF), "valid": bool(item.isValid()),
                              "geometry_count": item.GeometryCount, "constraints": constraints,

@@ -41,6 +41,7 @@ PROFILE = {"sketch_ref": TEXT, "length": POSITIVE, "reversed": BOOL}
 FEATURE = {"oneOf": [
     variant("pad", PROFILE, ["reversed"]),
     variant("pocket", PROFILE, ["reversed"]),
+    variant("pocket", {"sketch_ref": TEXT, "through_all": {"const": True}, "reversed": BOOL}, ["reversed"]),
     variant("revolve", {"sketch_ref": TEXT, "axis": {"enum": ["horizontal", "vertical"]}, "angle": ANGLE, "reversed": BOOL}, ["reversed"]),
     variant("hole", {**PROFILE, "diameter": POSITIVE}, ["reversed"]),
     variant("fillet", {"edges": {"type": "array", "items": TEXT, "minItems": 1}, "radius": POSITIVE}),
@@ -58,6 +59,7 @@ host.model_new 新建零件并保存到工程内新文件；已有原件先 host
 先 host.sketch 创建，再用 sketch_ref 追加几何/约束。距离/半径/直径约束填 value(m)，angle 填 rad；保留可编辑命名尺寸。
 欠约束会明确返回 solver 状态，但可继续建模；冲突、冗余或无效轮廓必须修正后再生成特征。host.feature_edit 可改命名约束或返回的特征尺寸。
 pad 沿草图正法向；pocket/hole 沿负法向，reversed 翻转。孔为直孔，不推断螺纹/公差；SOLIDWORKS 用圆草图+原生切除，圆直径必须等于 diameter。圆角/倒角最后做。
+贯通切除用 pocket 的 through_all=true，不传 length；从切入侧沿切除方向贯穿，底面草图向上切须 reversed=true。固定高度草图加固定切深不会随上游加高自动贯通。
 阵列 spacing 为相邻间距；polar_pattern angle 为总扫角，2π 为整圆均布。新建 SolidWorks Body 在首个实体特征生成时出现。
 每个特征后读回 host.inspect，最终 host.check 逐项对照图纸并修改失败项，再 host.model_save。保存不等于尺寸通过。
 错误原样保留；FreeCAD 事务失败回滚仍可能增加 revision，重新 context。SOLIDWORKS 部分失败标 needs_review/unknown，先读回。
@@ -71,7 +73,7 @@ def definitions():
         "host.model_copy": ("把当前零件另存并打开新的工作副本，保留原文档；必须传当前 document。返回新 document。", obj({**BASE, "path": TEXT}), True),
         "host.body": ("创建原生 Body；FreeCAD 为显式容器，SOLIDWORKS 在首个 pad/revolve 生成实体。", obj({**BASE, "name": NAME}), True),
         "host.sketch": ("在 body_ref 的基准面/平面面上新建草图，或传 sketch_ref 追加。一批 geometry/constraints 一次求解；m/rad、草图局部二维坐标。返回索引映射、frame 和真实求解状态；欠约束不冒充全约束。rectangle 展开4边，索引见回执。", obj({**BODY, "name": NAME, "support": SUPPORT, "sketch_ref": TEXT, "geometry": {"type": "array", "items": GEOMETRY, "maxItems": 128}, "constraints": {"type": "array", "items": CONSTRAINT, "maxItems": 256}}, [*BODY, "geometry", "constraints"]), True),
-        "host.feature": ("创建一个原生特征并重建，保留草图与特征树；全部尺寸 m/rad。pad 正法向、pocket/hole 负法向，reversed 翻转；revolve 轴为草图本地轴。mirror/阵列用实际 feature_ref；孔为直孔。", obj({**BODY, "name": NAME, "feature": FEATURE}), True),
+        "host.feature": ("创建一个原生特征并重建，保留草图与特征树；全部尺寸 m/rad。pad 正法向、pocket/hole 负法向，reversed 翻转；pocket 二选一：length 定深或 through_all=true 贯通。revolve 轴为草图本地轴。mirror/阵列用实际 feature_ref；孔为直孔。", obj({**BODY, "name": NAME, "feature": FEATURE}), True),
         "host.feature_edit": ("修改一个特征的原生尺寸或命名草图约束后重建；parameter 使用回执 editable_parameters 的 name，value 为 m/rad/计数。不得改任意宿主属性。", obj({**BASE, "feature_ref": TEXT, "parameter": TEXT, "value": NUMBER}), True),
         "host.feature_delete": ("删除指定叶特征并重建；有依赖时返回依赖，不级联删除学生特征。先删下游。", obj({**BASE, "feature_ref": TEXT}), True),
         "host.rebuild": ("重建当前工作副本，返回真实特征错误、草图求解状态和新 document。", obj(BASE), True),

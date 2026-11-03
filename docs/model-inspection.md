@@ -88,6 +88,19 @@ python tests/e2e/model_inspection_host.py --state-dir /实际服务状态目录 
 
 此脚本通过真实 MCP SDK / stdio / 应用服务检查当前活动文档。多个对象必须传 `--object-ref`，不会猜测。依次打开两个参考体和6个错误变体重复运行；结果必须满足 cases.json 的预期。ACP与WorkBuddy使用同一MCP入口，不另起一套宿主连接。
 
+### FreeCAD API 探查
+
+`tests/e2e/freecad_api_probe.py` 不导入采集器，逐件读取9份STEP，并建立与原生验收一致的Body、Sketch、Diameter约束和Pad。记录模块版本/路径、各实例的完整 `dir()`、关键属性、全部动态工程属性类型和值、几何读取与截面调用结果；覆盖Shape、Face、Edge、Wire、Solid、曲面/曲线、Vector、Placement、Rotation、BoundBox和Quantity。另记录引用尺寸、几何约束及Pocket/Hole/Fillet/Chamfer/Revolution/Groove/AdditiveBox默认实例，后者明确标记为未配置，不充当有效几何。输出还包含两份待核查源码的属性使用清单和哈希。
+
+```sh
+/Applications/FreeCAD.app/Contents/Resources/bin/python tests/e2e/freecad_api_probe.py > /tmp/fc-api-probe.log 2>&1
+/Applications/FreeCAD.app/Contents/Resources/bin/python tests/e2e/model_inspection_freecad.py > /tmp/fc-inspect-rerun.log 2>&1
+```
+
+探查结果为 `out/model-inspection/api-probe.json`，单项不存在或读取失败会记录异常并继续；包含已知不存在的旧方法对照，因此 `completed_with_errors` 不代表探查中止，`aborted` 才是中止。每个临时文档关闭后落盘，原样本不修改。验收成功仍写 `freecad.json`；失败需查看本次日志，不能将旧结果当成本次成功。
+
+沙箱外第二次验收已确认模块来源正确，随后在原生草图的 `getConstraintName` 处失败。采集器现改为直接读取 `Constraint.Name` 和 `Constraint.Driving`，依据 [FreeCAD 1.1 ConstraintPy 实现](https://github.com/FreeCAD/FreeCAD/blob/1.1.0/src/Mod/Sketcher/App/ConstraintPyImp.cpp)。本次普通Python回归34项通过（包含驱动/引用尺寸属性与探查错误记录）；已知受沙箱端口限制的MCP测试未重跑，原生探查及几何验收待沙箱外执行。
+
 ### Windows / SOLIDWORKS
 
 1. 使用目标机器安装的 `SOLIDWORKS/api/redist` 运行 `adapters/solidworks/scripts/build.ps1`，按 adapter README 安装新插件。

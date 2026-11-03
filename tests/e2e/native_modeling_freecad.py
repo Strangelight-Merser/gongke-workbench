@@ -53,9 +53,12 @@ async def journey(args, service, evidence):
                 result = await call(tool, {"document": document, "operation_id": str(uuid4()), **fields})
                 document = result["document"]
                 return result
-            async def sketch_feature(name, plane, offset, geometry, constraints, kind, length):
+            async def sketch_feature(name, plane, offset, geometry, constraints, kind, length=None, **feature_options):
                 sketch = await write("host.sketch", body_ref=body, name=name+"Sketch", support={"plane": plane, "offset": offset/1000}, geometry=geometry, constraints=constraints)
-                return await write("host.feature", body_ref=body, name=name, feature={"kind": kind, "sketch_ref": sketch["sketch_ref"], "length": length/1000})
+                feature = {"kind": kind, "sketch_ref": sketch["sketch_ref"], **feature_options}
+                if length is not None:
+                    feature["length"] = length/1000
+                return await write("host.feature", body_ref=body, name=name, feature=feature)
             named = await build(case, dimensions[case]["values"], sketch_feature)
             async def inspect():
                 return await call("host.inspect", {"document": document, "object_ref": body})
@@ -79,6 +82,13 @@ async def journey(args, service, evidence):
                 # 制造真实特征错误变体→host.check 定位→工具改回；不是只核对原始成功体。
                 old = document
                 await write("host.feature_edit", feature_ref=named["tube_feature"], parameter="Length", value=.020)
+                changed = await inspect()
+                evidence[case]["changed_snapshot"] = changed
+                assert abs(changed["bounds"]["max"][2]-.028) < 1e-10, changed["bounds"]
+                # 筒延长 8 mm，只增加圆环体积；若留下实心封顶，这里必须失败。
+                p = dimensions[case]["values"]
+                added_volume = math.pi*((p["tube_outer_diameter"]/2000)**2-(p["tube_inner_diameter"]/2000)**2)*.008
+                assert abs(changed["volume"]-snapshot["volume"]-added_volume) < 1e-12, changed["volume"]
                 failed = await call("host.check", {"document": document, "object_ref": body, "conditions": CASES[case]})
                 assert next(c for c in failed["checks"] if c["id"] == "tube_height")["status"] == "fail", failed
                 await call("host.feature_edit", {"document": old, "operation_id": str(uuid4()), "feature_ref": named["tube_feature"], "parameter": "Length", "value": .012}, fail=True)

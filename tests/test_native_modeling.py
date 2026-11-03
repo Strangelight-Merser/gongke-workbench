@@ -216,10 +216,16 @@ def test_p7_p8_recipe_uses_public_contract_without_native_geometry_import():
     async def run():
         for case in data:
             rows = []
-            async def step(name, plane, offset, geometry, constraints, kind, length):
+            async def step(name, plane, offset, geometry, constraints, kind, length=None, **feature_options):
                 base = {"host_id": "freecad", "document": DOC, "operation_id": str(uuid4()), "body_ref": "Body", "name": name}
                 validate({**base, "support": {"plane": plane, "offset": offset/1000}, "geometry": geometry, "constraints": constraints}, definitions()["host.sketch"][1])
-                validate({**base, "feature": {"kind": kind, "sketch_ref": name+"Sketch", "length": length/1000}}, definitions()["host.feature"][1])
+                feature = {"kind": kind, "sketch_ref": name+"Sketch", **feature_options}
+                if length is not None:
+                    feature["length"] = length/1000
+                validate({**base, "feature": feature}, definitions()["host.feature"][1])
+                if case == "p7" and name == "Bore":
+                    assert (plane, offset, length) == ("XY", 0, None)
+                    assert feature_options == {"through_all": True, "reversed": True}
                 rows.append((name, plane, offset, length))
                 return {"feature_ref": name}
             await build(case, data[case], step)
@@ -271,3 +277,134 @@ def test_expression_driven_freecad_parameter_is_not_writable(native):
     assert module._editable(pad) == []
     pad.ExpressionEngine = []
     assert module._editable(pad) == [{"name": "Length", "unit": "m", "value": .008}]
+
+
+def test_sketch_parameters_use_probed_constraint_properties(native):
+    # FreeCAD 1.1.4 api-probe.json：Constraint.Name/Driving；Sketch 无
+    # getConstraintName/isDriving。替身不提供这两个不存在的方法。
+    module, _, _ = native
+    constraints = [SimpleNamespace(Name=name, Type=kind, Value=value, Driving=driving)
+                   for name, kind, value, driving in [
+                       ("Diameter", "Diameter", 8, True),
+                       ("Angle", "Angle", 1.2, True),
+                       ("Reference", "Distance", 9, False),
+                       ("", "Radius", 3, True),
+                       ("Horizontal", "Horizontal", 0, True)]]
+    sketch = SimpleNamespace(Constraints=constraints, ExpressionEngine=[], isDerivedFrom=lambda typ: True)
+    assert module._editable(sketch) == [{"name": "Diameter", "value": .008, "unit": "m"},
+                                        {"name": "Angle", "value": 1.2, "unit": "rad"}]
+    sketch.ExpressionEngine = [("Constraints.Diameter", "Sheet.Diameter"), ("Constraints[1]", "Sheet.Angle")]
+    assert module._editable(sketch) == []
+
+
+def test_named_constraint_creation_and_duplicate_rejection(native):
+    module, _, _ = native
+    class Sketch:
+        GeometryCount = 1
+        def __init__(self): self.Constraints = []
+        def addConstraint(self, constraint):
+            self.Constraints.append(constraint)
+            return len(self.Constraints)-1
+        def renameConstraint(self, index, name): self.Constraints[index].Name = name
+    module.Sketcher.Constraint = lambda kind, *args: SimpleNamespace(Name="", Type=kind, Args=args)
+    sketch = Sketch()
+    constraint = {"kind": "diameter", "entities": [{"geometry": 0}], "value": .008, "name": "Diameter"}
+    assert module._constraint(sketch, constraint) == 0
+    assert sketch.Constraints[0].Name == "Diameter" and sketch.Constraints[0].Args == (0, 8)
+    with pytest.raises(ValueError, match="名称重复"):
+        module._constraint(sketch, constraint)
+
+
+@pytest.mark.parametrize("kind,unit,value,native_value", [("Diameter", "Length", .012, 12), ("Angle", "Angle", 1.5707963267948966, 90)])
+def test_named_sketch_dimension_edit_converts_units(native, kind, unit, value, native_value):
+    module, _, doc = native
+    quantities = []
+    def quantity(value, unit):
+        quantities.append((value, unit))
+        return SimpleNamespace(Value=value, Unit=unit)
+    module.App.Units = SimpleNamespace(Quantity=quantity, Length="length-unit", Angle="angle-unit")
+    constraint = SimpleNamespace(Name="Dimension", Type=kind, Value=1, Driving=True)
+    changed = []
+    def set_datum(index, quantity):
+        changed.append(index)
+        constraint.Value = quantity.Value if unit == "Length" else quantity.Value*3.141592653589793/180
+    sketch = SimpleNamespace(Name="Sketch", Constraints=[constraint], ExpressionEngine=[],
+                             isDerivedFrom=lambda typ: typ == "Sketcher::SketchObject", setDatum=set_datum, solve=lambda: 0)
+    doc.getObject = lambda name: sketch
+    result = module._mutate(doc, "model.feature_edit", {"feature_ref": "Sketch", "parameter": "Dimension", "value": value})
+    assert changed == [0] and quantities == [(native_value, getattr(module.App.Units, unit))]
+    assert result["editable_parameters"][0]["value"] == pytest.approx(value)
+    constraint.Driving = False
+    with pytest.raises(ValueError, match="editable_parameters"):
+        module._mutate(doc, "model.feature_edit", {"feature_ref": "Sketch", "parameter": "Dimension", "value": value})
+    assert changed == [0]
+
+
+def test_feature_acceptance_can_submit_named_sketch():
+    from tests.e2e.native_modeling_features import exercise
+    class Submitted(Exception): pass
+    async def call(tool, fields):
+        if tool == "host.model_new":
+            return {"document": DOC, "body_ref": "Body"}
+        assert tool == "host.sketch" and fields["name"] == "Profile"
+        validate({"host_id": "freecad", **fields}, definitions()[tool][1])
+        raise Submitted
+    with pytest.raises(Submitted):
+        asyncio.run(exercise(call, DOC["host_instance"]))
+
+
+def test_merged_bridge_keeps_inspection_and_modeling_routes(native, monkeypatch):
+    import freecad.gongke
+    module, state, _ = native
+    monkeypatch.setitem(sys.modules, "FreeCADGui", SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "PySide", SimpleNamespace(QtCore=SimpleNamespace()))
+    spec = importlib.util.spec_from_file_location("bridge_modeling_unit", ROOT / "freecad/gongke/bridge.py")
+    bridge = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bridge)
+    monkeypatch.setattr(freecad.gongke, "native_modeling", module, raising=False)
+    calls = []
+    def inspect(state, method, params):
+        calls.append(("read", method, params))
+        return {"capabilities": ["model.context", "model.inspect"]} if method == "model.context" else {"state": "ready"}
+    def model(state, method, params):
+        calls.append(("write", method, params))
+        return {"outcome": "committed"}
+    monkeypatch.setattr(module.read, "dispatch", inspect, raising=False)
+    monkeypatch.setitem(sys.modules, "freecad.gongke.native_inspection", module.read)
+    monkeypatch.setattr(module, "dispatch", model)
+    context = bridge.DocumentState.inspect_host(state, "model.context", {})
+    assert set(module.METHODS) <= set(context["capabilities"])
+    assert bridge.DocumentState.inspect_host(state, "model.inspect", {"document": DOC}) == {"state": "ready"}
+    assert bridge.DocumentState.inspect_host(state, "model.rebuild", {"document": DOC}) == {"outcome": "committed"}
+    assert calls == [("read", "model.context", {}), ("read", "model.inspect", {"document": DOC}), ("write", "model.rebuild", {"document": DOC})]
+
+
+@pytest.mark.parametrize("extent", [{"through_all": True, "length": .02}, {"through_all": False}, {}])
+def test_pocket_requires_exactly_one_extent(extent):
+    args = {"host_id": "freecad", "document": DOC, "operation_id": str(uuid4()), "body_ref": "Body", "name": "Bore",
+            "feature": {"kind": "pocket", "sketch_ref": "BoreSketch", **extent}}
+    with pytest.raises(ValueError):
+        validate(args, definitions()["host.feature"][1])
+
+
+def test_through_pocket_sets_native_end_condition_and_hides_inactive_length(native, monkeypatch):
+    # API 契约回归；真实切穿与加高后的圆环体积由 FreeCAD 验收检查。
+    module, _, doc = native
+    doc.Name = "Part"
+    sketch = SimpleNamespace(Name="BoreSketch", Visibility=True)
+    pocket = SimpleNamespace(Name="Bore", TypeId="PartDesign::Pocket", Type="Length", Length=SimpleNamespace(Value=5),
+                             PropertiesList=[], ExpressionEngine=[], isDerivedFrom=lambda typ: False,
+                             Shape=SimpleNamespace(isNull=lambda: False, isValid=lambda: True, Solids=[object()]))
+    body = SimpleNamespace(Name="Body", Tip=SimpleNamespace(Name="Tube", Visibility=True), newObject=lambda typ, name: pocket)
+    monkeypatch.setattr(module, "_object", lambda doc, name, type_id=None: body if name == "Body" else pocket)
+    monkeypatch.setattr(module, "_member", lambda *args: sketch)
+    monkeypatch.setattr(module, "_name", lambda doc, name: name)
+    monkeypatch.setattr(module, "_rebuild", lambda doc: [])
+    monkeypatch.setitem(sys.modules, "FreeCADGui", SimpleNamespace(getDocument=lambda name: SimpleNamespace(activeView=lambda: SimpleNamespace(fitAll=lambda: None))))
+    result = module._feature(doc, {"body_ref": "Body", "name": "Bore", "feature": {
+        "kind": "pocket", "sketch_ref": "BoreSketch", "through_all": True, "reversed": True}})
+    assert pocket.Profile is sketch and pocket.Type == "ThroughAll" and pocket.Reversed is True
+    assert body.Tip is pocket and pocket.Length.Value == 5
+    assert result["editable_parameters"] == []
+    with pytest.raises(ValueError, match="editable_parameters"):
+        module._mutate(doc, "model.feature_edit", {"feature_ref": "Bore", "parameter": "Length", "value": .03})
