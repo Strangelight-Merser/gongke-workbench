@@ -17,7 +17,7 @@
 ## 必须先读的内容
 
 1. `README.md`、`PLAN.md`：当前定位与边界。`docs/architecture.md` 中早期批处理设计需与源码交叉核对，不能把旧“下一步”直接当新路线图。
-2. `docs/agent-api.md`、`docs/assistant-workflow.md`、`gongke_core/mcp_server.py`：工具实际粒度、单位、对象身份和调用流程。
+2. `docs/agent-api.md`、`docs/assistant-workflow.md`、`gongke_app/tools.py`：工具实际粒度、单位、对象身份和调用流程。
 3. `freecad/gongke/bridge.py`、`native_shaft.py`：宿主桥、事务、人工修改、候选过期和保存重开。
 4. `gongke_core/shaft_binding.py`、`shaft_review.py`、`course_shaft.py`、`shaft_jobs.py`、`fem/`：工况与来源、支持范围、计算和求解任务。
 5. `tools/install_freecad_workbench.py`、`tools/linux-gui/`、`tools/solidworks/`：安装路径、真实界面验证环境和第二宿主原型。

@@ -15,7 +15,7 @@ from tests.test_app_service import ProviderFixture, tool_reply, finished
 def test_delivery_tracks_input_reopen_and_missing_files(tmp_path):
     project = Project.create(str(tmp_path / "project"))
     commands = Commands()
-    result = commands.generate({"name": "first", "drawings": False, "report_docx": False}, project)
+    result = commands.call("design.generate", {"name": "first", "drawings": False, "report_docx": False}, project)
     assert result["exports_complete"]
     view = project.view()
     assert view["delivery"]["artifacts"]["markdown"]["available"]
@@ -35,12 +35,12 @@ def test_delivery_tracks_input_reopen_and_missing_files(tmp_path):
 def test_failed_latest_generation_does_not_reuse_old_success(tmp_path, monkeypatch):
     project = Project.create(str(tmp_path / "project"))
     commands = Commands()
-    commands.generate({"name": "good", "drawings": False, "report_docx": False}, project)
+    commands.call("design.generate", {"name": "good", "drawings": False, "report_docx": False}, project)
     def fail(*args, **kwargs):
         raise RuntimeError("export failed")
     monkeypatch.setattr(api, "generate", fail)
     with pytest.raises(RuntimeError):
-        commands.generate({"name": "failed"}, project)
+        commands.call("design.generate", {"name": "failed"}, project)
     assert project.view()["delivery"]["status"] == "failed"
     assert len(project.view()["generations"]) == 2
     assert (project.path / "revisions/good/report.md").exists()
@@ -48,7 +48,7 @@ def test_failed_latest_generation_does_not_reuse_old_success(tmp_path, monkeypat
 
 def test_teaching_change_invalidates_delivery(tmp_path):
     project = Project.create(str(tmp_path / "project"))
-    Commands().generate({"drawings": False, "report_docx": False}, project)
+    Commands().call("design.generate", {"drawings": False, "report_docx": False}, project)
     project.set_task(project.task(), teaching=False)
     assert project.view()["delivery"] is None
 
@@ -94,6 +94,7 @@ def test_agent_cannot_compute_unsaved_task_or_write_without_authorization(tmp_pa
     commands = Commands()
     class Context:
         def check(self): pass
+        def receipt(self, *args): pass
     with pytest.raises(ValueError, match="先用 project_set_task"):
         commands.agent_call("design_calculate", {"task": api.example_task()}, project, True, Context())
     with pytest.raises(ValueError, match="未授权"):

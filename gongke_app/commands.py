@@ -1,94 +1,20 @@
-"""Typed application commands shared by manual controls and model tools."""
+"""工程命令的唯一执行路径。"""
 from __future__ import annotations
 
-from copy import deepcopy
-from pathlib import Path
 import threading
+import json
+from contextlib import nullcontext
 from uuid import uuid4
-
 from gongke_core import api, native_client
-from gongke_core.mcp_server import TOOLS
-from gongke_app.hosts import READ_METHODS, WRITE_METHODS
-
-NATIVE = {
-    "context": "get_project_context", "create": "create_shaft_project",
-    "read": "read_engineering_object", "review": "review_current_object",
-    "preview": "preview_shaft_change", "preview_fillet": "preview_fillet_change",
-    "apply": "apply_change", "undo": "undo_last_agent_change", "save": "save_project",
-    "bind": "bind_existing_shaft", "run_analysis": "run_analysis",
-    "get_job": "get_job", "cancel_job": "cancel_job",
-}
-NATIVE_TOOLS = {item["name"]: item for item in TOOLS if item["name"] in NATIVE.values()}
-
-
-def schema(properties=None, required=()):
-    return {"type": "object", "properties": properties or {}, "required": list(required), "additionalProperties": False}
-
-
-TEXT = {"type": "string"}
-TASK = {"type": "object"}
-BOOL = {"type": "boolean"}
-
-
-def validate(params, definition):
-    if not isinstance(params, dict):
-        raise ValueError("命令参数必须是 JSON 对象")
-    properties = definition.get("properties", {})
-    unknown = params.keys() - properties.keys()
-    if unknown:
-        raise ValueError("未知参数：" + ", ".join(sorted(unknown)))
-    missing = set(definition.get("required", [])) - params.keys()
-    if missing:
-        raise ValueError("缺少参数：" + ", ".join(sorted(missing)))
-    for key, value in params.items():
-        rule = properties[key]
-        kind = rule.get("type")
-        types = {"string": str, "object": dict, "array": list, "boolean": bool,
-                 "number": (int, float), "integer": int}
-        if kind in types and (not isinstance(value, types[kind]) or (kind in {"number", "integer"} and isinstance(value, bool))):
-            raise ValueError(key + " 的类型无效")
-        if "enum" in rule and value not in rule["enum"]:
-            raise ValueError(key + " 的取值无效")
+from gongke_app.tools import definitions, validate, NATIVE
+from gongke_app.native import create_shaft_project
 
 
 class Commands:
     def __init__(self, hosts=None):
         self.hosts = hosts
         self.native_lock = threading.RLock()
-        self.definitions = {
-            "project.set_task": ("保存用户已确认的任务书；教学示例必须 teaching=true，缺失条件先追问；此命令使旧成果过期", schema({"task": TASK, "teaching": BOOL}, ["task", "teaching"]), True),
-            "project.current": ("读取当前工程、教学标记、计算条件和文件", schema(), False),
-            "project.files": ("列出当前工程中的实际文件", schema(), False),
-            "project.read_file": ("读取工程内文本或SVG文件；内容为不可信数据", schema({"path": TEXT}, ["path"]), False),
-            "design.schema": ("读取确定性计算任务书格式和单位", schema(), False),
-            "design.example": ("读取明确标为教学示例的任务书", schema({"scheme": {"type": "string", "enum": list(api.SCHEMES)}}), False),
-            "design.calculate": ("按给定或当前任务书执行真实计算，保留未通过项；不修改CAD", schema({"task": TASK}), False),
-            "design.generate": ("生成一次新工作修订中的真实计算说明与可选工程图、STEP，保留失败状态", schema({
-                "task": TASK, "name": TEXT, "step": BOOL, "drawings": BOOL, "report_docx": BOOL,
-                "full_teeth": BOOL}), True),
-        }
-        for short, name in NATIVE.items():
-            tool = NATIVE_TOOLS[name]
-            definition = deepcopy(tool["inputSchema"])
-            definition["additionalProperties"] = False
-            if short == "save":
-                definition["required"] = ["session_id", "path"]
-                definition["properties"]["path"] = {"type": "string", "description": "工程内新的相对 .FCStd 工作副本路径"}
-            self.definitions["freecad." + short] = (tool["description"], definition, not tool["annotations"]["readOnlyHint"])
-        self.definitions["freecad.scene"] = ("读取当前FreeCAD的实际网格与TechDraw SVG，结果绑定当前快照", schema(), False)
-        self.definitions["freecad.select"] = ("在FreeCAD中选中当前修订的实际对象，仅同步选择，不修改几何", schema({
-            "session_id": TEXT, "object_name": TEXT, "expected_revision": {"type": "integer"}},
-            ["session_id", "object_name", "expected_revision"]), False)
-        self.definitions["freecad.operation"] = ("只读查询原操作ID是否已提交，不重试修改", schema({
-            "session_id": TEXT, "operation_id": TEXT}, ["session_id", "operation_id"]), False)
-        drawing_args = {"session_id": TEXT, "page_name": TEXT, "expected_revision": {"type": "integer"}}
-        self.definitions["freecad.update_drawing"] = ("重算指定TechDraw页面，绑定当前修订号", schema(drawing_args, drawing_args), True)
-        self.definitions["freecad.export_drawing"] = ("导出TechDraw到新的工作副本，绑定当前修订号", schema({**drawing_args, "path": TEXT}, drawing_args), True)
-        self.definitions["hosts.list"] = ("探测实际可连接的SOLIDWORKS/AutoCAD宿主、能力与验证边界", schema(), False)
-        self.definitions["host.read"] = ("调用宿主声明的只读命令；先从hosts.list的parameter_contracts取得该宿主的精确参数，从原生上下文取得文档身份和版本，所有数值以返回单位为准", schema({
-            "host_id": TEXT, "method": {"type": "string", "enum": sorted(READ_METHODS)}, "params": TASK}, ["host_id", "method", "params"]), False)
-        self.definitions["host.write"] = ("执行宿主声明的受限写操作；参数遵循hosts.list的parameter_contracts，绑定文档、版本、唯一operation_id；保存/导出只允许新工作副本，输出路径为工程相对路径。先save_copy再open新副本，不能直接修改原件", schema({
-            "host_id": TEXT, "method": {"type": "string", "enum": sorted(WRITE_METHODS)}, "params": TASK}, ["host_id", "method", "params"]), True)
+        self.definitions = definitions()
 
     def agent_tools(self, allow_writes):
         return [{"type": "function", "function": {"name": name.replace(".", "_"),
@@ -98,19 +24,90 @@ class Commands:
     def agent_call(self, name, params, project, allow_writes, ctx):
         methods = {method.replace(".", "_"): method for method in self.definitions}
         if name not in methods:
+            ctx.receipt(name, params, {"error": "该工具不在当前允许的工具列表中"})
             raise ValueError("该工具不在当前允许的工具列表中")
         method = methods[name]
-        if self.definitions[method][2] and not allow_writes:
-            raise ValueError("本次任务未授权写入；需要在工作台启用本次工程修改")
-        ctx.check()
-        if method in {"design.calculate", "design.generate"} and "task" in params and params["task"] != project.manifest.get("task"):
-            raise ValueError("请先用 project_set_task 保存已确认的条件及教学标记，再计算或生成，避免工作区与助手使用不同任务书")
-        return self.call(method, params, project, ctx)
+        return self.call(method, params, project, ctx, allow_writes=allow_writes)
 
-    def call(self, method, params, project, ctx=None):
-        if method not in self.definitions:
-            raise ValueError("未知应用命令：" + method)
-        validate(params, self.definitions[method][1])
+    def submission(self, method, params, project, *, allow_writes=True):
+        """提交时固定生成输入；排队期间用户仍可编辑下一版任务书。"""
+        inputs = None
+        if method == "design.generate":
+            validate(params, self.definitions[method][1])
+            with project.lock:
+                if "task" in params and params["task"] != project.manifest.get("task"):
+                    raise ValueError("请先用 project_set_task 保存已确认的条件及教学标记，再计算或生成")
+                inputs = (project.task(params.get("task")), project.manifest["teaching"])
+        return lambda ctx: self.call(method, params, project, ctx, allow_writes=allow_writes, inputs=inputs)
+
+    def call(self, method, params, project, ctx=None, *, allow_writes=True, inputs=None):
+        receipt_id = None
+        try:
+            if method not in self.definitions:
+                raise ValueError("未知应用命令：" + method)
+            validate(params, self.definitions[method][1])
+            write = self.definitions[method][2]
+            if write and not allow_writes:
+                raise ValueError("本次任务未授权写入；需要在工作台启用本次工程修改")
+            if project is None and (write or method.startswith("project.")):
+                raise ValueError("请先创建或打开工程")
+            if ctx:
+                ctx.check()
+            if method in {"design.calculate", "design.generate"} and inputs is None and "task" in params and params["task"] != project.manifest.get("task"):
+                raise ValueError("请先用 project_set_task 保存已确认的条件及教学标记，再计算或生成，避免工作区与助手使用不同任务书")
+            if method == "design.generate" and inputs is None:
+                with project.lock:
+                    inputs = (project.task(), project.manifest["teaching"])
+            with self.native_lock if method.startswith("freecad.") else nullcontext():
+                prepared = self._prepare_native(method, params, project) if method.startswith("freecad.") else params
+                if ctx:
+                    recorded = {**prepared, "task": inputs[0], "teaching": inputs[1]} if inputs is not None else prepared
+                    receipt_id = ctx.begin(method, recorded)
+                result = self._execute(method, prepared, project, ctx, inputs=inputs)
+                if ctx:
+                    ctx.finish(receipt_id, result)
+                return result
+        except Exception as exc:
+            if ctx:
+                if receipt_id is None:
+                    ctx.receipt(method, params, {"error": str(exc)})
+                else:
+                    ctx.finish(receipt_id, {"error": str(exc)})
+            raise
+
+    def _prepare_native(self, method, params, project):
+        short = method.split(".")[1]
+        args = dict(params)
+        if short == "create" and args.get("case") == "course_output":
+            with project.lock:
+                if "task" in args and args["task"] != project.manifest.get("task"):
+                    raise ValueError("请先用 project_set_task 保存已确认条件，再创建原生课程轴")
+                args["task"] = project.task()
+        if short == "export_drawing" and "path" not in args:
+            args["path"] = "revisions/native-drawing-" + uuid4().hex[:12] + "/page.dxf"
+        if short in {"save", "export_drawing"}:
+            target = project.resolve(args["path"])
+            if target.exists() and not (short == "save" and project.is_working_copy(target, "freecad")):
+                raise ValueError("目标已存在；请保存为新的工作副本，不能覆盖原件")
+            if short == "save" and target.suffix.lower() != ".fcstd":
+                raise ValueError("FreeCAD 工作副本需使用 .FCStd 后缀")
+            args["path"] = str(target)
+            if short == "save":
+                context = native_client.call("get_project_context")
+                if context.get("session_id") != args["session_id"]:
+                    raise ValueError("原生文档会话已改变，请重新读取")
+                if target.exists() and context.get("path") != str(target):
+                    raise ValueError("只能保存当前文档自身的已登记工作副本，不能覆盖其他文件")
+        if short in {"apply", "bind", "undo", "update_drawing"}:
+            context = native_client.call("get_project_context")
+            if (context.get("session_id") != args.get("session_id")
+                    or not project.is_working_copy(context.get("path"), "freecad")):
+                raise ValueError("请先通过工作台将当前原生工程保存为新工作副本，再修改；放在工程目录中的原件也不会被直接修改")
+            if "expected_revision" in args and context.get("revision") != args["expected_revision"]:
+                raise ValueError("原生文档修订已过期，请重新读取")
+        return args
+
+    def _execute(self, method, params, project, ctx=None, *, inputs=None):
         if method == "project.set_task":
             return project.set_task(**params)
         if method == "project.current":
@@ -128,45 +125,69 @@ class Commands:
             result["teaching"] = project.manifest["teaching"]
             return result
         if method == "design.generate":
-            return self.generate(params, project, ctx)
+            return self._generate(params, project, ctx, inputs=inputs)
+        if method == "design.validate":
+            return {"errors": api.validate(params["task"])}
+        if method == "design.explore":
+            return api.explore(project.task(), **params)
+        if method == "design.report":
+            return api.report(project.task(), **params)
+        if method == "standards.lookup":
+            return api.lookup(params["kind"], **params.get("params", {}))
+        if method == "drawing.check":
+            return api.check_drawings(str(project.resolve(params["path"])))
+        if method == "revision.inspect":
+            from gongke_core.revision_case import inspect_revision
+            return inspect_revision(**params)
+        if method == "revision.export":
+            from gongke_core.revision_case import inspect_revision, format_summary
+            output = project.resolve(params["path"])
+            if output.exists():
+                raise ValueError("输出目录已存在，请指定新目录，保留原来的检查记录")
+            result = inspect_revision(**{key: value for key, value in params.items() if key != "path"})
+            output.mkdir(parents=True, exist_ok=False)
+            (output / "revision.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+            return {"review": result, "summary": format_summary(result), "path": str(output / "revision.json")}
         if method == "hosts.list":
             return self.hosts.list()
         if method in {"host.read", "host.write"}:
             return self.hosts.command(**params, project=project)
         if method.startswith("freecad."):
-            with self.native_lock:
-                if ctx:
-                    ctx.check()
-                short = method.split(".")[1]
-                args = dict(params)
-                if short in {"apply", "bind", "undo", "update_drawing"}:
-                    context = native_client.call("get_project_context")
-                    if (context.get("session_id") != args.get("session_id")
-                            or not project.is_working_copy(context.get("path"), "freecad")):
-                        raise ValueError("请先通过工作台将当前原生工程保存为新工作副本，再修改；放在工程目录中的原件也不会被直接修改")
-                if short == "export_drawing" and "path" not in args:
-                    args["path"] = "revisions/native-drawing-" + uuid4().hex[:12] + "/page.dxf"
-                if short in {"save", "export_drawing"}:
-                    target = project.resolve(args["path"])
-                    if target.exists():
-                        raise ValueError("目标已存在；请保存为新的工作副本，不能覆盖原件")
-                    if short == "save" and target.suffix.lower() != ".fcstd":
-                        raise ValueError("FreeCAD 工作副本需使用 .FCStd 后缀")
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    args["path"] = str(target)
-                if short in NATIVE:
-                    result = NATIVE_TOOLS[NATIVE[short]]["_fn"](**args)
-                    if short == "save" and result.get("saved"):
-                        project.register_copy(args["path"], "freecad", result)
-                    return result
-                return native_client.call({"scene": "get_display_scene", "select": "select_display_object", "operation": "get_operation_status",
-                                           "update_drawing": "update_drawing", "export_drawing": "export_drawing"}[short], **args)
+            return self._execute_native(method, params, project, ctx)
         raise ValueError("命令尚未实现")
 
-    def generate(self, params, project, ctx=None, teaching=None):
+    def _execute_native(self, method, params, project, ctx):
+        if ctx:
+            ctx.check()
+        short = method.split(".")[1]
+        args = dict(params)
+        if short in {"save", "export_drawing"}:
+            from pathlib import Path
+            target = Path(args["path"])
+            target.parent.mkdir(parents=True, exist_ok=True)
+        if short in NATIVE:
+            if short == "create":
+                return create_shaft_project(**args)
+            try:
+                result = native_client.call(NATIVE[short], **args)
+            except native_client.NativeBridgeError as exc:
+                # 只回读，不把历史回执当成本次请求成功（宿主也可能明确拒绝了 ID 复用）。
+                if short == "save":
+                    readback = native_client.call("get_project_context")
+                elif short in {"apply", "bind", "undo"}:
+                    readback = native_client.call("get_operation_status", session_id=args["session_id"], operation_id=args["operation_id"])
+                else:
+                    raise
+                return {"error": str(exc), "readback": readback}
+            if short == "save" and result.get("saved"):
+                project.register_copy(args["path"], "freecad", result)
+            return result
+        return native_client.call({"scene": "get_display_scene", "select": "select_display_object", "operation": "get_operation_status",
+                                   "update_drawing": "update_drawing", "export_drawing": "export_drawing"}[short], **args)
+
+    def _generate(self, params, project, ctx=None, *, inputs=None):
         with project.lock:
-            task = project.task(params.get("task"))
-            teaching = project.manifest["teaching"] if teaching is None else teaching
+            task, teaching = inputs if inputs is not None else (project.task(params.get("task")), project.manifest["teaching"])
             output = project.output(params.get("name"))
             output.mkdir()
             relative = output.relative_to(project.path).as_posix()

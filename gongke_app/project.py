@@ -180,7 +180,10 @@ class Project:
             operation = self.manifest["copy_operations"][operation_id] if operation_id else None
             if operation and operation["state"] == "registered":
                 return
-            self.manifest.setdefault("working_copies", []).extend(records)
+            copies = self.manifest.setdefault("working_copies", [])
+            for record in records:
+                copies[:] = [item for item in copies if (item["path"], item["host"]) != (record["path"], record["host"])]
+                copies.append(record)
             if operation:
                 operation["state"] = "registered"
             self.save()

@@ -179,7 +179,7 @@ def test_agent_consumes_real_calculation_then_generates_files(app):
 
 def test_agent_unauthorized_native_write_returns_error_without_execution(app, monkeypatch):
     called = []
-    monkeypatch.setattr(app.commands, "call", lambda *args: called.append(args))
+    monkeypatch.setattr(app.commands, "_execute", lambda *args, **kwargs: called.append(args))
     fixture = ProviderFixture([tool_reply("freecad_apply", {"session_id": "s", "change_id": "c", "operation_id": "o"}),
                                [({"content": "缺少本次修改授权。"}, "stop")]])
     try:
@@ -206,7 +206,9 @@ def test_stdio_process_contains_only_json_and_runs_actual_core(tmp_path):
                              cwd=root, input="".join(json.dumps(row) + "\n" for row in requests),
                              capture_output=True, text=True, timeout=15)
     assert process.returncode == 0, process.stderr
-    responses = [json.loads(line) for line in process.stdout.splitlines()]
+    messages = [json.loads(line) for line in process.stdout.splitlines()]
+    responses = [row for row in messages if "id" in row]
+    assert any(row.get("event") == "task.receipt" for row in messages)
     assert [row["id"] for row in responses] == [1, 2, 3]
     assert responses[-1]["result"]["motor"]["power_kw"] > 0
 
@@ -309,9 +311,9 @@ def test_native_commands_use_existing_bridge_and_copy_path(app, monkeypatch):
     app.dispatch("freecad.context", {})
     app.dispatch("freecad.save", {"session_id": "s", "path": "work/shaft.FCStd"})
     assert calls[0] == ("get_project_context", {})
-    assert calls[1][0] == "save_project"
-    assert calls[1][1]["path"] == str(app.project.path / "work/shaft.FCStd")
-    assert app.project.is_working_copy(calls[1][1]["path"], "freecad")
+    saved = next(params for method, params in calls if method == "save_project")
+    assert saved["path"] == str(app.project.path / "work/shaft.FCStd")
+    assert app.project.is_working_copy(saved["path"], "freecad")
 
 
 def test_native_write_requires_actual_working_copy_context(app, monkeypatch):
@@ -371,8 +373,8 @@ def test_host_import_separates_source_and_target_and_does_not_overwrite(app, mon
     (app.project.path / "revisions/copy.dwg").write_text("existing")
     rejected = app.dispatch("host.command", params)
     assert rejected["error"]["outcome"] == "not_applied" and "已存在" in rejected["error"]["message"]
-    rejected = app.dispatch("host.command", {**params, "method": "document.save"})
-    assert rejected["error"]["outcome"] == "not_applied" and "未获应用层支持" in rejected["error"]["message"]
+    with pytest.raises(ValueError, match="参数无效 method"):
+        app.dispatch("host.command", {**params, "method": "document.save"})
 
 
 def test_host_probe_error_does_not_claim_connection(app, monkeypatch):
@@ -432,9 +434,11 @@ def two_calls():
 
 def test_unknown_native_outcome_stops_further_agent_actions(app, monkeypatch):
     calls = []
-    def execute(*args):
-        calls.append(args)
-        return {"error": {"outcome": "unknown", "message": "timeout"}}
+    def execute(name, params, project, allow_writes, ctx):
+        calls.append(name)
+        result = {"error": {"outcome": "unknown", "message": "timeout"}}
+        ctx.receipt(name, params, result)
+        return result
     monkeypatch.setattr(app.commands, "agent_call", execute)
     fixture = ProviderFixture([two_calls()])
     try:
@@ -452,6 +456,7 @@ def test_agent_cancel_preserves_completed_receipt_and_skips_next_action(app, mon
     def execute(name, params, project, allow_writes, ctx):
         calls.append(name)
         app.tasks.cancel(ctx.task_id)
+        ctx.receipt(name, params, {"applied": True})
         return {"applied": True}
     monkeypatch.setattr(app.commands, "agent_call", execute)
     fixture = ProviderFixture([two_calls()])

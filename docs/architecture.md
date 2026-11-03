@@ -104,9 +104,10 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 - 齿根应力（`fem/gear_tooth.py`、`fem/gear_check.py`）：`calc/tooth_profile.py` 按 GB/T 1356 基本齿条（ρf = 0.38m）展成当量直齿轮齿廓（渐开线按方程精确计算，过渡曲线由刀尖圆角按啮合基本定律求包络）；Gmsh（GPL，独立进程，FreeCAD 自带，在 ccx 同目录查找，或 `GONGKE_GMSH`）划分三齿扇形的二次三角形网格，过渡曲线处 0.02m；CalculiX CPS6 平面应力求解，齿顶加载。取 m = 1、Ft = 1 N、b = 1 时齿根最大拉应力即 YFa·YSa。z = 17～400 比教材查表值低 3%～6%，网格加密一倍变化 < 0.1%。蜗轮不做。
 - 图纸 PDF（`drawing/pdf.py`）：沿用 ezdxf drawing 插件的前端（与 SVG 预览相同，文字转为轮廓），自己实现一个只写矢量路径的 PDF 后端（约 200 行），整套图每张一页。没有用 PyMuPDF（AGPL）或 matplotlib（中文字体依赖系统）。
 
-## 8. 原生 agent 接口（`gongke_core/api.py`、`gongke_core/mcp_server.py`）
+## 8. 应用工具与绑定工程 MCP
 
-- 产品同时面向人和 AI：FreeCAD 工作台、命令行、MCP 服务器调用同一套 `api` 函数（任务书 dict 进，可 JSON 序列化的 dict 出，单位与任务书一致），功能不各写一遍。
-- MCP 服务器自己实现 JSON-RPC over stdio（initialize、tools/list、tools/call、ping），不依赖 mcp SDK：SDK 1.x 与 2.x 接口不兼容，而且要能在 FreeCAD 自带的 Python 里跑。用官方 SDK 2.x 客户端做兼容性测试（`tests/test_mcp_server.py`）。
-- 任务书校验用 `api.TASK_SCHEMA`（JSON Schema 子集，自写检查，不依赖 jsonschema），错误逐条返回，agent 可据此自行修正。
-- 工具粒度按 agent 的工作流设计：了解格式 → 计算 → 多方案对比（`explore_parameter`）→ 读计算过程 → 出文件。计算约 0.1～0.5 s，适合 agent 反复试参数。
+`gongke_app/tools.py` 是工具名称、参数 schema 和写入分类的唯一来源；桌面、内置助手与 MCP 共享 `Commands.call()`。工程授权、工作副本和路径检查在执行端完成，宿主事务校验文档身份与修订。写前请求持久保存为收据，结果回读后更新收据并推送桌面事件。
+
+官方 MCP Python SDK 2.3 的 low-level Server 只负责协议；stdio 进程通过带令牌的本机连接绑定正在运行的应用工程，不直接调用 core API 或宿主。工程切换会使旧绑定失效。发行包包含解释器和 SDK，FreeCAD 的 Python 仍只运行宿主桥接。
+
+core 保留计算、原生快照校核、标准和导出领域函数。原先 core MCP 和独立原生检查 CLI 已删除。参数对比、说明书、标准查询、只读修订检查与生成都由应用工具暴露。详见 [Agent 接口](agent-api.md) 与 [工程绑定决定](project-bound-mcp.md)。

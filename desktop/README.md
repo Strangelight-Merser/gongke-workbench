@@ -64,3 +64,9 @@ node tests/commercial-flow.cjs
 独立 Linux FreeCAD 1.1.4 GUI 的合成轴验收已通过 8 项：真实网格与 SVG、原生对象选择、显示时保留源文档状态及子元素选择、40→38 mm 修改与读回重算、关联原生标注更新、原生 DXF 导出、人工修改后结果过期与 Undo、保存重开且原件不变；DXF 独立读回为 2 个 CIRCLE 和 1 个 DIMENSION，测量值约 38 mm，Unicode 转义解码后文字为“⌀38”，文件审计无错误。证据位于 `out/desktop-native-validation`，它证明该 Linux 原生流程，不代表 macOS FreeCAD 故障已修复，也不代表 Windows SOLIDWORKS/AutoCAD 宿主验收通过。
 
 本机交付范围、验证结果与外部环境待验项见 [交付说明](../docs/delivery-2026-11-02.md)。
+
+## 项目 MCP
+
+随桌面打包的 `service/gongke-service/gongke-service`（Windows 为 `.exe`）同时提供 `mcp`、`call`、`workbuddy` 子命令。`workbuddy --state-dir <用户数据目录>/state --project <工程> [--allow-writes]` 生成项目 `.workbuddy/mcp.json`，不依赖系统 Python。
+
+`tools.list` 与 `mcp.configure` 可由 renderer 通过既有 request 调用。外部 MCP 工具执行推送现有 task.updated/task.receipt 事件，任务列表无需另建同步通道；工程切换后旧 MCP 绑定失效。参见 [完整接口](../docs/agent-api.md)。

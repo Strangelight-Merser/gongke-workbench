@@ -22,6 +22,8 @@ let service: Service;
 let projectRoot = "";
 const allowed = new Set([
   "system.status",
+  "tools.list",
+  "mcp.configure",
   "project.create",
   "project.open",
   "project.current",
