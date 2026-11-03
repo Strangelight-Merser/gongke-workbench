@@ -289,7 +289,7 @@ def test_host_import_separates_source_and_target_and_does_not_overwrite(app, mon
 
 def test_host_probe_error_does_not_claim_connection(app, monkeypatch):
     from gongke_core import native_client
-    monkeypatch.setattr(native_client, "call", lambda *args, **kwargs: {"session_id": None})
+    monkeypatch.setattr(native_client, "call", lambda *args, **kwargs: {"host_instance": "freecad-test", "capabilities": ["model.context", "model.inspect", "model.section"]})
     monkeypatch.setattr(app.hosts, "discover", lambda: [{"host_id": "solidworks-1", "host": "solidworks", "token": "secret"}])
     monkeypatch.setattr(app.hosts, "_request", lambda *args, **kwargs: {"error": {"code": "auth_failed"}})
     result = app.dispatch("hosts.list", {})

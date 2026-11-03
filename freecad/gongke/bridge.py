@@ -43,6 +43,7 @@ class DocumentState:
     """会话版本单调增加，包括手改和 Undo；不写入会污染撤销栈的缓存属性。"""
 
     def __init__(self, results_dir):
+        self.host_instance = str(uuid.uuid4())
         self.sessions = {}
         self.changes = {}
         self.operations = {}
@@ -50,11 +51,21 @@ class DocumentState:
         App.addDocumentObserver(self)
 
     def slotChangedObject(self, obj, prop):
-        if prop in ("Label", "Label2", "Visibility"):
+        if prop == "Visibility":
             return
         for state in self.sessions.values():
             if obj.Document == state["doc"]:
                 state["revision"] += 1
+
+    def slotCreatedObject(self, obj):
+        self._edited(obj.Document)
+
+    def slotDeletedObject(self, obj):
+        self._edited(obj.Document)
+
+    def inspect_host(self, command, params):
+        from freecad.gongke.native_inspection import dispatch
+        return dispatch(self, command, params)
 
     def slotUndoDocument(self, doc):
         self._edited(doc)
@@ -564,6 +575,8 @@ class Bridge:
             self._draining = False
 
     def dispatch(self, method, params):
+        if method == "inspect_host":
+            return self.main_call("inspect_host", **params)
         if method in ("run_analysis", "get_job", "cancel_job"):
             from gongke_core.shaft_jobs import JobManager, METHOD_VERSION
             with self.jobs_lock:

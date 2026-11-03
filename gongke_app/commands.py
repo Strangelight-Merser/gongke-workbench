@@ -137,6 +137,8 @@ class Commands:
             return {"review": result, "summary": format_summary(result), "path": str(output / "revision.json")}
         if method == "hosts.list":
             return self.hosts.list()
+        if method in {"host.context", "host.inspect", "host.section", "host.measure", "host.check"}:
+            return self.hosts.inspect(method, **params, project=project)
         if method in {"host.read", "host.write"}:
             return self.hosts.command(**params, project=project)
         if method.startswith("freecad."):
