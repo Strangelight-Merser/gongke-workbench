@@ -1,47 +1,45 @@
 # 构想引擎：工程软件集成工作台
 
-按用户 2026-11-03 确认的决定更新。项目规则见 [AGENTS.md](AGENTS.md)；本文记录产品目标与阶段方向。
+依据 2026-11-03 用户决定与两位机械学生反馈更新。规则见 [AGENTS.md](AGENTS.md)。
 
 ## 产品目标
 
-面向工科学生，Windows 优先，以构想引擎为主窗口，集中管理材料、工程、计算、建模、图纸和结果。支持自由建模，CAD 原生编辑界面嵌入窗口：默认 FreeCAD，可切换到本机已安装的 SOLIDWORKS。交付文件尽量保留原生特征树，让学生继续编辑。
+面向工科学生，Windows 优先，以构想引擎为主窗口，支持照图纸建模或自由建模。嵌入 CAD 原生编辑界面：默认 FreeCAD，可切换到本机已安装的 SOLIDWORKS，保留原生特征树。
 
-窗口内通过 ACP 托管用户已有的 Agent，首个接入 DeepSeek Harness；WorkBuddy 通过 MCP 接入工程工具。构想引擎负责工程上下文、工具执行与结果呈现，复用 Agent 自身的登录和模型能力。
+面向未安装 Agent 的学生，经同意下载安装 DeepSeek Harness Desktop，引导平台注册、充值和在 dsh 中填写 API Key。已有 dsh 通过 ACP 连接窗口内会话；WorkBuddy 可选安装，已有用户引导写入工程 MCP 配置。构想引擎负责工程上下文、工具与结果，不经手 Key。
 
 ## 学生主场景
 
-学生收到老师的任务书、分组表和补充要求后，把材料连同已有草图或模型拖进构想引擎，确认自己的题号和少量缺项；随后在工作台中逐步完成方案选择、计算、建模与出图，Agent 解释依据、检查错误，并在老师要求修改时指出受影响的结果。最终学生按课程模板整理自己的说明与实验分析，导出可继续编辑的工程文件、图纸和报告，能够在答辩中解释关键选择。
+学生打开图纸与已有模型，或直接新建模型。窗口内 Agent 按图纸或学生的要求，直接在嵌入的 CAD 中建出带草图和特征树的原生模型，学生可以接着手工修改；也能讲解某个特征怎么做，并结合当前模型与错误信息排查建模报错。
 
-材料包可以包含 PDF、Word、照片、测量记录、已有 CAD 文件及补充消息。Agent 提取题号、条件、待设计项、交付要求和截止时间，保留原文位置，区分“老师给定／学生选择／程序建议”；学生确认缺项、歧义和冲突，结构化任务书留在内部。
+Agent 读取当前模型，对照图纸检查尺寸、孔和遗漏特征，定位问题并直接修正或说明修改方法，结果关联对象与修订。另设可选的**练习模式**：Agent 只讲解和检查，学生自己建模，提示逐级展开，参考模型不直接给出。
 
-Agent 以讲解与检查为主，不代做：制图训练由学生操作，Agent 提示错误与修改方法；课程允许辅助生成时，提供可检查、可继续编辑的草稿。计算与说明使用有来源的条件和学生论证，实验分析使用真实记录，不编造数据、观察或个人体会。
-
-在已有减速器能力基础上，依次扩展：**零部件测绘与 CAD 大作业 → 四杆机构／凸轮运动分析 → 实验数据处理**。场景依据见 [学生工作流调研](docs/research-student-workflows.md)。
+材料包与任务书提取后移；减速器计算、出图与说明书保留为专项模块，运动分析、实验数据处理在建模主流程完成后推进。[学生工作流调研](docs/research-student-workflows.md)作为背景，主场景以本次反馈为准。
 
 ## 近期阶段
 
-先连通工程入口、Agent 与原生编辑，再把材料与生成结果接入同一工程；窗口与插件工作随主流程一起推进。
+先完成“打开图纸或新建模型 → Agent 在原生 CAD 中建模 → 对照图纸检查并修正 → 学生继续编辑”，练习模式复用同一套读取与检查能力。
 
-1. **统一工程入口与工程 MCP。** 将现有 Python 服务作为唯一工程执行入口，桌面、CLI 和 MCP 共用工具定义、权限与操作记录。MCP 绑定指定工程，切换工程不让旧会话悄悄操作新工程；FreeCAD 与商业 CAD 纳入统一宿主接口，统一文档、对象、修订、能力与结果语义。
-2. **窗口内 Agent。** Electron 主进程管理 ACP 会话，React 呈现对话、权限请求、工具状态与结果。先打通 DeepSeek Harness 的完整工程流程，会话注入绑定工程的 MCP；WorkBuddy 使用同一工程 MCP。已删除内置 Key 助手、Key 配置入口与旧模型循环，保留历史会话资料。
-3. **Windows 嵌入编辑区。** 保留构想引擎主窗口，先接入 FreeCAD 原生编辑界面，再支持本机 SOLIDWORKS。围绕原生窗口容器处理焦点、快捷键、弹窗、缩放与宿主生命周期，保留草图、特征和手工编辑能力。嵌入方式在真实 Windows 宿主上确定，不把预览器当成编辑区。技术依据见 [CAD 嵌入调研](docs/research-cad-embedding.md)；其中改以 FreeCAD 为主窗口的建议不采用。
-4. **SOLIDWORKS／AutoCAD 插件。** 继续完善现有 C# COM add-in 与托管 bundle，连接原生文档、工作副本、参数修改、图纸更新及保存导出。遵守宿主线程、文档锁与事务规则，补齐操作结果查询；窗口嵌入与工程操作分别由容器和插件承担。
-5. **材料包入口。** 从材料导入、来源定位和缺项确认进入工程，串起学生的方案选择、计算、建模与出图。复用现有计算和检查能力，把来源分类、手工修改与受影响结果呈现在对应步骤中。
-6. **生成到原生工作副本。** 从同一份已确认设计结果生成宿主原生草图、特征和关联图纸，接续学生手工编辑；先连通已有轴与课程设计能力，再按上述场景扩展。STEP 导入保留为实体交换路径，不声称恢复原始特征树；DXF 转 DWG 不等于恢复参数约束与图纸关联。
+1. **前端重构与工程入口。** 按[前端调研](docs/research-frontend-design.md)采用 Fluent UI React v9：左侧工程树、中间 CAD／文档、右侧 Agent、底部状态栏。工程对象作为一级导航，减速器步骤归入专项模块；切换文档保留视角、选择和编辑状态。调研中的材料包流程按本次决定后移。
+2. **Agent 引导与连接。** 检测已有 dsh／WorkBuddy；未安装时，经用户同意下载、校验并安装官方 dsh Desktop，WorkBuddy 可选。引导注册 DeepSeek 平台、充值、创建 Key，并在 dsh 内自行填写。已有 dsh 启动 ACP、注入绑定工程的 MCP；WorkBuddy 引导写入同一工程 MCP 配置。以真实回复并读到当前工程为连接验收，见 [dsh 引导调研](docs/research-dsh-onboarding.md)。
+3. **Windows 嵌入编辑区。** 先接入 FreeCAD 原生编辑界面，再支持本机 SOLIDWORKS；在真实 Windows 宿主中验证焦点、快捷键、弹窗、缩放与生命周期，让学生完成草图、特征和保存。容器保留完整编辑能力，技术依据见 [CAD 嵌入调研](docs/research-cad-embedding.md)；主窗口仍为构想引擎。
+4. **Agent 原生建模与对照图纸检查。** 经统一宿主接口在 FreeCAD／SOLIDWORKS 中创建草图、约束和特征（拉伸、旋转、切除、孔、圆角、阵列等），并读取当前文档的特征、尺寸、孔与截面，按图纸条件逐项检查、定位并修正。练习模式只开放读取、检查与讲解。
+5. **完善宿主插件。** 围绕主流程补齐 FreeCAD、SOLIDWORKS／AutoCAD 的文档读取、工作副本、受限修改、图纸更新、保存导出与操作查询。遵守宿主线程、文档锁和事务规则；窗口嵌入由容器承担，工程操作由插件承担。
+6. **后续专项与材料包。** 接入材料导入、来源定位、任务书提取及缺项确认，区分老师给定、学生选择和程序建议。减速器专项复用已有计算、出图与说明书能力；课程允许辅助生成时，从同一份确认结果生成可检查、可继续编辑的原生工作副本。
 
 ## 关键技术决策
 
-- 沿用 Electron＋React＋TypeScript 与随包提供的 Python 服务。`gongke_core` 保持宿主无关；FreeCAD 与 build123d/OCP 分进程，复用宿主官方 API、SDK 和扩展机制。
-- ACP 负责 Agent 会话，MCP 提供明确的工程操作；权限在共同执行入口与宿主执行端落实。协议采用官方 SDK，先覆盖实际客户端需要的本地接入。ACP 会话可注入 MCP，见 [会话规范](https://agentclientprotocol.com/protocol/v1/session-setup)；WorkBuddy 接入方式见 [官方 MCP 指南](https://www.codebuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/MCP-Guide)。窗口内会话组织可参考 [Obsidian Agent Client](https://github.com/RAIT-09/obsidian-agent-client)。
-- CAD 嵌入复用宿主编辑器，不自研通用建模界面。Windows 窗口重挂是待落实的技术路径，需处理 [SetParent 文档](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setparent) 明示的窗口样式与 DPI 行为；实际编辑仍经宿主 API 执行。
+- 沿用 Electron＋React＋TypeScript 与随包 Python 服务；桌面、CLI、MCP 共用工程执行入口、工具定义、权限与操作记录，统一宿主文档、对象、修订、能力及结果语义。`gongke_core` 保持宿主无关，FreeCAD 与 build123d/OCP 分进程。
+- ACP 负责窗口内 Agent 会话，MCP 绑定指定工程，切换工程不让旧会话操作新工程；权限在执行入口与宿主端落实。接入依据：[dsh Desktop](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/desktop/README.md)、[ACP 会话规范](https://agentclientprotocol.com/protocol/v1/session-setup)、[WorkBuddy MCP](https://www.codebuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/MCP-Guide)。布局参考 [Zoo 工作区](https://zoo.dev/docs/zoo-design-studio/features/workspace)，控件采用 [Fluent v9](https://fluent2.microsoft.design/components/web/react)。
+- CAD 嵌入复用宿主编辑器。Windows 窗口重挂需落实 [SetParent](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setparent) 的窗口样式与 DPI 要求；工程操作经宿主 API 执行。
 - 已有模型以原生文档为准，自动修改前另存工作副本，写入前核对对象身份与修订，保留手工修改。写入结果未知时查询原操作或读回，不换 ID 重发。
 - 同一工程量只算一次，模型、图纸、说明共用结果；输入变化后旧结果标为过期。计算核心用 SI（转速 r/min），接口注明单位，材料、载荷和系数保留来源。
 
 ## 不做的事
 
-- 不自建通用 Key 助手、模型推理循环或模型账号管理；内置 Key 助手已删除，不保留第二条助手路径。
+- 不自建通用 Key 助手、模型推理循环或模型账号管理，不读取、保存或转发用户 Key；内置助手已删除，历史会话资料保留。
 - 不自研 CAD 内核，不以模板参数编辑限制学生自由建模，不把轴修订案例固定为产品主场景。
-- 不做一键代交作业或代写实验报告，不用程序默认值冒充老师给定条件，不补造实验记录。
+- 不编造图纸条件与实验记录；不要求先有任务书，不用减速器流程统领应用。
 - 近期不建设插件市场、多 Agent 平台、远程 CAD 节点或跨平台完整嵌入；优先完成 Windows 学生工作流。
 
 实现入口：[桌面应用](desktop/README.md)、[应用命令](gongke_app/README.md)、[SOLIDWORKS 插件](adapters/solidworks/README.md)、[AutoCAD 插件](adapters/autocad/README.md)。
