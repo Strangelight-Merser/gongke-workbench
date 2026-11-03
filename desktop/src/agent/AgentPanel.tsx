@@ -1,90 +1,61 @@
-import { AgentOnboarding } from "./AgentOnboarding";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Button,
+  Select,
+  Textarea,
+  Tab,
+  TabList,
+  Tooltip,
+  Menu,
+  MenuTrigger,
+  MenuPopover,
+  MenuList,
+  MenuItem,
+} from "@fluentui/react-components";
+import {
+  SendRegular,
+  StopRegular,
+  SettingsRegular,
+  DismissRegular,
+  AddRegular,
+  MoreHorizontalRegular,
+  ArrowRightRegular,
+} from "@fluentui/react-icons";
 import type {
-  AgentEvent,
-  AgentSettings,
+  AgentSettings as Settings,
   AgentSnapshot,
 } from "../../electron/acp/types.cjs";
+import type { Step } from "../../electron/onboarding/types.cjs";
+import { AgentOnboarding } from "./AgentOnboarding";
+import { AgentSettings } from "./AgentSettings";
+import { rowsOf } from "./events";
 import { errorText } from "../api";
-import { StreamText } from "../Motion";
-
+import { DataDetails } from "../ui/DataDetails";
 const phases = {
   disconnected: "未连接",
-  starting: "正在连接",
-  connected: "待建立会话",
-  authenticating: "正在登录",
+  starting: "连接中",
+  connected: "待登录",
+  authenticating: "登录中",
   ready: "已连接",
   prompting: "执行中",
-  cancelling: "正在取消",
+  cancelling: "取消中",
 };
-type Row = { kind: string; text?: string; tool?: any };
-function rowsOf(events: AgentEvent[]): Row[] {
-  const rows: Row[] = [];
-  const tools = new Map<string, Row>();
-  for (const event of events) {
-    if (event.type === "user" || event.type === "notice") {
-      rows.push({ kind: event.type, text: event.text });
-      continue;
-    }
-    if (event.type !== "update") continue;
-    const update = event.update;
-    if (
-      update.sessionUpdate === "agent_message_chunk" ||
-      update.sessionUpdate === "agent_thought_chunk"
-    ) {
-      const kind =
-        update.sessionUpdate === "agent_thought_chunk"
-          ? "thought"
-          : "assistant";
-      const content = update.content;
-      const text =
-        content.type === "text"
-          ? content.text
-          : content.type === "resource_link"
-            ? `${content.name}: ${content.uri}`
-            : `[${content.type}]`;
-      const last = rows.at(-1);
-      if (last?.kind === kind) last.text += text;
-      else rows.push({ kind, text });
-    } else if (
-      update.sessionUpdate === "tool_call" ||
-      update.sessionUpdate === "tool_call_update"
-    ) {
-      let row = tools.get(update.toolCallId);
-      if (!row) {
-        row = { kind: "tool", tool: { toolCallId: update.toolCallId } };
-        tools.set(update.toolCallId, row);
-        rows.push(row);
-      }
-      row.tool = {
-        ...row.tool,
-        ...Object.fromEntries(
-          Object.entries(update).filter(
-            ([, v]) => v !== undefined && v !== null,
-          ),
-        ),
-      };
-    } else if (update.sessionUpdate === "plan") {
-      rows.push({
-        kind: "plan",
-        text: update.entries
-          .map((e) => `${e.status} · ${e.content}`)
-          .join("\n"),
-      });
-    }
-  }
-  return rows;
-}
-const stringify = (value: unknown) =>
-  typeof value === "string" ? value : JSON.stringify(value, null, 2);
 export function AgentPanel({
   project,
   context,
+  removeContext,
+  mode,
+  onMode,
   onTurnEnd,
+  openModel,
 }: {
   project?: string;
   context?: string;
-  onTurnEnd: () => void;
+  removeContext(): void;
+  mode: "model" | "practice";
+  onMode(value: "model" | "practice"): void;
+  onTurnEnd(): void;
+  openModel(): void;
 }) {
   const [state, setState] = useState<AgentSnapshot>({
     phase: "disconnected",
@@ -93,36 +64,52 @@ export function AgentPanel({
     authMethods: [],
     events: [],
   });
-  const [settings, setSettings] = useState<AgentSettings>();
+  const [settings, setSettings] = useState<Settings>();
+  const [onboardingRequest, setOnboardingRequest] = useState(0);
+  const [onboardingStep, setOnboardingStep] = useState<Step>();
+  const onboardingComplete = onboardingStep === "complete";
   const [selected, setSelected] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [error, setError] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [config, setConfig] = useState("");
-  const end = useRef<HTMLDivElement>(null);
-  const refresh = useRef(onTurnEnd);
+  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
+    JSON.parse(localStorage.getItem("gongke.agent.drafts") || "{}"),
+  );
+  const key = `${project || ""}:${selected}`;
+  const prompt = drafts[key] || "";
+  function setPrompt(value: string) {
+    setDrafts((d) => ({ ...d, [key]: value }));
+  }
+  useEffect(() => {
+    localStorage.setItem("gongke.agent.drafts", JSON.stringify(drafts));
+  }, [drafts]);
+  const [history, setHistory] = useState<
+    Record<string, ReturnType<typeof rowsOf>>
+  >({});
+  const [error, setError] = useState(""),
+    [editing, setEditing] = useState(false);
+  const end = useRef<HTMLDivElement>(null),
+    refresh = useRef(onTurnEnd),
+    prior = useRef(state.phase);
   refresh.current = onTurnEnd;
-  const priorPhase = useRef(state.phase);
   async function perform(action: () => Promise<unknown>) {
     setError("");
     try {
       await action();
-    } catch (error) {
-      setError(errorText(error));
+    } catch (e) {
+      setError(errorText(e));
     }
   }
   useEffect(() => {
     const accept = (next: AgentSnapshot) => {
       if (
-        ["prompting", "cancelling"].includes(priorPhase.current) &&
+        ["prompting", "cancelling"].includes(prior.current) &&
         next.phase === "ready"
       )
         refresh.current();
-      priorPhase.current = next.phase;
+      prior.current = next.phase;
       setState(next);
     };
     const stop = window.gongke.agent.onState(accept);
-    perform(async () => {
+    void perform(async () => {
+      onMode(await window.gongke.getAgentMode());
       const config = await window.gongke.agent.settings();
       setSettings(config);
       const current = await window.gongke.agent.state();
@@ -131,18 +118,11 @@ export function AgentPanel({
     });
     return stop;
   }, []);
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: "nearest" });
-  }, [state.events.length]);
-  useEffect(() => {
-    setPrompt("");
-    setError("");
-  }, [project, selected]);
   const active = state.project === project && state.agentId === selected;
   const events = active ? state.events : [];
   const rows = useMemo(
-    () => (active ? rowsOf(state.events) : []),
-    [state.events, active],
+    () => [...(history[key] || []), ...(active ? rowsOf(state.events) : [])],
+    [state.events, active, history, key],
   );
   const resolved = new Set(
     events.filter((e) => e.type === "permission-resolved").map((e) => e.id),
@@ -157,33 +137,96 @@ export function AgentPanel({
     "cancelling",
   ].includes(state.phase);
   const ready = active && state.phase === "ready";
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "nearest" });
+  }, [state.events.length]);
+  async function changeMode(next: "model" | "practice") {
+    await perform(async () => {
+      if (next === mode) return;
+      const previous = active ? rowsOf(state.events) : [];
+      await window.gongke.setAgentMode(next);
+      setHistory((h) => ({
+        ...h,
+        [key]: [
+          ...(h[key] || []),
+          ...previous,
+          {
+            kind: "notice",
+            text:
+              next === "practice"
+                ? "已切换为练习，重新连接只读工程工具。"
+                : "已切换为直接建模，重新连接工程工具。",
+          },
+        ],
+      }));
+      onMode(next);
+    });
+  }
   function send() {
     if (!ready || !prompt.trim()) return;
     const message = prompt;
-    setPrompt("");
-    perform(() =>
-      window.gongke.agent.prompt(
-        context ? `${message}\n\n当前选择：${context}` : message,
-      ),
-    );
+    void perform(async () => {
+      if (mode === "model") openModel();
+      setPrompt("");
+      try {
+        await window.gongke.agent.prompt(
+          `${mode === "practice" ? "练习：请只讲解和检查，让我自己完成模型。\n" : ""}${message}${context ? "\n当前参考：" + context : ""}`,
+        );
+      } catch (e) {
+        setPrompt(message);
+        throw e;
+      }
+    });
   }
   return (
-    <section className="agent-pane acp-panel" aria-label="Agent 面板">
-      <div className="pane-heading">
-        Agent <span className={`led ${ready ? "on" : ""}`} />
-        <span className="acp-phase">
+    <section
+      className="agent-panel"
+      aria-label="Agent 面板"
+      data-onboarding={!onboardingComplete}
+    >
+      <div className="panel-heading">
+        <strong>Agent</strong>
+        <span className="agent-connection">
+          <i className={"led " + (ready ? "on" : "")} />
           {phases[active ? state.phase : "disconnected"]}
         </span>
+        <Menu>
+          <MenuTrigger disableButtonEnhancement>
+            <Button
+              size="small"
+              appearance="subtle"
+              icon={<SettingsRegular />}
+              aria-label="Agent 连接设置"
+              disabled={busy || !settings}
+            />
+          </MenuTrigger>
+          <MenuPopover>
+            <MenuList>
+              <MenuItem onClick={() => setEditing(true)}>连接设置</MenuItem>
+              <MenuItem onClick={() => setOnboardingRequest((n) => n + 1)}>
+                安装与连接引导
+              </MenuItem>
+            </MenuList>
+          </MenuPopover>
+        </Menu>
       </div>
-      <AgentOnboarding project={project} onConnected={() => {
-        setSelected("deepseek");
-        window.gongke.agent.settings().then(setSettings);
-      }} />
-      <div className="acp-toolbar">
-        <select
+      <AgentOnboarding
+        project={project}
+        openRequest={onboardingRequest}
+        onStep={setOnboardingStep}
+        onConnected={() => {
+          setSelected("deepseek");
+          void perform(async () => {
+            setSettings(await window.gongke.agent.settings());
+            await window.gongke.agent.start("deepseek");
+          });
+        }}
+      />
+      <div className="agent-controls" hidden={!onboardingComplete}>
+        <Select
           aria-label="选择 Agent"
           value={selected}
-          disabled={busy}
+          disabled={busy || mode === "practice"}
           onChange={(e) => setSelected(e.target.value)}
         >
           {settings?.agents.map((a) => (
@@ -191,124 +234,185 @@ export function AgentPanel({
               {a.name}
             </option>
           ))}
-        </select>
-        <button
-          disabled={!project || busy || !selected}
-          onClick={() => perform(() => window.gongke.agent.start(selected))}
-        >
-          连接
-        </button>
-        <button
-          aria-label="Agent 连接设置"
-          disabled={busy}
-          onClick={() => {
-            setConfig(JSON.stringify(settings, null, 2));
-            setEditing(true);
-          }}
-        >
-          设置
-        </button>
-      </div>
-      {active && state.phase !== "disconnected" && (
-        <div className="acp-toolbar">
-          <button
-            disabled={busy}
-            onClick={() => perform(() => window.gongke.agent.newSession())}
+        </Select>
+        {(!active || state.phase === "disconnected") && (
+          <Button
+            size="small"
+            disabled={!project || busy || !selected}
+            onClick={() => perform(() => window.gongke.agent.start(selected))}
           >
-            新会话
-          </button>
-          <button
-            onClick={() => perform(() => window.gongke.agent.disconnect())}
-          >
-            断开
-          </button>
-          {state.authMethods
-            .filter((m) => !("type" in m) || m.type !== "terminal")
-            .map((method) => (
-              <button
-                key={method.id}
-                title={method.description || ""}
-                disabled={busy}
-                onClick={() =>
-                  perform(() => window.gongke.agent.authenticate(method.id))
-                }
+            连接
+          </Button>
+        )}
+        <Menu>
+          <MenuTrigger disableButtonEnhancement>
+            <Button
+              size="small"
+              appearance="subtle"
+              icon={<MoreHorizontalRegular />}
+              aria-label="Agent 操作"
+            />
+          </MenuTrigger>
+          <MenuPopover>
+            <MenuList>
+              <MenuItem
+                disabled={!active || state.phase === "disconnected" || busy}
+                onClick={() => perform(() => window.gongke.agent.disconnect())}
               >
-                {method.name}
-              </button>
-            ))}
+                断开连接
+              </MenuItem>
+            </MenuList>
+          </MenuPopover>
+        </Menu>
+        <Tooltip content="新会话" relationship="label">
+          <Button
+            size="small"
+            appearance="subtle"
+            icon={<AddRegular />}
+            aria-label="新会话"
+            disabled={!ready}
+            onClick={() => perform(() => window.gongke.agent.newSession())}
+          />
+        </Tooltip>
+      </div>
+      <TabList
+        className="agent-modes"
+        hidden={!onboardingComplete}
+        size="small"
+        selectedValue={mode}
+        onTabSelect={(_, d) => changeMode(d.value as "model" | "practice")}
+        aria-label="Agent 模式"
+      >
+        <Tab value="model" disabled={busy}>
+          直接建模
+        </Tab>
+        <Tab value="practice" disabled={busy || selected !== "deepseek"}>
+          练习
+        </Tab>
+      </TabList>
+      {onboardingComplete && mode === "practice" && (
+        <p className="mode-note">
+          只讲解与检查；模型由你完成。工程工具为只读。
+        </p>
+      )}
+      {onboardingComplete && context && (
+        <div className="agent-context">
+          <div>
+            <span title={context}>{context}</span>
+            <Button
+              size="small"
+              appearance="subtle"
+              icon={<DismissRegular />}
+              aria-label="移除参考上下文"
+              onClick={removeContext}
+            />
+          </div>
         </div>
       )}
-      <div className="conversation" aria-live="polite">
-        {!rows.length && (
+      {active &&
+        state.authMethods
+          .filter((m) => !("type" in m) || m.type !== "terminal")
+          .map((m) => (
+            <Button
+              key={m.id}
+              disabled={busy}
+              onClick={() =>
+                perform(() => window.gongke.agent.authenticate(m.id))
+              }
+            >
+              {m.name}
+            </Button>
+          ))}
+      <div
+        className="conversation"
+        hidden={
+          !onboardingComplete &&
+          !(onboardingStep === "verify" && rows.length > 0)
+        }
+        role="log"
+        aria-label="工程对话"
+        aria-live="polite"
+      >
+        {onboardingComplete && !rows.length && (
           <div className="agent-welcome">
+            <h3>{project ? "从一个具体任务开始" : "先打开工程"}</h3>
             <p>
               {project
-                ? "选择你已有的 Agent，开始工程任务。"
-                : "先创建或打开工程。"}
+                ? "打开图纸后，描述要建的零件，或询问一个建模步骤。"
+                : "连接你的 Agent，在同一个窗口里建模和检查。"}
             </p>
-            {state.phase === "connected" && !state.authMethods.length && (
-              <p>
-                此 Agent 未提供 ACP 登录方式，请先在 Agent
-                自己的账号设置中登录，再重新连接。
-              </p>
+            {project && (
+              <Button
+                appearance="secondary"
+                icon={<ArrowRightRegular />}
+                iconPosition="after"
+                disabled={!ready}
+                onClick={() =>
+                  setPrompt(
+                    mode === "practice"
+                      ? "请先讲解这张图纸的基准选择和建模顺序。"
+                      : "请读取当前图纸，确认关键尺寸后建立可编辑的原生模型。",
+                  )
+                }
+              >
+                {mode === "practice"
+                  ? "讲解图纸的建模顺序"
+                  : "根据图纸建立模型"}
+              </Button>
             )}
           </div>
         )}
         {rows.map((row, i) =>
           row.kind === "tool" ? (
             <details
-              className="acp-tool"
+              className="agent-tool"
               key={i}
               open={row.tool.status !== "completed"}
             >
               <summary>
-                {row.tool.title || row.tool.toolCallId} ·{" "}
-                {(
+                {row.tool.title || "工程操作"}
+                <span>
                   {
-                    pending: "等待",
-                    in_progress: "执行中",
-                    completed: "完成",
-                    failed: "失败",
-                  } as Record<string, string>
-                )[row.tool.status] || row.tool.status}
+                    (
+                      {
+                        pending: "等待授权",
+                        in_progress: "执行中",
+                        completed: "完成",
+                        failed: "失败",
+                      } as Record<string, string>
+                    )[row.tool.status]
+                  }
+                </span>
               </summary>
-              {row.tool.rawInput !== undefined && (
-                <pre>{stringify(row.tool.rawInput)}</pre>
-              )}
+              <DataDetails value={row.tool.rawInput} />
               {row.tool.content?.map((c: any, j: number) => (
-                <pre key={j}>
-                  {c.type === "content"
-                    ? c.content.type === "text"
-                      ? c.content.text
-                      : stringify(c.content)
-                    : stringify(c)}
-                </pre>
+                <div className="tool-content" key={j}>
+                  {c.type === "content" && c.content.type === "text" ? (
+                    c.content.text
+                  ) : (
+                    <DataDetails value={c} />
+                  )}
+                </div>
               ))}
-              {row.tool.rawOutput !== undefined && (
-                <pre>{stringify(row.tool.rawOutput)}</pre>
-              )}
+              <DataDetails value={row.tool.rawOutput} />
             </details>
           ) : row.kind === "thought" ? (
-            <details key={i} className="acp-thought">
-              <summary>思考</summary>
-              <StreamText content={row.text || ""} />
+            <details key={i} className="agent-thought">
+              <summary>思考过程</summary>
+              <p>{row.text}</p>
             </details>
           ) : (
-            <div key={i} className={`message ${row.kind}`}>
-              <small>
+            <article key={i} className={"message " + row.kind}>
+              <div className="message-author">
                 {row.kind === "user"
                   ? "你"
                   : row.kind === "assistant"
-                    ? settings?.agents.find((a) => a.id === state.agentId)?.name
+                    ? settings?.agents.find((a) => a.id === state.agentId)
+                        ?.name || "Agent"
                     : ""}
-              </small>
-              <div>
-                <StreamText
-                  content={row.text || ""}
-                  streaming={busy && i === rows.length - 1}
-                />
               </div>
-            </div>
+              <div>{row.text}</div>
+            </article>
           ),
         )}
         <div ref={end} />
@@ -317,74 +421,65 @@ export function AgentPanel({
         (event) =>
           event.type === "permission" && (
             <div
+              className="agent-permission"
               role="group"
               aria-label="工程操作授权"
-              className="acp-permission"
               key={event.id}
             >
-              <strong>
-                {event.request.toolCall.title ||
-                  rows.find(
-                    (r) =>
-                      r.tool?.toolCallId === event.request.toolCall.toolCallId,
-                  )?.tool?.title ||
-                  "批准工程操作"}
-              </strong>
-              {
-                <pre>
-                  {stringify(
-                    event.request.toolCall.rawInput ??
-                      rows.find(
-                        (r) =>
-                          r.tool?.toolCallId ===
-                          event.request.toolCall.toolCallId,
-                      )?.tool?.rawInput,
-                  )}
-                </pre>
-              }
-              <div>
-                {event.request.options.map((option) => (
-                  <button
-                    key={option.optionId}
-                    className={option.kind.startsWith("allow") ? "primary" : ""}
-                    onClick={() =>
-                      perform(() =>
-                        window.gongke.agent.permission(
-                          event.id,
-                          option.optionId,
-                        ),
-                      )
-                    }
-                  >
-                    {
+              <strong>{event.request.toolCall.title || "工程操作"}</strong>
+              <DataDetails value={event.request.toolCall.rawInput} />
+              <div className="permission-actions">
+                {event.request.options
+                  .filter(
+                    (o) => mode !== "practice" || o.kind !== "allow_always",
+                  )
+                  .map((o) => (
+                    <Button
+                      key={o.optionId}
+                      size="small"
+                      appearance={
+                        o.kind === "allow_once" ? "primary" : "secondary"
+                      }
+                      onClick={() =>
+                        perform(() =>
+                          window.gongke.agent.permission(event.id, o.optionId),
+                        )
+                      }
+                    >
                       {
-                        allow_once: "允许一次",
-                        allow_always: "始终允许",
-                        reject_once: "拒绝一次",
-                        reject_always: "始终拒绝",
-                      }[option.kind]
-                    }
-                  </button>
-                ))}
+                        {
+                          allow_once: "允许一次",
+                          allow_always: "始终允许",
+                          reject_once: "拒绝一次",
+                          reject_always: "始终拒绝",
+                        }[o.kind]
+                      }
+                    </Button>
+                  ))}
               </div>
             </div>
           ),
       )}
       {(error || (active && state.error)) && (
-        <div className="acp-error" role="alert">
+        <div className="agent-error" role="alert">
           {error || state.error}
         </div>
       )}
-      <div className="compose">
-        <textarea
+      <div className="compose" hidden={!onboardingComplete}>
+        <Textarea
           aria-label="工程任务"
-          placeholder="描述工程任务…"
+          placeholder={
+            mode === "practice"
+              ? "描述你卡住的步骤…"
+              : "描述要建的模型或需要检查的地方…"
+          }
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(_, d) => setPrompt(d.value)}
+          resize="none"
           onKeyDown={(e) => {
             if (
               e.key === "Enter" &&
-              (e.metaKey || e.ctrlKey) &&
+              (e.ctrlKey || e.metaKey) &&
               !e.nativeEvent.isComposing
             ) {
               e.preventDefault();
@@ -393,59 +488,37 @@ export function AgentPanel({
           }}
         />
         <div>
+          <span>Ctrl + Enter 发送</span>
           {["prompting", "cancelling"].includes(state.phase) ? (
-            <button
+            <Button
+              icon={<StopRegular />}
               disabled={state.phase === "cancelling"}
               onClick={() => perform(() => window.gongke.agent.cancel())}
             >
-              取消
-            </button>
+              停止
+            </Button>
           ) : (
-            <button
-              className="primary"
+            <Button
+              appearance="primary"
+              icon={<SendRegular />}
               disabled={!ready || !prompt.trim()}
               onClick={send}
             >
-              发送 ↑
-            </button>
+              发送
+            </Button>
           )}
         </div>
       </div>
-      {editing && (
-        <div className="modal-scrim">
-          <div className="modal acp-settings">
-            <div className="section-bar">
-              <h2>Agent 连接</h2>
-              <button onClick={() => setEditing(false)}>×</button>
-            </div>
-            <p>
-              填写本机 Agent 和工程 MCP 的 stdio 启动配置。登录与账号由 Agent
-              管理。参数和环境变量中的 <code>{"${project}"}</code>{" "}
-              会替换为当前工程目录。
-            </p>
-            <textarea
-              aria-label="Agent 启动配置"
-              value={config}
-              onChange={(e) => setConfig(e.target.value)}
-              spellCheck={false}
-            />
-            <button
-              className="primary"
-              onClick={() =>
-                perform(async () => {
-                  const value = JSON.parse(config);
-                  await window.gongke.agent.saveSettings(value);
-                  setSettings(value);
-                  setSelected(value.agents[0].id);
-                  setEditing(false);
-                })
-              }
-            >
-              保存
-            </button>
-            {error && <p role="alert">{error}</p>}
-          </div>
-        </div>
+      {editing && settings && (
+        <AgentSettings
+          value={settings}
+          close={() => setEditing(false)}
+          save={async (value) => {
+            await window.gongke.agent.saveSettings(value);
+            setSettings(value);
+            setSelected(value.agents[0].id);
+          }}
+        />
       )}
     </section>
   );

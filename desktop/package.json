@@ -6,7 +6,7 @@
   "author": "Gongke Workbench",
   "main": "dist-electron/main.cjs",
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist-electron', {recursive:true, force:true})\" && tsc -p tsconfig.json && tsc -p tsconfig.electron.json && vite build",
+    "build": "node -e \"require('node:fs').rmSync('dist-electron', {recursive:true, force:true})\" && tsc -p tsconfig.json && tsc -p tsconfig.electron.json && vite build && node -e \"require('node:fs').copyFileSync('src/assets/OFL.txt', 'dist/assets/OFL.txt')\"",
     "start": "electron .",
     "dev": "npm run build && electron .",
     "package": "npm run build && electron-builder --dir",
@@ -14,7 +14,10 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^2.4.0",
-    "@fontsource/ibm-plex-mono": "^5.1.1",
+    "@fluentui/react-components": "^9.75.1",
+    "@fluentui/react-icons": "^2.0.345",
+    "dxf-viewer": "^1.0.50",
+    "pdfjs-dist": "5.4.296",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "three": "^0.180.0"

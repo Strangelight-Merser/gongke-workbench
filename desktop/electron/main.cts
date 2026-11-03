@@ -1,3 +1,5 @@
+import { mcpForMode } from "./agent-mode.cjs";
+import { readDocument, importDocuments } from "./documents.cjs";
 import { registerOnboarding } from "./onboarding/ipc.cjs";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { join, resolve, relative, isAbsolute } from "node:path";
@@ -11,6 +13,7 @@ let window: BrowserWindow;
 let service: Service;
 let projectRoot = "";
 let agent: AgentClient;
+let agentMode: "model" | "practice" = "model";
 const allowed = new Set([
   "system.status",
   "tools.list",
@@ -92,7 +95,7 @@ else {
       minWidth: 1080,
       minHeight: 740,
       title: "构想引擎",
-      backgroundColor: "#e6ebe3",
+      backgroundColor: "#f3f3f3",
       // macOS 内容延伸到标题栏，侧栏顶部与工作区标题行作为拖动区域。
       ...(process.platform === "darwin"
         ? {
@@ -135,24 +138,92 @@ else {
       });
       return result.canceled ? null : result.filePaths[0];
     });
+    ipcMain.handle("documents-import", async (event) => {
+      requireMainFrame(event);
+      if (!projectRoot) throw new Error("请先打开工程");
+      const root = projectRoot;
+      const result = await dialog.showOpenDialog(window, {
+        title: "打开图纸",
+        properties: ["openFile", "multiSelections"],
+        filters: [
+          {
+            name: "图纸",
+            extensions: ["pdf", "png", "jpg", "jpeg", "webp", "svg", "dxf"],
+          },
+        ],
+      });
+      if (result.canceled) return [];
+      if (root !== projectRoot) throw new Error("工程已切换，请重新选择图纸");
+      return importDocuments(root, result.filePaths);
+    });
+    ipcMain.handle("documents-read", (event, path) => {
+      requireMainFrame(event);
+      return readDocument(projectRoot, path);
+    });
     const configuration = new AgentConfiguration(
       app.getPath("userData"),
       resolve(__dirname, "../.."),
       app.isPackaged
-        ? join(process.resourcesPath, "service", "gongke-service",
-            process.platform === "win32" ? "gongke-service.exe" : "gongke-service")
+        ? join(
+            process.resourcesPath,
+            "service",
+            "gongke-service",
+            process.platform === "win32"
+              ? "gongke-service.exe"
+              : "gongke-service",
+          )
         : undefined,
     );
     agent = new AgentClient((state) => {
       if (!window.isDestroyed()) window.webContents.send("acp-state", state);
+    });
+    async function connectAgent(id: string) {
+      if (!projectRoot) throw new Error("请先打开工程");
+      if (agentMode === "practice" && id !== "deepseek")
+        throw new Error("练习模式请连接 DeepSeek Harness");
+      const { profile, mcp } = configuration.launch(id, projectRoot);
+      await agent.start(profile, projectRoot, mcpForMode(mcp, agentMode));
+    }
+    ipcMain.handle("agent-mode-current", (event) => {
+      requireMainFrame(event);
+      return agentMode;
+    });
+    ipcMain.handle("agent-mode", async (event, mode) => {
+      requireMainFrame(event);
+      if (!["model", "practice"].includes(mode))
+        throw new Error("不支持的 Agent 模式");
+      if (agent.busy) throw new Error("请先停止当前任务再切换模式");
+      const current = agent.snapshot();
+      if (
+        mode === "practice" &&
+        current.agentId &&
+        current.agentId !== "deepseek"
+      )
+        throw new Error("练习模式请连接 DeepSeek Harness");
+      if (mode === agentMode) return;
+      const priorMode = agentMode;
+      agentMode = mode;
+      try {
+        if (current.phase !== "disconnected")
+          await connectAgent(current.agentId);
+      } catch (error) {
+        agentMode = priorMode;
+        throw error;
+      }
     });
     const handle = (name: string, action: (...args: any[]) => unknown) =>
       ipcMain.handle(`acp-${name}`, (event, ...args) => {
         requireMainFrame(event);
         return action(...args);
       });
-    registerOnboarding({ window, agent, configuration, project: () => projectRoot,
-      request: (method, params) => service.request(method, params), handle });
+    registerOnboarding({
+      window,
+      agent,
+      configuration,
+      project: () => projectRoot,
+      request: (method, params) => service.request(method, params),
+      handle,
+    });
     handle("settings", () => configuration.read());
     handle("save-settings", async (settings) => {
       if (agent.busy) throw new Error("请先取消当前 Agent 操作");
@@ -160,14 +231,12 @@ else {
       await agent.disconnect();
     });
     handle("state", () => agent.snapshot());
-    handle("start", async (id) => {
-      if (!projectRoot) throw new Error("请先打开工程");
-      const { profile, mcp } = configuration.launch(id, projectRoot);
-      await agent.start(profile, projectRoot, mcp);
-    });
+    handle("start", connectAgent);
     handle("authenticate", (id) => agent.authenticate(id));
     handle("new-session", () => agent.newSession());
-    handle("prompt", async (text) => { await agent.prompt(text); });
+    handle("prompt", async (text) => {
+      await agent.prompt(text);
+    });
     handle("cancel", () => agent.cancel());
     handle("disconnect", () => agent.disconnect());
     handle("permission", (id, optionId) => agent.permission(id, optionId));

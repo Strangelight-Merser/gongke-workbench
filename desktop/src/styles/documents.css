@@ -1,0 +1,502 @@
+.file-document,
+.pdf-document,
+.dxf-document,
+.cad-workspace,
+.native-inspection,
+.native,
+.reducer-task {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.file-path {
+  font-weight: 600;
+}
+.text-document {
+  padding: 24px;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow: auto;
+  font:
+    14px/1.7 "Segoe UI",
+    "Microsoft YaHei UI",
+    sans-serif;
+}
+.pdf-pages {
+  flex: 1;
+  min-height: 0;
+  padding: 24px;
+  overflow: auto;
+  background: var(--surface-base);
+  text-align: center;
+}
+.pdf-toolbar {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.pdf-toolbar .fui-Button:has(> .fui-Button__icon:only-child) {
+  min-width: 28px;
+  width: 28px;
+  padding: 4px;
+}
+.pdf-toolbar > span:not(.toolbar-space) {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-pages canvas {
+  background: white;
+  display: block;
+  margin: auto;
+}
+.pdf-pages .fui-Spinner {
+  position: absolute;
+  top: 96px;
+  right: 24px;
+}
+.dxf-canvas {
+  flex: 1;
+  min-height: 0;
+  background: var(--paper);
+}
+.drawing-viewer {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-base);
+  touch-action: none;
+}
+.drawing-viewer > .drawing {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  background: var(--paper);
+  user-select: none;
+}
+.zoom-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px;
+}
+.zoom-bar .fui-Button {
+  min-width: 32px;
+}
+.cad-editor {
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-base);
+}
+.cad-toolbar {
+  flex-wrap: nowrap;
+}
+.cad-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.cad-connect {
+  padding: 16px 24px;
+}
+.cad-connect > div {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+.cad-surface {
+  flex: 1;
+  min-height: 120px;
+  position: relative;
+  background: var(--surface-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.cad-message {
+  padding: 8px 12px;
+  color: var(--warning);
+  background: var(--surface);
+}
+.native-area {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.native-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.native-tabs .active {
+  background: var(--selection);
+  color: var(--accent);
+}
+.model-view {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  min-height: 180px;
+  overflow: hidden;
+  background: var(--surface-base);
+}
+.model-view canvas {
+  display: block;
+}
+.viewport-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  color: var(--muted);
+  font-size: var(--text-small);
+  pointer-events: none;
+}
+.properties {
+  width: 240px;
+  flex-shrink: 0;
+  padding: 12px;
+  border-left: 1px solid var(--line);
+  overflow: auto;
+}
+.properties h3:first-child {
+  margin-top: 0;
+}
+.properties > .fui-Button {
+  margin: 4px 0;
+  max-width: 100%;
+}
+.properties label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+.properties .object {
+  width: 100%;
+  display: block;
+  text-align: left;
+  border: 0;
+  margin: 0;
+}
+.object.active {
+  background: var(--selection);
+  color: var(--accent);
+}
+.property {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+}
+.native-status {
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+.native-receipt {
+  max-height: 180px;
+  overflow: auto;
+}
+.page-view {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  overflow: hidden;
+}
+.page-view > svg {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+.disclosure-toggle {
+  width: 100%;
+  justify-content: flex-start !important;
+  gap: 8px;
+}
+.disclosure-grid:not([data-open="true"]) {
+  display: none;
+}
+.disclosure-body {
+  padding: 12px;
+}
+.data-details {
+  margin: 0;
+  font-size: var(--text-ui);
+}
+.data-details > div {
+  display: grid;
+  grid-template-columns: minmax(80px, 32%) minmax(0, 1fr);
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.data-details dt {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.data-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.task-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.task-stages .fui-Button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6px 10px;
+}
+.stage-note {
+  font-size: var(--text-small);
+  font-weight: 400;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--text-body);
+}
+.source-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.design {
+  max-width: 960px;
+}
+.design > .toolbar {
+  border: 0;
+  padding: 12px 0;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 16px 0 24px;
+}
+.fact dt {
+  color: var(--muted);
+  font-size: var(--text-small);
+  margin-bottom: 6px;
+}
+.fact dd {
+  margin: 0;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.unit,
+.src {
+  font-size: var(--text-small);
+  color: var(--muted);
+  margin-left: 8px;
+}
+.columns section {
+  margin-bottom: 24px;
+}
+.columns h2 span {
+  margin-left: 12px;
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+th,
+td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+th {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: var(--text-small);
+  background: var(--frame);
+}
+.ck {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 100px 50px;
+  width: 100%;
+  gap: 16px;
+  text-align: left !important;
+  padding: 8px 12px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--line) !important;
+  border-radius: 0 !important;
+}
+.ck.sel {
+  background: var(--selection);
+}
+.meter {
+  height: 4px;
+  background: var(--line);
+}
+.meter i {
+  display: block;
+  height: 100%;
+  background: var(--success);
+}
+.meter i.fail {
+  background: var(--danger);
+}
+.meter i.warn {
+  background: var(--warning);
+}
+.ck-p {
+  text-align: right;
+}
+.ck-n {
+  overflow-wrap: anywhere;
+}
+.kv {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 10px;
+}
+.kv dt {
+  color: var(--muted);
+}
+.kv dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.insp-in {
+  padding: 16px;
+  border-top: 1px solid var(--line);
+}
+.crumb {
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+.gauge .big {
+  font-size: 24px;
+}
+.checks-page {
+  padding: 24px;
+}
+.checks-table td svg {
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.checks-table td:first-child {
+  padding-left: 0;
+}
+.checks-table .fui-Button {
+  text-align: left;
+  justify-content: flex-start;
+}
+.checks-table tr[aria-selected="true"] {
+  background: var(--selection);
+}
+.sheet-grid {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.sheet-card {
+  width: 100%;
+  justify-content: flex-start !important;
+  border: 0 !important;
+}
+.task {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.task > div:first-child {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+.task p {
+  color: var(--muted);
+}
+.task-status {
+  font-size: var(--text-small);
+}
+.task-status.failed {
+  color: var(--danger);
+}
+.condition-group {
+  margin: 20px 0;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.condition-group summary {
+  cursor: pointer;
+  font-weight: 600;
+  line-height: 2;
+}
+.condition-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding-top: 16px;
+}
+.condition-fields > details {
+  grid-column: 1 / -1;
+  margin: 4px 0;
+}
+.condition-fields .fui-Field__hint {
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+.condition-conflict {
+  padding: 12px;
+  background: var(--frame);
+  border-left: 3px solid var(--warning);
+  margin-bottom: 16px;
+}
+.condition-conflict .fui-Button {
+  margin-right: 8px;
+}
+.model-document {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.checks-table td {
+  font-variant-numeric: tabular-nums;
+}
+.checks-table td:not(:first-child) {
+  white-space: nowrap;
+}
+.check-detail {
+  padding: 16px 0;
+  line-height: 1.6;
+}

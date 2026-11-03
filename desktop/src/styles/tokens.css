@@ -1,0 +1,40 @@
+.workbench {
+  --frame: #f3f3f3;
+  --surface: #fff;
+  --surface-base: #eef0f3;
+  --surface-hover: #e9e9e9;
+  --ink: #242424;
+  --muted: #616161;
+  --line: #dedede;
+  --accent: #0f6cbd;
+  --selection: #e5f1fb;
+  --danger: #b10e1e;
+  --warning: #8a5100;
+  --success: #107c10;
+  --paper: #fff;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --text-small: 12px;
+  --text-ui: 13px;
+  --text-body: 14px;
+  --text-title: 16px;
+  --text-start: 24px;
+}
+.workbench[data-theme="dark"] {
+  --frame: #202020;
+  --surface: #252526;
+  --surface-base: #303033;
+  --surface-hover: #383838;
+  --ink: #f2f2f2;
+  --muted: #b8b8b8;
+  --line: #454545;
+  --accent: #75b6ed;
+  --selection: #193a54;
+  --danger: #ff99a4;
+  --warning: #f5ce85;
+  --success: #8ed58e;
+  color-scheme: dark;
+}

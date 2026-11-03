@@ -31,15 +31,27 @@ const hash = (file) =>
   try {
     page = await app.firstWindow();
     page.setDefaultTimeout(20000);
-    await page.getByText("工程服务运行中", { exact: true }).waitFor();
+    await page.getByText("就绪", { exact: true }).waitFor();
     const project = path.join(out, "原生轴修订");
     fs.mkdirSync(project);
     await app.evaluate(({ dialog }, p) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] });
     }, project);
-    await page.getByRole("button", { name: "新建工程", exact: true }).click();
+    await page
+      .getByRole("toolbar", { name: "工程命令" })
+      .getByRole("button", { name: "新建工程", exact: true })
+      .click();
     await page.locator("footer").getByText(project, { exact: true }).waitFor();
-    await page.getByRole("button", { name: /^FreeCAD/ }).click();
+    await page
+      .getByLabel("工程树", { exact: true })
+      .getByText("原生 CAD", { exact: true })
+      .click();
+    if (
+      await page
+        .getByRole("button", { name: "工程检查", exact: true })
+        .isVisible()
+    )
+      await page.getByRole("button", { name: "工程检查", exact: true }).click();
     await page
       .getByRole("button", { name: "读取 FreeCAD 工程", exact: true })
       .click();
@@ -64,7 +76,10 @@ const hash = (file) =>
       .getByRole("button", { name: "另存工作修订", exact: true })
       .click();
     await page.waitForFunction(
-      (p) => document.querySelector(".native .toolbar").textContent.includes(p),
+      (p) =>
+        document
+          .querySelector(".native-inspection > :not([hidden]) .native .toolbar")
+          .textContent.includes(p),
       project,
     );
     await page.getByLabel("目标直径", { exact: true }).fill(String(targetMm));
@@ -78,7 +93,10 @@ const hash = (file) =>
       .filter({ hasText: targetMm.toFixed(2) })
       .waitFor();
     await page.waitForFunction(
-      () => !document.querySelector(".busy").textContent,
+      () =>
+        !document.querySelector(".statusbar").getAttribute("aria-busy") ||
+        document.querySelector(".statusbar").getAttribute("aria-busy") ===
+          "false",
     );
     await page
       .getByRole("button", { name: "校核当前模型", exact: true })
@@ -107,13 +125,19 @@ const hash = (file) =>
       await new Promise((r) => setTimeout(r, 100));
     } while (Date.now() < deadline);
     assert.ok(current.files.some((f) => f.kind === "dxf"));
-    await page.getByRole("button", { name: /工程文件/ }).click();
-    await page.getByRole("button", { name: /\.dxf/ }).first().waitFor();
+    await page
+      .locator(".project-pane [role=treeitem]:not([aria-expanded])")
+      .filter({ hasText: /\.dxf/ })
+      .first()
+      .waitFor();
     await page
       .getByRole("button", { name: "另存工作修订", exact: true })
       .click();
     await page.waitForFunction(
-      () => !document.querySelector(".busy").textContent,
+      () =>
+        !document.querySelector(".statusbar").getAttribute("aria-busy") ||
+        document.querySelector(".statusbar").getAttribute("aria-busy") ===
+          "false",
     );
     await page.screenshot({ path: path.join(out, "native-drawing.png") });
     assert.equal(hash(original.path), originalHash);

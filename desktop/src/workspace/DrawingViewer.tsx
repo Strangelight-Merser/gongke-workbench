@@ -1,3 +1,4 @@
+import { Button } from "../ui/controls";
 import {
   useCallback,
   useEffect,
@@ -11,15 +12,25 @@ const MIN = 0.05,
   MAX = 16;
 
 // 图纸查看：滚轮以光标为中心缩放，拖动平移，双击适应窗口。
-export function DrawingViewer({ svg }: { svg: string }) {
+export function DrawingViewer({
+  svg,
+  src: imageSource,
+}: {
+  svg?: string;
+  src?: string;
+}) {
   const box = useRef<HTMLDivElement>(null),
     image = useRef<HTMLImageElement>(null),
     drag = useRef<{ x: number; y: number } | null>(null);
+  const [error, setError] = useState(false);
   const [view, setView] = useState<View | null>(null);
+  const currentView = useRef(view);
+  currentView.current = view;
   const fit = useCallback(() => {
     const el = box.current,
       img = image.current;
-    if (!el || !img?.naturalWidth) return;
+    if (!el || !img?.naturalWidth || !el.clientWidth || !el.clientHeight)
+      return;
     const pad = 24,
       scale = Math.min(
         (el.clientWidth - pad * 2) / img.naturalWidth,
@@ -31,6 +42,13 @@ export function DrawingViewer({ svg }: { svg: string }) {
       y: (el.clientHeight - img.naturalHeight * scale) / 2,
     });
   }, []);
+  useEffect(() => {
+    const resize = new ResizeObserver(() => {
+      if (!currentView.current) fit();
+    });
+    resize.observe(box.current!);
+    return () => resize.disconnect();
+  }, [fit]);
   const zoomAt = useCallback((factor: number, cx?: number, cy?: number) => {
     setView((v) => {
       const el = box.current;
@@ -45,8 +63,9 @@ export function DrawingViewer({ svg }: { svg: string }) {
   // 换图后重新适应；数据 URI 可能在挂载前就已解码完成，不能只依赖 onLoad。
   useLayoutEffect(() => {
     setView(null);
+    setError(false);
     if (image.current?.complete) fit();
-  }, [svg, fit]);
+  }, [svg, imageSource, fit]);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -62,7 +81,9 @@ export function DrawingViewer({ svg }: { svg: string }) {
     el.addEventListener("wheel", wheel, { passive: false });
     return () => el.removeEventListener("wheel", wheel);
   }, [zoomAt]);
-  const src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  const src =
+    imageSource ||
+    "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg || "");
   return (
     <div
       ref={box}
@@ -90,6 +111,11 @@ export function DrawingViewer({ svg }: { svg: string }) {
       onPointerCancel={() => (drag.current = null)}
       onDoubleClick={fit}
     >
+      {error && (
+        <p role="alert" className="error">
+          图像无法解码，请检查文件内容或重新导入。
+        </p>
+      )}
       <img
         ref={image}
         className="drawing"
@@ -97,6 +123,7 @@ export function DrawingViewer({ svg }: { svg: string }) {
         draggable={false}
         src={src}
         onLoad={fit}
+        onError={() => setError(true)}
         style={
           view
             ? {
@@ -107,22 +134,22 @@ export function DrawingViewer({ svg }: { svg: string }) {
         }
       />
       <div className="zoom-bar">
-        <button aria-label="缩小" title="缩小" onClick={() => zoomAt(1 / 1.25)}>
+        <Button aria-label="缩小" title="缩小" onClick={() => zoomAt(1 / 1.25)}>
           −
-        </button>
-        <button
+        </Button>
+        <Button
           className="zoom-value"
           title="实际大小"
           onClick={() => zoomAt(1 / (view?.scale || 1))}
         >
           {Math.round((view?.scale || 1) * 100)}%
-        </button>
-        <button aria-label="放大" title="放大" onClick={() => zoomAt(1.25)}>
+        </Button>
+        <Button aria-label="放大" title="放大" onClick={() => zoomAt(1.25)}>
           +
-        </button>
-        <button title="适应窗口（双击图纸）" onClick={fit}>
+        </Button>
+        <Button title="适应窗口（双击图纸）" onClick={fit}>
           适应
-        </button>
+        </Button>
       </div>
     </div>
   );

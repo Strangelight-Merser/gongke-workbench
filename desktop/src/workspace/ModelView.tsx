@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import type { Data } from "./api";
+import type { Data } from "../api";
 
 export function ModelView({
   scene,
@@ -13,6 +13,17 @@ export function ModelView({
   onSelect: (id: string) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null);
+  const meshesRef = useRef<THREE.Mesh[]>([]);
+  const selectedRef = useRef(selected);
+  const selectRef = useRef(onSelect);
+  selectedRef.current = selected;
+  selectRef.current = onSelect;
+  useEffect(() => {
+    for (const mesh of meshesRef.current)
+      (mesh.material as THREE.MeshStandardMaterial).color.set(
+        mesh.userData.id === selected ? "#0f6cbd" : "#a9b4c0",
+      );
+  }, [selected]);
   useEffect(() => {
     if (!mount.current) return;
     const element = mount.current,
@@ -20,6 +31,15 @@ export function ModelView({
     world.background = new THREE.Color(
       getComputedStyle(element).getPropertyValue("--surface-base").trim(),
     );
+    const theme = new MutationObserver(() => {
+      world.background = new THREE.Color(
+        getComputedStyle(element).getPropertyValue("--surface-base").trim(),
+      );
+    });
+    theme.observe(element.closest(".workbench")!, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
     const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 1e7),
       renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -43,7 +63,7 @@ export function ModelView({
       geometry.setIndex(item.triangles.flat());
       geometry.computeVertexNormals();
       const material = new THREE.MeshStandardMaterial({
-        color: item.id === selected ? "#23508a" : "#a9b6ae",
+        color: item.id === selectedRef.current ? "#0f6cbd" : "#a9b4c0",
         metalness: 0.32,
         roughness: 0.46,
         side: THREE.DoubleSide,
@@ -53,6 +73,7 @@ export function ModelView({
       group.add(mesh);
       meshes.push(mesh);
     }
+    meshesRef.current = meshes;
     const box = new THREE.Box3().setFromObject(group),
       center = box.getCenter(new THREE.Vector3()),
       size = box.getSize(new THREE.Vector3()).length() || 100;
@@ -68,6 +89,7 @@ export function ModelView({
     world.add(grid);
     const resize = new ResizeObserver(() => {
       const { width, height } = element.getBoundingClientRect();
+      if (!width || !height) return;
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
@@ -90,7 +112,7 @@ export function ModelView({
         camera,
       );
       const hit = ray.intersectObjects(meshes)[0];
-      if (hit) onSelect(hit.object.userData.id);
+      if (hit) selectRef.current(hit.object.userData.id);
     };
     renderer.domElement.addEventListener("pointerdown", pointerDown);
     renderer.domElement.addEventListener("pointerup", pointerUp);
@@ -101,6 +123,7 @@ export function ModelView({
     return () => {
       renderer.setAnimationLoop(null);
       resize.disconnect();
+      theme.disconnect();
       controls.dispose();
       for (const mesh of meshes) {
         mesh.geometry.dispose();
@@ -111,7 +134,7 @@ export function ModelView({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [scene, selected, onSelect]);
+  }, [scene]);
   return (
     <div className="model-view" ref={mount}>
       <span className="viewport-hint">拖动旋转 · 滚轮缩放 · 点击选择</span>

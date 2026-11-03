@@ -1,17 +1,22 @@
+import { Button, Input, Checkbox } from "../ui/controls";
 import { useEffect, useState } from "react";
 import type {
   OnboardingAction,
   OnboardingState,
+  Step,
 } from "../../electron/onboarding/types.cjs";
 import { errorText } from "../api";
-import "./onboarding.css";
 
 export function AgentOnboarding({
   project,
   onConnected,
+  openRequest = 0,
+  onStep,
 }: {
   project?: string;
   onConnected(): void;
+  openRequest?: number;
+  onStep(step: Step): void;
 }) {
   const [state, setState] = useState<OnboardingState>();
   const [error, setError] = useState("");
@@ -21,7 +26,7 @@ export function AgentOnboarding({
   const [expanded, setExpanded] = useState(true);
   async function act(action: OnboardingAction) {
     setError("");
-    if (action.type === "verify") setExpanded(false);
+
     try {
       const next = await window.gongke.onboarding.act(action);
       setState(next);
@@ -59,9 +64,20 @@ export function AgentOnboarding({
     setTaskId("");
     setSawReply(false);
   }, [state?.selected, project]);
+  const step = state?.agents[state.selected].step;
+  useEffect(() => {
+    if (step) {
+      setExpanded(step !== "complete");
+      onStep(step);
+    }
+  }, [step, onStep]);
+  useEffect(() => {
+    if (openRequest) setExpanded(true);
+  }, [openRequest]);
   if (!state)
     return <p className="agent-onboarding">{error || "正在检测 Agent…"}</p>;
   const p = state.agents[state.selected];
+  if (p.step === "complete" && !expanded) return null;
   const dsh = state.selected === "deepseek";
   const release = state.releases.find((r) => r.provider === state.selected)!;
   const busy = state.working;
@@ -71,9 +87,9 @@ export function AgentOnboarding({
     action: OnboardingAction,
     disabled = false,
   ) => (
-    <button disabled={busy || disabled} onClick={() => act(action)}>
+    <Button disabled={busy || disabled} onClick={() => act(action)}>
       {label}
-    </button>
+    </Button>
   );
   const link = (
     label: string,
@@ -89,35 +105,44 @@ export function AgentOnboarding({
     complete: "引导已完成",
   };
   return (
-    <div className="agent-onboarding">
-      <button
-        className="onboarding-heading"
-        aria-expanded={expanded}
-        onClick={() => setExpanded(!expanded)}
-      >
-        {labels[p.step]} <span>{expanded ? "收起" : "展开"}</span>
-      </button>
-      {expanded && (
+    <div
+      className={
+        "agent-onboarding" +
+        (p.step !== "complete" ? " onboarding-primary" : "")
+      }
+    >
+      {p.step !== "complete" ? (
+        <h3 className="onboarding-heading">{labels[p.step]}</h3>
+      ) : (
+        <Button
+          className="onboarding-heading"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {labels[p.step]} <span>{expanded ? "收起" : "展开"}</span>
+        </Button>
+      )}
+      {(p.step !== "complete" || expanded) && (
         <div className="onboarding-body">
           <div
             className="onboarding-actions"
             role="group"
             aria-label="引导 Agent 选择"
           >
-            <button
+            <Button
               aria-pressed={dsh}
               disabled={busy}
               onClick={() => act({ type: "select", provider: "deepseek" })}
             >
               DeepSeek Harness
-            </button>
-            <button
+            </Button>
+            <Button
               aria-pressed={!dsh}
               disabled={busy}
               onClick={() => act({ type: "select", provider: "workbuddy" })}
             >
               WorkBuddy
-            </button>
+            </Button>
           </div>
           {installed && (
             <p className="onboarding-location" title={installed}>
@@ -180,9 +205,9 @@ export function AgentOnboarding({
                 max={state.installing.total}
               />
               {state.installing.phase !== "请完成安装向导" && (
-                <button onClick={() => act({ type: "cancel-install" })}>
+                <Button onClick={() => act({ type: "cancel-install" })}>
                   取消下载
-                </button>
+                </Button>
               )}
               <p>
                 离开后可以继续；若安装向导已打开，请在向导中取消或完成安装。
@@ -258,16 +283,15 @@ export function AgentOnboarding({
                 </blockquote>
                 {button("打开 WorkBuddy", { type: "open-agent" })}
                 <label className="onboarding-check">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={sawReply}
-                    onChange={(e) => setSawReply(e.target.checked)}
+                    onChange={(_, data) => setSawReply(data.checked === true)}
                   />
                   我已看到绿色 MCP 状态和本次真实回复，工程名称、路径正确。
                 </label>
                 <label>
                   回复中的 task_id
-                  <input
+                  <Input
                     aria-label="WorkBuddy 任务编号"
                     value={taskId}
                     maxLength={32}

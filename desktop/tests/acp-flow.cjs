@@ -73,7 +73,7 @@ if (!live)
             ? "先调用 project.current 读取当前工程，再调用 design.calculate 计算。只需告诉我电机型号和额定功率。不要用 shell、文件或其他工具。"
             : "读取工程",
         );
-      await page.getByRole("button", { name: "发送 ↑", exact: true }).click();
+      await page.getByRole("button", { name: "发送", exact: true }).click();
       let approved = 0,
         deadline = Date.now() + 180_000;
       while (Date.now() < deadline) {
@@ -127,7 +127,12 @@ if (!live)
         approved,
         events: state.events.length,
       });
-      await page.getByRole("button", { name: "断开", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Agent 操作", exact: true })
+        .click();
+      await page
+        .getByRole("menuitem", { name: "断开连接", exact: true })
+        .click();
     }
     assert.deepEqual(errors, []);
     writeFileSync(
