@@ -1,8 +1,10 @@
 # 架构说明
 
-当前桌面主入口与安装构建见 [desktop/README.md](../desktop/README.md)，应用命令与任务语义见 [gongke_app/README.md](../gongke_app/README.md)。
+当前产品方向以 [PLAN.md](../PLAN.md)（2026-11-03）为准：Windows 优先，构想引擎为主窗口，从学生材料包进入工程；通过 ACP 托管已有 Agent（首个 DeepSeek Harness），WorkBuddy 通过工程 MCP 接入。目标是在窗口内嵌入原生 CAD 编辑区，支持自由建模，默认 FreeCAD、可选本机 SOLIDWORKS，并尽量保留原生特征树。
 
-本文保留 2026-10-19 的任务书批处理架构，适用于初始化、STEP 与图纸导出。当前原生协作由 FreeCAD 文档、窄命令桥、当前轴校核和独立梁任务组成，尺寸直接读取原生草图；不会通过重导 STEP 覆盖人工修改。实际操作见 [原生工程协作](assistant-workflow.md)，产品方向见 [README](../README.md)。下文的“第一版”及功能取舍均属于历史批处理阶段。
+近期架构将以应用服务统一桌面、CLI、MCP 的工程上下文、工具执行与权限，FreeCAD、SOLIDWORKS、AutoCAD 共用宿主语义。`gongke_app/agent` 仅作过渡，替代路径完成后删除。当前桌面入口与安装构建见 [desktop/README.md](../desktop/README.md)，应用命令与任务语义见 [gongke_app/README.md](../gongke_app/README.md)。
+
+下文保留 2026-10-19 起的任务书批处理架构与后续实现记录，适用于初始化、STEP 与图纸导出；其中“第一版”“后续路线”和功能取舍不代表现行产品规划。已有原生协作直接读取 FreeCAD 草图尺寸，不通过重导 STEP 覆盖人工修改，操作见 [原生工程协作](assistant-workflow.md)。
 
 > 2026-10-19 定稿第一版。记录"做什么、不做什么、为什么这样分层"。
 
