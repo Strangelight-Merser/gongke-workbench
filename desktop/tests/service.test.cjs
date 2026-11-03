@@ -23,10 +23,6 @@ test("桌面通信在源码目录之外执行真实计算，退出后不重放�
     const calculated = await service.request("design.calculate");
     assert.equal(calculated.motor.model, "Y132S-4");
     assert.ok(calculated.shaft_states.length >= 3);
-    await assert.rejects(
-      service.request("agent.run", { message: "读取工程" }),
-      /未连接模型服务/,
-    );
     await service.stop();
     await assert.rejects(service.request("system.status"), /未运行/);
   } finally {

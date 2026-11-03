@@ -15,6 +15,7 @@ class ServiceProcess:
         self.project = project or tmp_path / "project"
         self.events, self.responses = [], {}
         self.condition = threading.Condition()
+        self.output_closed = False
         self.serial = 0
         self.stderr = (tmp_path / "service.log").open("w", encoding="utf-8")
         self.process = subprocess.Popen([*(command or [sys.executable, "-m", "gongke_app.service"]),
@@ -29,6 +30,9 @@ class ServiceProcess:
                     else:
                         self.events.append(value)
                     self.condition.notify_all()
+            with self.condition:
+                self.output_closed = True
+                self.condition.notify_all()
         self.reader = threading.Thread(target=read, daemon=True)
         self.reader.start()
         method = "project.open" if (self.project / "gongke-project.json").exists() else "project.create"
@@ -40,8 +44,10 @@ class ServiceProcess:
             request_id = self.serial
             self.process.stdin.write(json.dumps({"id": request_id, "method": method, "params": params or {}}) + "\n")
             self.process.stdin.flush()
-            if not self.condition.wait_for(lambda: request_id in self.responses, timeout=90):
+            if not self.condition.wait_for(lambda: request_id in self.responses or self.output_closed, timeout=90):
                 raise AssertionError(f"服务未响应 {method}; exit={self.process.poll()}")
+            if request_id not in self.responses:
+                raise AssertionError(f"服务输出已关闭，未响应 {method}; 日志：{self.stderr.name}")
             response = self.responses.pop(request_id)
         if "error" in response:
             raise ValueError(response["error"]["message"])

@@ -3,8 +3,8 @@
 - 工具清单归应用层，MCP 使用官方 Python SDK 2.3 API，发行包携带 SDK；core 与 FreeCAD 的 Python 不需要加载 SDK。
 - 绑定冻结工程规范路径与本次打开的 epoch。切换后拒绝旧连接，即使重新打开同一路径也必须重连。运行中任务仍阻止切换，沿用桌面现有行为。
 - 外部调用默认只读，`--allow-writes` 明确授权本次连接；不能通过工具参数升级权限。应用继续检查工作副本、路径与宿主文档契约。
-- 桌面 `host.command` 仅按内层方法转发为注册表的 `host.read/write`，不再直调宿主；保留桌面当前传输形状以避免修改另一会话负责的 UI。生成、内置助手同样经过 `Commands.call`。
-- MCP 每次调用对应一个持久任务。桌面只读刷新查询不制造任务，避免 `task.updated -> refresh` 形成事件循环；桌面写操作与计算仍登记任务。助手的一轮多工具调用共用其父任务。
+- 桌面 `host.command` 仅按内层方法转发为注册表的 `host.read/write`，不再直调宿主；保留桌面当前传输形状以避免修改另一会话负责的 UI。生成和 ACP Agent 的 MCP 调用同样经过 `Commands.call`。
+- MCP 每次调用对应一个持久任务。桌面只读刷新查询不制造任务，避免 `task.updated -> refresh` 形成事件循环；桌面写操作与计算仍登记任务。ACP 一轮中的每次 MCP 调用分别登记任务。
 - 写前请求与完成结果使用同一条 SQLite 收据，事件携带 phase。宿主内部的事务身份/修订校验与原操作回读仍由当前 adapter 负责，不另建宿主抽象。
 - 生成输入在提交时固定。用户可在生成期间编辑下一版条件，完成的旧输入修订自动显示过期。
 - 原生只读审查 CLI 迁为绑定服务的 `revision.inspect`；旧 `--out` 改为工程内新目录，由 `revision.export` 写出检查记录；只读查询仍使用 `revision.inspect`，结果回到 stdout 与桌面收据。core 离线批处理生成器仍是 FreeCAD 子进程的领域入口，不暴露为 MCP 工具。

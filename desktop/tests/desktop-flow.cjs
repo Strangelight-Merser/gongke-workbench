@@ -175,12 +175,7 @@ async function serviceSnapshot(page) {
     await svg.click();
     await page.locator("img.drawing").waitFor();
     await page.screenshot({ path: join(output, "desktop-drawing.png") });
-    await page.getByLabel("工程任务").fill("读取当前工程");
-    await page.getByRole("button", { name: "发送 ↑" }).click();
-    await page
-      .getByRole("alert")
-      .filter({ hasText: "未连接模型服务" })
-      .waitFor();
+    assert.equal(await page.getByRole("button", { name: "发送 ↑" }).isDisabled(), true);
     assert.deepEqual(errors, []);
     const status = await page.evaluate(() =>
       window.gongke.request("system.status"),
@@ -195,7 +190,7 @@ async function serviceSnapshot(page) {
           manifest,
           packaged: status.packaged,
           renderer_errors: errors,
-          provider: "not_configured; refusal verified",
+          agent: "disconnected; sending disabled",
         },
         null,
         2,

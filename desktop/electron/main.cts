@@ -1,25 +1,14 @@
-import {
-  app,
-  BrowserWindow,
-  dialog,
-  ipcMain,
-  safeStorage,
-  shell,
-} from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { join, resolve, relative, isAbsolute } from "node:path";
-import {
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  realpathSync,
-  mkdirSync,
-} from "node:fs";
+import { existsSync, realpathSync, mkdirSync } from "node:fs";
 import { Service } from "./service.cjs";
-import { normalizeProvider, mayReuseKey } from "./credentials.cjs";
+import { AgentClient } from "./acp/client.cjs";
+import { AgentConfiguration } from "./acp/settings.cjs";
 
 let window: BrowserWindow;
 let service: Service;
 let projectRoot = "";
+let agent: AgentClient;
 const allowed = new Set([
   "system.status",
   "tools.list",
@@ -50,29 +39,8 @@ const allowed = new Set([
   "freecad.export_drawing",
   "hosts.list",
   "host.command",
-  "agent.run",
-  "agent.history",
   "design.schema",
 ]);
-function settingsPath() {
-  return join(app.getPath("userData"), "provider.json");
-}
-function readSettings() {
-  try {
-    return JSON.parse(readFileSync(settingsPath(), "utf8"));
-  } catch {
-    return {};
-  }
-}
-async function configureSaved() {
-  const s = readSettings();
-  if (s.encryptedKey && safeStorage.isEncryptionAvailable())
-    await service.request("agent.configure", {
-      base_url: s.base_url,
-      model: s.model,
-      api_key: safeStorage.decryptString(Buffer.from(s.encryptedKey, "base64")),
-    });
-}
 function startService() {
   mkdirSync(app.getPath("userData"), { recursive: true });
   const root = resolve(__dirname, "../..");
@@ -142,6 +110,10 @@ else {
     ipcMain.handle("command", async (event, method, params = {}) => {
       requireMainFrame(event);
       if (!allowed.has(method)) throw new Error("不支持的工程命令");
+      if (method === "project.open" || method === "project.create") {
+        if (agent?.busy) throw new Error("请先取消当前 Agent 操作再切换工程");
+        await agent?.disconnect();
+      }
       const value = await service.request(method, params);
       if (
         (method === "project.open" ||
@@ -160,59 +132,46 @@ else {
       });
       return result.canceled ? null : result.filePaths[0];
     });
-    ipcMain.handle("configure-agent", async (event, s) => {
-      requireMainFrame(event);
-      const base_url = normalizeProvider(s.base_url);
-      if (!s.model?.trim()) throw new Error("请输入模型名称");
-      const old = readSettings();
-      if (
-        !s.api_key &&
-        old.encryptedKey &&
-        !mayReuseKey(old.base_url, base_url)
-      )
-        throw new Error("服务地址已改变，请为此服务输入新的 API 密钥");
-      const key =
-        s.api_key ||
-        (old.encryptedKey && safeStorage.isEncryptionAvailable()
-          ? safeStorage.decryptString(Buffer.from(old.encryptedKey, "base64"))
-          : "");
-      if (!key) throw new Error("请输入 API 密钥");
-      await service.request("agent.configure", {
-        base_url,
-        model: s.model.trim(),
-        api_key: key,
+    const configuration = new AgentConfiguration(
+      app.getPath("userData"),
+      resolve(__dirname, "../.."),
+      app.isPackaged
+        ? join(process.resourcesPath, "service", "gongke-service",
+            process.platform === "win32" ? "gongke-service.exe" : "gongke-service")
+        : undefined,
+    );
+    agent = new AgentClient((state) => {
+      if (!window.isDestroyed()) window.webContents.send("acp-state", state);
+    });
+    const handle = (name: string, action: (...args: any[]) => unknown) =>
+      ipcMain.handle(`acp-${name}`, (event, ...args) => {
+        requireMainFrame(event);
+        return action(...args);
       });
-      const secure = s.remember_key === true && safeStorage.isEncryptionAvailable();
-      writeFileSync(
-        settingsPath(),
-        JSON.stringify({
-          base_url,
-          model: s.model.trim(),
-          ...(secure
-            ? {
-                encryptedKey: safeStorage.encryptString(key).toString("base64"),
-              }
-            : {}),
-        }),
-        { mode: 0o600 },
-      );
-      return { configured: true, persisted: secure };
+    handle("settings", () => configuration.read());
+    handle("save-settings", async (settings) => {
+      if (agent.busy) throw new Error("请先取消当前 Agent 操作");
+      configuration.save(settings);
+      await agent.disconnect();
     });
-    ipcMain.handle("agent-settings", (event) => {
-      requireMainFrame(event);
-      const s = readSettings();
-      return {
-        base_url: s.base_url || "https://api.openai.com/v1",
-        model: s.model || "",
-        has_key: !!s.encryptedKey,
-        remember_key: !!s.encryptedKey,
-      };
+    handle("state", () => agent.snapshot());
+    handle("start", async (id) => {
+      if (!projectRoot) throw new Error("请先打开工程");
+      const { profile, mcp } = configuration.launch(id, projectRoot);
+      await agent.start(profile, projectRoot, mcp);
     });
+    handle("authenticate", (id) => agent.authenticate(id));
+    handle("new-session", () => agent.newSession());
+    handle("prompt", (text) => agent.prompt(text));
+    handle("cancel", () => agent.cancel());
+    handle("disconnect", () => agent.disconnect());
+    handle("permission", (id, optionId) => agent.permission(id, optionId));
     ipcMain.handle("restart-service", async (event) => {
       requireMainFrame(event);
+      if (agent.busy) throw new Error("请先取消当前 Agent 操作再重启工程服务");
+      await agent.disconnect();
       await service.stop();
       startService();
-      await configureSaved();
       if (projectRoot)
         await service.request("project.open", { path: projectRoot });
       return service.request("system.status");
@@ -227,15 +186,15 @@ else {
       shell.showItemInFolder(target);
     });
     await window.loadFile(join(__dirname, "../dist/index.html"));
-    try {
-      await configureSaved();
-    } catch {
-      window.webContents.send("service-event", {
-        event: "agent.unavailable",
-        message: "模型连接未恢复，请检查设置",
-      });
-    }
   });
   app.on("window-all-closed", () => app.quit());
-  app.on("before-quit", () => service?.stop());
+  let quitting = false;
+  app.on("before-quit", (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    quitting = true;
+    Promise.allSettled([agent?.disconnect(), service?.stop()]).then(() =>
+      app.quit(),
+    );
+  });
 }

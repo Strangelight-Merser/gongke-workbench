@@ -7,7 +7,7 @@ Claude、Codex 等开发 Agent 共用本文件。PLAN.md 记录阶段目标，�
 - 面向工科学生，把计算、建模、出图软件集成到一个工作台：管理工程、提出任务、操作工具、查看结果、继续编辑。
 - 提供原生 AI 工具接口，接入用户已有的 Agent（WorkBuddy、DeepSeek Harness、Claude Code、Codex 等），交互和工程操作都在工作台内完成。
 - 按目标 Agent 实际支持的协议（MCP、ACP）接入；先打通一个 Agent 的完整工程流程，再扩展。
-- 不自建通用模型助手、API Key 管理或工具推理循环。`gongke_app/agent` 是过渡入口，只修故障，不再扩展；替代流程完成后删除。
+- 不自建通用模型助手、API Key 管理或工具推理循环。内置 Key 助手已删除；窗口内 ACP Agent 通过绑定工程的 MCP 调用工具，历史会话资料保留。
 - 复用工程软件已有能力，不造通用 CAD 内核。
 
 ## 宿主接入与实现

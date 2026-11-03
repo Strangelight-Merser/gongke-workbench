@@ -4,7 +4,7 @@
 
 学生从任务书、分组表、照片和已有 CAD 文件等材料包开始，确认题号与缺项，逐步完成方案、计算、建模和出图；Agent 区分“老师给定／学生选择／程序建议”，以讲解和检查为主，不代做、不编造实验数据。窗口内 Agent 采用 ACP，首个接入 DeepSeek Harness；WorkBuddy 通过 MCP 接工程工具。阶段方向见 [PLAN.md](PLAN.md)。
 
-当前主入口为 [桌面应用](desktop/README.md)，采用 Electron＋React 与随包提供的 Python 服务；FreeCAD 工作台、SOLIDWORKS COM 插件和 AutoCAD 托管插件承担原生接入。下表记录已有实现，窗口内 ACP 与嵌入编辑按 PLAN 推进。现有 `gongke_app/agent` 为过渡入口，只修故障，替代路径完成后删除。
+当前主入口为 [桌面应用](desktop/README.md)，采用 Electron＋React 与随包提供的 Python 服务；FreeCAD 工作台、SOLIDWORKS COM 插件和 AutoCAD 托管插件承担原生接入。下表记录已有实现，窗口内 ACP 与嵌入编辑按 PLAN 推进。窗口内 ACP 通过统一工程 MCP 调用工具，内置 Key 助手已删除，历史会话资料保留。
 
 | 入口 | 已有能力 | 验证边界 |
 |---|---|---|

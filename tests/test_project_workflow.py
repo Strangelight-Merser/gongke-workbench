@@ -1,4 +1,4 @@
-"""真实工程状态、连续对话与过期交付的回归；保留原验收程序不变。"""
+"""真实工程状态、历史对话资料保留与过期交付的回归。"""
 import json
 import threading
 from copy import deepcopy
@@ -9,7 +9,7 @@ from gongke_app.commands import Commands
 from gongke_app.project import Project
 from gongke_app.service import Application
 from gongke_core import api
-from tests.test_app_service import ProviderFixture, tool_reply, finished
+from tests.test_app_service import finished
 
 
 def test_delivery_tracks_input_reopen_and_missing_files(tmp_path):
@@ -53,89 +53,6 @@ def test_teaching_change_invalidates_delivery(tmp_path):
     assert project.view()["delivery"] is None
 
 
-def test_agent_saves_conditions_and_continues_after_reopen(tmp_path):
-    app = Application(tmp_path / "state")
-    path = str(tmp_path / "project")
-    app.dispatch("project.create", {"path": path, "teaching": False})
-    task = api.example_task()
-    fixture = ProviderFixture([
-        tool_reply("project_set_task", {"task": task, "teaching": True}),
-        tool_reply("design_calculate", {}, "calculate"),
-        [({"content": "已保存教学条件；选中候选 B。"}, "stop")],
-        [({"content": "继续使用上一轮的候选 B。"}, "stop")],
-    ])
-    try:
-        fixture.configure(app)
-        record = finished(app, app.dispatch("agent.run", {"message": "保存教学任务并选候选 B", "allow_writes": True,
-            "selection": {"stage": "gears", "check": {"item": "高速级接触强度"}}})["task_id"])
-        assert record["status"] == "complete", record
-        assert app.project.task() == task
-        assert app.project.manifest["teaching"] is True
-        app.close()
-        app = Application(tmp_path / "state")
-        app.dispatch("project.open", {"path": path})
-        fixture.configure(app)
-        record = finished(app, app.dispatch("agent.run", {"message": "按刚才的选择继续"})["task_id"])
-        assert record["status"] == "complete", record
-        sent = fixture.requests[-1]["messages"]
-        assert any("候选 B" in (m.get("content") or "") for m in sent)
-        assert any("高速级接触强度" in (m.get("content") or "") for m in sent)
-        assert any(m["role"] == "tool" and "power_kw" in m["content"] for m in sent)
-        assert len(app.dispatch("agent.history", {})["turns"]) == 2
-        app.dispatch("project.create", {"path": str(tmp_path / "other"), "teaching": False})
-        assert not app.dispatch("agent.history", {})["turns"]
-    finally:
-        app.close()
-        fixture.close()
-
-
-def test_agent_cannot_compute_unsaved_task_or_write_without_authorization(tmp_path):
-    project = Project.create(str(tmp_path / "project"), teaching=False)
-    commands = Commands()
-    class Context:
-        def check(self): pass
-        def receipt(self, *args): pass
-    with pytest.raises(ValueError, match="先用 project_set_task"):
-        commands.agent_call("design_calculate", {"task": api.example_task()}, project, True, Context())
-    with pytest.raises(ValueError, match="未授权"):
-        commands.agent_call("project_set_task", {"task": api.example_task(), "teaching": True}, project, False, Context())
-    assert project.manifest["task"] is None
-
-
-def test_running_agent_rejects_concurrent_turn_and_project_switch(tmp_path):
-    app = Application(tmp_path / "state")
-    app.dispatch("project.create", {"path": str(tmp_path / "project")})
-    started, release = threading.Event(), threading.Event()
-    class Provider:
-        model = "fixture"
-        def complete(self, *args):
-            started.set()
-            release.wait(3)
-            return {"role": "assistant", "content": "done"}
-    app.provider = Provider()
-    try:
-        app.dispatch("agent.run", {"message": "first"})
-        assert started.wait(1)
-        with pytest.raises(ValueError, match="上一条任务"):
-            app.dispatch("agent.run", {"message": "second"})
-        with pytest.raises(ValueError, match="切换工程"):
-            app.dispatch("project.create", {"path": str(tmp_path / "other")})
-    finally:
-        release.set()
-        app.close()
-
-
-def test_interrupted_history_does_not_replay_unanswered_tool_calls(tmp_path):
-    from gongke_app.agent.loop import history
-    turns = [{"status": "running", "user": "modify", "messages": [
-        {"role": "user", "content": "modify"},
-        {"role": "assistant", "tool_calls": [{"id": "original-operation"}]}]}]
-    messages = history(turns)
-    assert not any("tool_calls" in item for item in messages)
-    assert "original-operation" in messages[-1]["content"]
-    assert "不能重复写入" in messages[-1]["content"]
-
-
 def test_queued_generation_uses_submitted_conditions_and_source(tmp_path):
     app = Application(tmp_path / "state")
     app.dispatch("project.create", {"path": str(tmp_path / "project"), "teaching": True})
@@ -158,4 +75,21 @@ def test_queued_generation_uses_submitted_conditions_and_source(tmp_path):
         assert json.loads((app.project.path / revision["path"] / "task.json").read_text()) == original
     finally:
         gate.set()
+        app.close()
+
+
+def test_retired_assistant_history_is_preserved(tmp_path):
+    project = Project.create(str(tmp_path / "project"))
+    history = project.path / ".gongke-conversation.json"
+    original = '[{"task_id":"old","user":"保留候选 B","messages":[]}]\n'.encode("utf-8")
+    history.write_bytes(original)
+    app = Application(tmp_path / "state")
+    try:
+        app.dispatch("project.open", {"path": str(project.path)})
+        app.dispatch("design.calculate", {})
+        assert history.read_bytes() == original
+        for method in ("agent.configure", "agent.run", "agent.history", "agent.disconnect"):
+            with pytest.raises(ValueError, match="未知应用命令"):
+                app.dispatch(method, {})
+    finally:
         app.close()

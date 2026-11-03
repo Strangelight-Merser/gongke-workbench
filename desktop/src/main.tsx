@@ -10,7 +10,8 @@ import {
   savedPending,
   registeredWorkingCopy,
 } from "./CommercialView";
-import { Collapsible, StreamText, streamFragment } from "./Motion";
+import { Collapsible } from "./Motion";
+import { AgentPanel } from "./agent/AgentPanel";
 import {
   CheckInspector,
   CheckRow,
@@ -58,28 +59,6 @@ function App() {
   const [hostKind, setHostKind] = useState("freecad");
   const importingDxf = useRef(false);
   const currentProject = useRef("");
-  const loadHistory = useCallback(async () => {
-    const data = await call("agent.history");
-    if (data.project !== currentProject.current) return;
-    setMessages(
-      data.turns.flatMap((turn: Data) => [
-        { id: turn.task_id + "-user", role: "user", content: turn.user },
-        ...turn.messages
-          .filter((m: Data) => m.role === "assistant" && m.content)
-          .map((m: Data, i: number) => ({ ...m, id: turn.task_id + "-" + i })),
-        ...(turn.status !== "complete"
-          ? [
-              {
-                id: turn.task_id + "-status",
-                role: "assistant",
-                content:
-                  turn.error || "上次执行未完整结束，请核对任务回执后继续。",
-              },
-            ]
-          : []),
-      ]),
-    );
-  }, []);
   const [pendingNative, setPendingNative] = useState<Data | null>(() => {
     try {
       return JSON.parse(
@@ -99,7 +78,6 @@ function App() {
   }, [pendingNative]);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(""),
-    [settings, setSettings] = useState(false),
     [hosts, setHosts] = useState<Data[]>([]);
   const [inspector, setInspector] = useState<HTMLDivElement | null>(null),
     [sidebar, setSidebar] = useState(() => {
@@ -124,10 +102,7 @@ function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
-  const [messages, setMessages] = useState<Data[]>([]),
-    [prompt, setPrompt] = useState(""),
-    [allowWrites, setAllowWrites] = useState(true),
-    [file, setFile] = useState<Data | null>(null),
+  const [file, setFile] = useState<Data | null>(null),
     [native, setNative] = useState<Data>({});
   const refresh = useCallback(async () => {
     const [s, p, t, h] = await Promise.allSettled([
@@ -174,76 +149,23 @@ function App() {
           )
         ) {
           refresh();
-          if (event.task.kind === "agent")
-            loadHistory().catch((e) => setError(errorText(e)));
         }
       }
-      if (event.event === "agent.delta")
-        setMessages((items) => {
-          const index = items.findIndex(
-            (x) => x.streaming && x.task_id === event.task_id,
-          );
-          const prior = items[index];
-          const fragment = streamFragment(event.content);
-          const message = {
-            ...prior,
-            id: prior?.id || crypto.randomUUID(),
-            role: "assistant",
-            task_id: event.task_id,
-            streaming: true,
-            content: (prior?.content || "") + event.content,
-            fragments: [...(prior?.fragments || []), fragment],
-          };
-          return index < 0
-            ? [...items, message]
-            : items.map((item, i) => (i === index ? message : item));
-        });
-      if (event.event === "agent.message")
-        setMessages((items) => {
-          const index = items.findIndex(
-            (x) => x.streaming && x.task_id === event.task_id,
-          );
-          if (index < 0)
-            return [...items, { ...event, id: crypto.randomUUID() }];
-          const prior = items[index];
-          const content =
-            typeof event.content === "string"
-              ? event.content
-              : text(event.content);
-          const tail = content.startsWith(prior.content)
-            ? content.slice(prior.content.length)
-            : null;
-          const fragments =
-            tail === null
-              ? undefined
-              : tail
-                ? [...prior.fragments, streamFragment(tail)]
-                : prior.fragments;
-          return items.map((item, i) =>
-            i === index
-              ? { ...event, id: prior.id, streaming: false, fragments }
-              : item,
-          );
-        });
       if (event.event === "service.error") setError(event.error.message);
       if (event.event === "service.stopped") {
         setStatus({ online: false });
         setError(event.message);
       }
-      if (event.event === "agent.unavailable") setError(event.message);
     });
     return stop;
-  }, [refresh, loadHistory]);
+  }, [refresh]);
   useEffect(() => {
     currentProject.current = project?.path || "";
-    setMessages([]);
-    setPrompt("");
     setNative({});
     setFile(null);
     setCheck(null);
     setTab("task");
-    if (project) loadHistory().catch((e) => setError(errorText(e)));
-  }, [project?.path, loadHistory]);
+  }, [project?.path]);
   // 打开带条件的工程时做一次只读计算，侧栏阶段状态与校核汇总由它得出。
   const taskKey = project
     ? project.path + JSON.stringify([project.task, project.teaching])
@@ -374,38 +296,6 @@ function App() {
     } finally {
       importingDxf.current = false;
     }
-  }
-  async function send() {
-    if (
-      !prompt.trim() ||
-      tasks.some(
-        (t) => t.kind === "agent" && ["queued", "running"].includes(t.status),
-      )
-    )
-      return;
-    const message = prompt;
-    const id = crypto.randomUUID();
-    setMessages((items) => [...items, { id, role: "user", content: message }]);
-    await run("提交任务", async () => {
-      try {
-        await call("agent.run", {
-          message,
-          allow_writes: allowWrites,
-          selection: {
-            stage: tab,
-            check: check || null,
-            file: file?.path || null,
-            native,
-            input_hash: project?.input_hash,
-          },
-        });
-        setPrompt("");
-      } catch (e) {
-        setMessages((items) => items.filter((item) => item.id !== id));
-        throw e;
-      }
-      await refresh();
-    });
   }
   const fileRevision = project?.generations?.find((revision: Data) =>
     file?.path.startsWith(revision.path + "/"),
@@ -562,10 +452,6 @@ function App() {
               </div>
             )}
           </div>
-          <button className="settings-link" onClick={() => setSettings(true)}>
-            模型服务
-            <small>设置</small>
-          </button>
         </aside>
         <main>
           <div className="workspace-title drag">
@@ -790,110 +676,11 @@ function App() {
               ) : null}
             </div>
           </section>
-          <section className="agent-pane">
-            <div className="pane-heading">
-              工程助手
-              <span
-                className={`led ${status.agent?.connection === "已完成模型请求" ? "on" : ""}`}
-              />
-            </div>
-            <div className="conversation">
-              {!messages.length && (
-                <div className="agent-welcome">
-                  <p>
-                    读取当前模型、核对条件、计算和修改。操作结果直接进入工作区。
-                  </p>
-                  <button
-                    className="suggestion"
-                    onClick={() =>
-                      setPrompt(
-                        check
-                          ? `解释「${check.item}」的依据，并说明怎样提高它的裕度。先不要修改。`
-                          : "读取当前工程，说明已知条件和还缺少什么。先不要修改模型。",
-                      )
-                    }
-                  >
-                    {check ? `解释「${check.item}」` : "核对当前工程的条件"}{" "}
-                    <span className="inline-icon" aria-hidden="true">
-                      ↗
-                    </span>
-                  </button>
-                  {!status.agent?.configured && (
-                    <button className="link" onClick={() => setSettings(true)}>
-                      连接模型服务
-                    </button>
-                  )}
-                </div>
-              )}
-              {messages.map((message) => (
-                <div key={message.id} className={"message " + message.role}>
-                  <small>
-                    {message.role === "user"
-                      ? "你"
-                      : message.role === "tool"
-                        ? "工程操作"
-                        : "工程助手"}
-                  </small>
-                  <div>
-                    <StreamText
-                      content={
-                        typeof message.content === "string"
-                          ? message.content
-                          : text(message.content)
-                      }
-                      fragments={message.fragments}
-                      streaming={message.streaming === true}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            {check && tab !== "native" && (
-              <div className="context-line">
-                上下文 <b>{check.item}</b>
-              </div>
-            )}
-            <div className="compose">
-              <textarea
-                aria-label="工程任务"
-                placeholder="问助手，或描述要做的修改…"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    send();
-                  }
-                }}
-              />
-              <div>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={allowWrites}
-                    onChange={(e) => setAllowWrites(e.target.checked)}
-                  />
-                  执行任务内的修改
-                </label>
-                <button
-                  className="primary"
-                  disabled={
-                    !project ||
-                    !prompt.trim() ||
-                    !!busy ||
-                    tasks.some(
-                      (t) =>
-                        t.kind === "agent" &&
-                        ["queued", "running"].includes(t.status),
-                    )
-                  }
-                  onClick={send}
-                >
-                  发送 <span className="inline-icon">↑</span>
-                </button>
-              </div>
-            </div>
-          </section>
+          <AgentPanel
+            project={project?.path}
+            context={check ? JSON.stringify(check) : file?.path}
+            onTurnEnd={refresh}
+          />
         </aside>
       </div>
       <footer>
@@ -942,13 +729,6 @@ function App() {
             : project?.path || "本地工程"}
         </span>
       </footer>
-      {settings && (
-        <Settings
-          onClose={() => setSettings(false)}
-          onSave={refresh}
-          run={run}
-        />
-      )}
     </div>
   );
 }
@@ -1929,102 +1709,4 @@ function TaskList({ tasks, run }: { tasks: Data[]; run: any }) {
     </div>
   );
 }
-function Settings({
-  onClose,
-  onSave,
-  run,
-}: {
-  onClose: () => void;
-  onSave: () => Promise<void>;
-  run: any;
-}) {
-  const [values, setValues] = useState<Data>({
-      base_url: "",
-      model: "",
-      api_key: "",
-      remember_key: false,
-    }),
-    [notice, setNotice] = useState("");
-  useEffect(() => {
-    window.gongke.settings().then((s) => setValues({ ...s, api_key: "" }));
-  }, []);
-  return (
-    <div className="modal-scrim">
-      <div className="modal">
-        <div className="section-bar">
-          <h2>模型服务</h2>
-          <button onClick={onClose}>×</button>
-        </div>
-        <p>接入支持 Chat Completions 工具调用的模型。</p>
-        <label>
-          服务地址
-          <input
-            value={values.base_url}
-            onChange={(e) => setValues({ ...values, base_url: e.target.value })}
-            placeholder="https://api.openai.com/v1"
-          />
-        </label>
-        <label>
-          模型名称
-          <input
-            value={values.model}
-            onChange={(e) => setValues({ ...values, model: e.target.value })}
-            placeholder="输入服务商提供的模型 ID"
-          />
-        </label>
-        <label>
-          API 密钥
-          <input
-            type="password"
-            autoComplete="off"
-            value={values.api_key}
-            placeholder={
-              values.has_key ? "已安全保存；留空保留" : "仅用于此模型服务"
-            }
-            onChange={(e) => setValues({ ...values, api_key: e.target.value })}
-          />
-        </label>
-        <label className="source-choice">
-          <input
-            type="checkbox"
-            checked={!!values.remember_key}
-            onChange={(e) => setValues({ ...values, remember_key: e.target.checked })}
-          />
-          在此设备保存密钥
-        </label>
-        <p className="muted">默认仅本次会话使用。保存密钥时，macOS 可能要求钥匙串授权。</p>
-        {notice && <p>{notice}</p>}
-        <div className="toolbar">
-          <button
-            className="primary"
-            onClick={() =>
-              run("保存模型连接", async () => {
-                const result = await window.gongke.configure(values);
-                setNotice(
-                  result.persisted
-                    ? "已通过系统加密保存。连接将在首次任务时验证。"
-                    : values.remember_key
-                      ? "已载入本次会话；系统加密不可用，密钥不会保存。"
-                      : "已载入本次会话，密钥未保存。",
-                );
-                setValues({
-                  ...values,
-                  api_key: "",
-                  has_key: result.persisted,
-                });
-                await onSave();
-              })
-            }
-          >
-            保存连接
-          </button>
-          <button onClick={onClose}>完成</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-document.documentElement.dataset.platform = navigator.userAgent.includes("Mac")
-  ? "mac"
-  : "other";
 createRoot(document.getElementById("root")!).render(<App />);

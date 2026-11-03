@@ -45,7 +45,8 @@ class LostCopy:
             for path in self.outputs:
                 path.write_bytes(b"native file protocol fixture")
             if self.kind == "solidworks":
-                result = {"status": "saved", "path": params["output_path"], "file_exists": True, "errors": 0}
+                result = {"status": "saved", "path": params["output_path"], "file_exists": True, "errors": 0,
+                          "reopen_verified": True, "parameter_values_verified": True, "source_state_preserved": True}
                 if self.pair:
                     result.update(references_verified=True, parameter_values_verified=True,
                                   source_state_preserved=True, reopen_verified=True,
@@ -57,7 +58,8 @@ class LostCopy:
                           "original_preserved": True, "disk_reopen_verified": True}
                 if method == "drawing.import_dxf":
                     result["source_path"] = params["source_path"]
-                self.reply = {"status": "completed", "outcome": "committed", "operation_id": self.operation_id}
+                self.reply = {"status": "completed", "outcome": "committed", "operation_id": self.operation_id,
+                              "session_id": "native-session", "method": method, "fingerprint": _fingerprint(method, params)}
             self.reply["response"] = {"id": kwargs["request_id"], "result": result}
             raise TimeoutError("native operation completed but its response was lost")
         if method in {"operation.get", "operation.status"}:
@@ -111,7 +113,7 @@ def test_mismatched_receipt_never_registers_copy(tmp_path, monkeypatch, kind, mi
     elif mismatch == "request_id":
         flow.reply["response"]["id"] = "unrelated-native-request"
     elif mismatch == "host_session":
-        flow.config["session_id" if kind == "solidworks" else "instance_id"] = "different-instance"
+        flow.reply["session_id"] = "different-instance"
     elif mismatch == "original_params":
         flow.project.manifest["copy_operations"][flow.operation_id]["params"]["expected_revision"] = 999
     elif mismatch == "original_method":

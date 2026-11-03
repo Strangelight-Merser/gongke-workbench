@@ -1,6 +1,6 @@
 # 工程 Agent 接口
 
-工程工具由 `gongke_app/tools.py` 定义，`Commands.call()` 执行。桌面、内置助手、外部 MCP 和绑定工程 CLI 使用同一份参数格式、写入分类、路径与工作副本保护。`gongke_core` 提供计算与领域逻辑，不再提供独立 MCP 服务器或原生工程 CLI 旁路。
+工程工具由 `gongke_app/tools.py` 定义，`Commands.call()` 执行。桌面、ACP Agent、外部 MCP 和绑定工程 CLI 使用同一份参数格式、写入分类、路径与工作副本保护。`gongke_core` 提供计算与领域逻辑，不再提供独立 MCP 服务器或原生工程 CLI 旁路。
 
 ## 连接桌面当前工程
 
@@ -36,7 +36,7 @@
 
 ## 工具与结果
 
-`tools/list` 来自运行中应用的清单，不在 stdio 代理里复制定义。`tools.list` 是桌面/CLI 的同一清单查询。现有内置助手的函数名把点替换为下划线，参数与执行路径保持一致。
+`tools/list` 来自运行中应用的清单，不在 stdio 代理里复制定义。`tools.list` 是桌面/CLI 的同一清单查询。ACP Agent 通过同一个工程 MCP 调用这些工具，不另设函数名适配。
 
 | 工具 | 用途 |
 | --- | --- |

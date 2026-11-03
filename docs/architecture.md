@@ -2,7 +2,7 @@
 
 当前产品方向以 [PLAN.md](../PLAN.md)（2026-11-03）为准：Windows 优先，构想引擎为主窗口，从学生材料包进入工程；通过 ACP 托管已有 Agent（首个 DeepSeek Harness），WorkBuddy 通过工程 MCP 接入。目标是在窗口内嵌入原生 CAD 编辑区，支持自由建模，默认 FreeCAD、可选本机 SOLIDWORKS，并尽量保留原生特征树。
 
-近期架构将以应用服务统一桌面、CLI、MCP 的工程上下文、工具执行与权限，FreeCAD、SOLIDWORKS、AutoCAD 共用宿主语义。`gongke_app/agent` 仅作过渡，替代路径完成后删除。当前桌面入口与安装构建见 [desktop/README.md](../desktop/README.md)，应用命令与任务语义见 [gongke_app/README.md](../gongke_app/README.md)。
+近期架构将以应用服务统一桌面、CLI、MCP 的工程上下文、工具执行与权限，FreeCAD、SOLIDWORKS、AutoCAD 共用宿主语义。窗口内 ACP 通过绑定工程的 MCP 接入，内置 Key 助手已删除，历史会话资料保留。当前桌面入口与安装构建见 [desktop/README.md](../desktop/README.md)，应用命令与任务语义见 [gongke_app/README.md](../gongke_app/README.md)。
 
 下文保留 2026-10-19 起的任务书批处理架构与后续实现记录，适用于初始化、STEP 与图纸导出；其中“第一版”“后续路线”和功能取舍不代表现行产品规划。已有原生协作直接读取 FreeCAD 草图尺寸，不通过重导 STEP 覆盖人工修改，操作见 [原生工程协作](assistant-workflow.md)。
 
@@ -106,7 +106,7 @@ gongke_core.design.ReducerDesign      ← 总调度，纯 Python
 
 ## 8. 应用工具与绑定工程 MCP
 
-`gongke_app/tools.py` 是工具名称、参数 schema 和写入分类的唯一来源；桌面、内置助手与 MCP 共享 `Commands.call()`。工程授权、工作副本和路径检查在执行端完成，宿主事务校验文档身份与修订。写前请求持久保存为收据，结果回读后更新收据并推送桌面事件。
+`gongke_app/tools.py` 是工具名称、参数 schema 和写入分类的唯一来源；桌面、ACP Agent 与外部 MCP 共享 `Commands.call()`。工程授权、工作副本和路径检查在执行端完成，宿主事务校验文档身份与修订。写前请求持久保存为收据，结果回读后更新收据并推送桌面事件。
 
 官方 MCP Python SDK 2.3 的 low-level Server 只负责协议；stdio 进程通过带令牌的本机连接绑定正在运行的应用工程，不直接调用 core API 或宿主。工程切换会使旧绑定失效。发行包包含解释器和 SDK，FreeCAD 的 Python 仍只运行宿主桥接。
 

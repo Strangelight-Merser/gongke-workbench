@@ -11,7 +11,6 @@ import threading
 from uuid import uuid4
 
 from gongke_app import __version__
-from gongke_app.agent.provider import Provider
 from gongke_app.commands import Commands
 from gongke_app.tools import validate, schema, TEXT, BOOL, TASK
 from gongke_app.hosts import Hosts, READ_METHODS
@@ -25,7 +24,7 @@ class Application:
         self.lock = threading.RLock()
         self.project_epoch = uuid4().hex
         self.bindings = {}
-        self.emit, self.project, self.provider = emit, None, None
+        self.emit, self.project = emit, None
         self.tasks = Tasks(state_dir, emit)
         self.hosts = Hosts()
         self.commands = Commands(self.hosts)
@@ -87,7 +86,6 @@ class Application:
             validate(params, schema())
             return {"version": __version__, "ready": True, "python": sys.version.split()[0],
                     "packaged": bool(getattr(sys, "frozen", False)),
-                    "agent": self.provider.status() if self.provider else {"configured": False, "connection": "未连接模型服务"},
                     "project": str(self.project.path) if self.project else None}
         if method in {"project.create", "project.open"} and self.project and self.tasks.active(str(self.project.path)):
             raise ValueError("当前工程仍有任务执行中，请等待结束或取消后切换工程")
@@ -114,35 +112,12 @@ class Application:
                 raise ValueError("请使用打包后的 gongke-service workbuddy 生成配置，配置不依赖用户 Python")
             from gongke_app.connection import write_workbuddy
             return write_workbuddy(self.current(), self.state_dir, Path(sys.executable), params["allow_writes"])
-        if method == "agent.history":
-            validate(params, schema())
-            return {"project": str(self.current().path), "turns": self.current().conversation()}
         if method == "task.list":
             validate(params, schema())
             return self.tasks.list(str(self.project.path) if self.project else None)
         if method in {"task.get", "task.cancel"}:
             validate(params, schema({"task_id": TEXT}, ["task_id"]))
             return (self.tasks.get if method == "task.get" else self.tasks.cancel)(**params)
-        if method == "agent.configure":
-            validate(params, schema({"base_url": TEXT, "model": TEXT, "api_key": TEXT}, ["base_url", "model", "api_key"]))
-            self.provider = Provider(**params)
-            return self.provider.status()
-        if method == "agent.disconnect":
-            validate(params, schema())
-            self.provider = None
-            return {"configured": False}
-        if method == "agent.run":
-            validate(params, schema({"message": TEXT, "allow_writes": BOOL, "selection": TASK}, ["message"]))
-            if self.provider is None:
-                raise ValueError("未连接模型服务，请在设置中填写服务地址、模型名称和 API Key；手动工程操作仍可使用")
-            if not params["message"].strip():
-                raise ValueError("请输入工程任务")
-            project, provider = self.current(), self.provider
-            if self.tasks.active(str(project.path), "agent"):
-                raise ValueError("助手正在执行上一条任务，请等待结束或取消后继续")
-            from gongke_app.agent.loop import run
-            return self.tasks.start("agent", project.path, lambda ctx: run(
-                provider, self.commands, project, params["message"], params.get("allow_writes", False), ctx, self.emit, params.get("selection")))
         if method == "design.generate":
             project = self.current()
             return self.tasks.start("generation", project.path, self.commands.submission(method, params, project))

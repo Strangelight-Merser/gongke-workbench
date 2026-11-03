@@ -16,19 +16,6 @@ class Commands:
         self.native_lock = threading.RLock()
         self.definitions = definitions()
 
-    def agent_tools(self, allow_writes):
-        return [{"type": "function", "function": {"name": name.replace(".", "_"),
-                 "description": desc, "parameters": definition}}
-                for name, (desc, definition, write) in self.definitions.items() if allow_writes or not write]
-
-    def agent_call(self, name, params, project, allow_writes, ctx):
-        methods = {method.replace(".", "_"): method for method in self.definitions}
-        if name not in methods:
-            ctx.receipt(name, params, {"error": "该工具不在当前允许的工具列表中"})
-            raise ValueError("该工具不在当前允许的工具列表中")
-        method = methods[name]
-        return self.call(method, params, project, ctx, allow_writes=allow_writes)
-
     def submission(self, method, params, project, *, allow_writes=True):
         """提交时固定生成输入；排队期间用户仍可编辑下一版任务书。"""
         inputs = None
@@ -36,7 +23,7 @@ class Commands:
             validate(params, self.definitions[method][1])
             with project.lock:
                 if "task" in params and params["task"] != project.manifest.get("task"):
-                    raise ValueError("请先用 project_set_task 保存已确认的条件及教学标记，再计算或生成")
+                    raise ValueError("请先用 project.set_task 保存已确认的条件及教学标记，再计算或生成")
                 inputs = (project.task(params.get("task")), project.manifest["teaching"])
         return lambda ctx: self.call(method, params, project, ctx, allow_writes=allow_writes, inputs=inputs)
 
@@ -54,7 +41,7 @@ class Commands:
             if ctx:
                 ctx.check()
             if method in {"design.calculate", "design.generate"} and inputs is None and "task" in params and params["task"] != project.manifest.get("task"):
-                raise ValueError("请先用 project_set_task 保存已确认的条件及教学标记，再计算或生成，避免工作区与助手使用不同任务书")
+                raise ValueError("请先用 project.set_task 保存已确认的条件及教学标记，再计算或生成，避免工作区与工具使用不同任务书")
             if method == "design.generate" and inputs is None:
                 with project.lock:
                     inputs = (project.task(), project.manifest["teaching"])
@@ -81,7 +68,7 @@ class Commands:
         if short == "create" and args.get("case") == "course_output":
             with project.lock:
                 if "task" in args and args["task"] != project.manifest.get("task"):
-                    raise ValueError("请先用 project_set_task 保存已确认条件，再创建原生课程轴")
+                    raise ValueError("请先用 project.set_task 保存已确认条件，再创建原生课程轴")
                 args["task"] = project.task()
         if short == "export_drawing" and "path" not in args:
             args["path"] = "revisions/native-drawing-" + uuid4().hex[:12] + "/page.dxf"
