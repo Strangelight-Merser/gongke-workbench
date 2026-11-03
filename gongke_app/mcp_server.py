@@ -7,7 +7,10 @@ from uuid import uuid4
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import CallToolResult, ListToolsResult, TextContent, Tool
+from mcp.types import (CallToolResult, ListToolsResult, TextContent, Tool, ListResourcesResult,
+                       ReadResourceResult, Resource, TextResourceContents, ListPromptsResult,
+                       GetPromptResult, Prompt, PromptMessage)
+from gongke_app.modeling import GUIDE
 
 from gongke_app import __version__
 
@@ -46,7 +49,25 @@ def create_server(connection, binding):
         return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False, allow_nan=False))],
                               structured_content=result, is_error=failed)
 
+    async def list_resources(ctx, params):
+        return ListResourcesResult(resources=[Resource(name="原生建模", uri="gongke://modeling", mimeType="text/plain")])
+
+    async def read_resource(ctx, params):
+        if str(params.uri) != "gongke://modeling":
+            raise ValueError("未知资源")
+        return ReadResourceResult(contents=[TextResourceContents(uri="gongke://modeling", mimeType="text/plain", text=GUIDE)])
+
+    async def list_prompts(ctx, params):
+        return ListPromptsResult(prompts=[Prompt(name="native-modeling", description="从已确认图纸尺寸创建可编辑原生零件，再检查与修正")])
+
+    async def get_prompt(ctx, params):
+        if params.name != "native-modeling":
+            raise ValueError("未知提示词")
+        return GetPromptResult(messages=[PromptMessage(role="user", content=TextContent(type="text", text=GUIDE))])
+
     return Server("gongke-workbench", version=__version__, on_list_tools=list_tools, on_call_tool=call_tool,
+                  on_list_resources=list_resources, on_read_resource=read_resource,
+                  on_list_prompts=list_prompts, on_get_prompt=get_prompt,
                   instructions="操作绑定的桌面工程；先读取 project.current。原生写入前另存工作副本；保留未通过项和来源缺口。写入未知时查询原操作，不换 ID 重发。切换工程后重新连接。")
 
 

@@ -13,7 +13,8 @@ namespace Gongke.SolidWorks
         public static readonly string[] Methods = {
             "host.info", "model.context", "model.inspect", "model.section", "document.context", "document.open", "document.activate", "parameters.list", "parameter.change",
             "selection.get", "selection.set", "preview.mesh", "drawing.inspect", "drawing.update",
-            "document.save_copy", "document.save", "drawing.export", "operation.get"
+            "document.save_copy", "document.save", "drawing.export", "operation.get",
+            "model.new", "model.copy", "model.body", "model.sketch", "model.feature", "model.feature_edit", "model.feature_delete", "model.rebuild", "model.save", "model.operation"
         };
         private readonly SldWorks app;
         private readonly string session;
@@ -104,6 +105,7 @@ namespace Gongke.SolidWorks
 
         private JToken Dispatch(string method, JObject p)
         {
+            if (ModelingWrites.Contains(method) || method == "model.operation") return ModelingDispatch(method, p);
             switch (method)
             {
                 case "host.info": return new JObject { ["host"] = "solidworks", ["revision"] = app.RevisionNumber(),

@@ -65,7 +65,13 @@ class DocumentState:
 
     def inspect_host(self, command, params):
         from freecad.gongke.native_inspection import dispatch
-        return dispatch(self, command, params)
+        from freecad.gongke import native_modeling
+        if command in native_modeling.METHODS:
+            return native_modeling.dispatch(self, command, params)
+        result = dispatch(self, command, params)
+        if command in {"host.info", "model.context"}:
+            result["capabilities"] = [*result["capabilities"], *native_modeling.METHODS]
+        return result
 
     def slotUndoDocument(self, doc):
         self._edited(doc)
