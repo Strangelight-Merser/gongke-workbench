@@ -1,3 +1,4 @@
+import type { OnboardingAPI } from "../electron/onboarding/types.cjs";
 import type { AgentAPI } from "../electron/acp/types.cjs";
 export type Data = Record<string, any>;
 declare global {
@@ -6,6 +7,7 @@ declare global {
       request: (method: string, params?: Data) => Promise<any>;
       chooseProject: (create: boolean) => Promise<string | null>;
       agent: AgentAPI;
+      onboarding: OnboardingAPI;
       restart: () => Promise<Data>;
       reveal: (path: string) => Promise<void>;
       onEvent: (callback: (event: Data) => void) => () => void;

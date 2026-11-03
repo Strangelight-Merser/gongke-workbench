@@ -25,14 +25,16 @@ def private_json(path, value):
         temporary.unlink(missing_ok=True)
 
 
-def write_workbuddy(project, state_dir, executable, allow_writes):
+def write_workbuddy(project, state_dir, executable, allow_writes, *, prefix=(), env=None):
     executable = executable.resolve(strict=True)
     path = project.resolve(".workbuddy/mcp.json")
     value = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    args = ["mcp", "--state-dir", str(state_dir.resolve()), "--project", str(project.path)]
+    args = [*prefix, "mcp", "--state-dir", str(state_dir.resolve()), "--project", str(project.path)]
     if allow_writes:
         args.append("--allow-writes")
     value.setdefault("mcpServers", {})["gongke"] = {"command": str(executable), "args": args}
+    if env:
+        value["mcpServers"]["gongke"]["env"] = env
     path.parent.mkdir(parents=True, exist_ok=True)
     private_json(path, value)
     return {"path": str(path), "server": value["mcpServers"]["gongke"], "allow_writes": allow_writes}

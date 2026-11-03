@@ -1,4 +1,6 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { agentError } from "../onboarding/errors.cjs";
+import { spawnAgent, stopAgent } from "./process.cjs";
+import { type ChildProcessWithoutNullStreams } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import type {
@@ -67,10 +69,9 @@ export class AgentClient {
         events: [],
       };
       this.changed();
-      const child = spawn(profile.command, profile.args, {
+      const child = spawnAgent(profile.command, profile.args, {
         cwd,
         env: { ...process.env, ...profile.env },
-        stdio: "pipe",
         windowsHide: true,
       });
       this.child = child;
@@ -148,7 +149,7 @@ export class AgentClient {
       connection.closed.then(() => {
         if (this.child === child) {
           ended("Agent 协议连接已关闭");
-          child.kill();
+          void stopAgent(child).catch((error) => this.fail(error));
         }
       });
       try {
@@ -181,17 +182,21 @@ export class AgentClient {
         if (this.child === child && this.state.phase === "starting")
           await this.disconnect();
         if (epoch === this.epoch || !this.child) this.fail(error);
-        throw error;
+        throw profile.id === "deepseek" ? new Error(agentError(error)) : error;
       }
+    } catch (error) {
+      // spawn 可同步拒绝非法命令参数；不能把此失败留成永久 starting。
+      if (!this.child && this.state.phase === "starting") {
+        this.state.phase = "disconnected";
+        this.fail(error);
+      }
+      throw profile.id === "deepseek" ? new Error(agentError(error)) : error;
     } finally {
       this.launchPending = false;
     }
   }
   private fail(error: unknown) {
-    const detail = (error as { data?: { details?: unknown } })?.data?.details;
-    this.state.error =
-      (error instanceof Error ? error.message : String(error)) +
-      (typeof detail === "string" ? `：${detail}` : "");
+    this.state.error = agentError(error);
     this.changed();
   }
   async authenticate(methodId: string) {
@@ -214,7 +219,7 @@ export class AgentClient {
         this.state.phase = "connected";
         this.fail(error);
       }
-      throw error;
+      throw this.profile?.id === "deepseek" ? new Error(agentError(error)) : error;
     }
   }
   async newSession() {
@@ -247,7 +252,9 @@ export class AgentClient {
           },
         ],
       };
-      const session = await agent.request("session/new", request);
+      const session = await agent.request("session/new", request, {
+        cancellationSignal: AbortSignal.timeout(60_000), stopWaitingOnCancel: true,
+      });
       if (connection !== this.connection) return;
       this.state.session = session;
       this.state.phase = "ready";
@@ -257,7 +264,7 @@ export class AgentClient {
         this.state.phase = "connected";
         this.fail(error);
       }
-      throw error;
+      throw this.profile?.id === "deepseek" ? new Error(agentError(error)) : error;
     }
   }
   async prompt(text: string) {
@@ -267,6 +274,7 @@ export class AgentClient {
     const connection = this.connection;
     this.state.phase = "prompting";
     this.state.error = undefined;
+    const firstEvent = this.state.events.length;
     this.state.events.push({ type: "user", text });
     this.changed();
     try {
@@ -275,6 +283,9 @@ export class AgentClient {
         prompt: [{ type: "text", text }],
       });
       if (connection !== this.connection) return;
+      const completed = result.stopReason === "end_turn" && this.state.events.slice(firstEvent).some((event) =>
+        event.type === "update" && event.update.sessionUpdate === "agent_message_chunk" &&
+        event.update.content.type === "text" && event.update.content.text.trim());
       this.state.events.push({
         type: "notice",
         text:
@@ -287,9 +298,10 @@ export class AgentClient {
                 refusal: "Agent 拒绝了本次请求",
               }[result.stopReason] || `本轮结束：${result.stopReason}`,
       });
+      return { completed, events: this.state.events.slice(firstEvent), sessionId: this.state.session!.sessionId };
     } catch (error) {
       if (connection === this.connection) this.fail(error);
-      throw error;
+      throw this.profile?.id === "deepseek" ? new Error(agentError(error)) : error;
     } finally {
       if (connection === this.connection) {
         this.resolvePermissions();
@@ -332,13 +344,18 @@ export class AgentClient {
     this.connection?.close();
     this.connection = undefined;
     if (child && child.exitCode === null && child.signalCode === null) {
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(() => child.kill("SIGKILL"), 2000);
-        child.once("close", () => {
+      await new Promise<void>((resolve, reject) => {
+        const finish = (error?: unknown) => {
           clearTimeout(timer);
-          resolve();
-        });
-        child.kill();
+          child.removeListener("close", closed);
+          if (error) reject(error); else resolve();
+        };
+        const closed = () => finish();
+        const timer = setTimeout(() => {
+          void stopAgent(child, "SIGKILL").catch(finish);
+        }, 2000);
+        child.once("close", closed);
+        void stopAgent(child).catch(finish);
       });
     }
     this.state.phase = "disconnected";

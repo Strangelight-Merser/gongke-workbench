@@ -99,3 +99,9 @@ FreeCAD 保存允许新文件及当前文档自身已登记的工作副本。其
 - [WorkBuddy MCP 配置](https://www.codebuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/MCP-Guide)：项目级 `.workbuddy/mcp.json`，`mcpServers` 下以 `command/args` 启动服务。
 
 - [MCP 官方 filesystem 参考服务](https://github.com/modelcontextprotocol/servers/blob/main/src/filesystem/README.md)：参考其启动目录边界与符号链接目标校验。本应用以桌面工程和服务端绑定为权限来源，不接受客户端改变工程边界。
+
+## WorkBuddy 面板引导
+
+Agent 面板可自动发现 WorkBuddy、经用户同意安装已固定版本，并调用现有 `mcp.configure` 生成当前工程的 `.workbuddy/mcp.json`。默认只读，保留其他 MCP 服务；构想引擎需要保持当前工程打开。打包版配置指向随包 `gongke-service`；开发版指向当前 Python 的绝对路径、`-m gongke_app` 和源码 PYTHONPATH。
+
+配置生成后状态是“待首次对话”。学生在 WorkBuddy 选择相同工程目录，信任 gongke 并确认绿色 MCP 状态，发送 `project.current` 读取工程。工作台通过用户提供的 task_id 核对本次配置以后的当前工程成功回执；外部真实回复的正确性由学生确认。不会从配置文件存在或进程存在推断“已连接”，也不读取 WorkBuddy 的会话数据库。完整安装/状态/Windows 验收见 [desktop/ACP.md](../desktop/ACP.md#agent-首次引导2026-11-03)。
