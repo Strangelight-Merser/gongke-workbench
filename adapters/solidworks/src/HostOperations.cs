@@ -11,7 +11,7 @@ namespace Gongke.SolidWorks
     internal sealed partial class HostOperations
     {
         public static readonly string[] Methods = {
-            "host.info", "document.context", "document.open", "document.activate", "parameters.list", "parameter.change",
+            "host.info", "model.context", "model.inspect", "model.section", "document.context", "document.open", "document.activate", "parameters.list", "parameter.change",
             "selection.get", "selection.set", "preview.mesh", "drawing.inspect", "drawing.update",
             "document.save_copy", "document.save", "drawing.export", "operation.get"
         };
@@ -109,6 +109,9 @@ namespace Gongke.SolidWorks
                 case "host.info": return new JObject { ["host"] = "solidworks", ["revision"] = app.RevisionNumber(),
                     ["session_id"] = session, ["protocol_version"] = 1, ["capabilities"] = new JArray(Methods),
                     ["native_validation"] = "unverified", ["length_unit"] = "m", ["angle_unit"] = "rad" };
+                case "model.context": return InspectionContext();
+                case "model.inspect": return InspectModel(p);
+                case "model.section": return InspectSection(p);
                 case "document.context": return Context();
                 case "document.open": return Open(p);
                 case "document.activate": return Activate(p);

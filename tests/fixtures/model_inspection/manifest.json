@@ -1,0 +1,15 @@
+{
+  "source": "out/drawing-to-model-study/results (f2ba worktree)",
+  "unit_assumption": "mm; 未取得标题栏单位与公差",
+  "sha256": {
+    "p7_base_r9_assumption.step": "62c4a9056e783fa552b12e53d5423807ffa4b348297b09463575285561dae1d4",
+    "p7_bore_12.step": "ac1da91359ef38f2ebac11fc4e4a7b6b2c22da8fdf5aea0eab253da91be8cd03",
+    "p7_height_28.step": "3b0bbecfd745608fd0a7ac5d12604e13e5dd62e13feb079eb2b1254ad7f1ae64",
+    "p7_no_slot.step": "ef19a253dda74b6e8f3bc4d76979a3cc002a1d9eea440da68a38228afaaa9e5c",
+    "p7_reference.step": "52b69d9ec25d64c915de5ffdbf4cf485dc47c0109a8adbe3da3dd58cb828b3db",
+    "p7_slot_shift_1.step": "8aef3f9ba0a33fb373f1f2d7c97118fd2536a737b21a9639f915273f0ba3367c",
+    "p8_no_rib.step": "187542e21aec1c785465504371615749db69f77d8364594d7a7736ecbb9e743b",
+    "p8_reference.step": "40931797dc25ee268f56753ef4ce2e624e1d8d0405e4ac039251634410bfd7a2",
+    "p8_two_base_holes.step": "f9e7e2e77252fbbdd29263a1439d9a29bb21d6ee0db3c55339e2a1d11761622c"
+  }
+}

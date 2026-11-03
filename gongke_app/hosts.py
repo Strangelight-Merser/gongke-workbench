@@ -1,4 +1,4 @@
-"""Discover and probe installed Windows CAD named-pipe bridges."""
+"""统一宿主发现与执行；FreeCAD HTTP 和 Windows 命名管道保留各自传输。"""
 from __future__ import annotations
 
 from concurrent.futures import Future, TimeoutError
@@ -11,9 +11,10 @@ import threading
 from uuid import UUID, uuid4
 
 from gongke_core import native_client
+from gongke_app import inspection
 
 READ_METHODS = {"host.info", "host.describe", "document.context", "documents.list", "document.snapshot",
-                "parameters.list", "drawing.inspect", "operation.get", "operation.status", "preview.mesh", "selection.get"}
+                "model.context", "model.inspect", "model.section", "parameters.list", "drawing.inspect", "operation.get", "operation.status", "preview.mesh", "selection.get"}
 WRITE_METHODS = {"parameter.change", "drawing.update", "document.save_copy", "drawing.export",
                  "document.select", "selection.set", "drawing.edit_text", "drawing.move_dimension_text", "drawing.import_dxf", "document.open", "document.activate", "operation.cancel"}
 COPY_METHODS = {"document.save_copy", "drawing.import_dxf"}
@@ -96,13 +97,17 @@ class Hosts:
     def list(self):
         freecad = {"host_id": "freecad", "host": "freecad", "transport": "loopback_http"}
         try:
-            freecad.update(connected=True, info=native_client.call("get_project_context"))
-        except native_client.NativeBridgeError as exc:
+            info = native_client.call("inspect_host", command="host.info", params={})
+            freecad.update(connected=True, info=info, capabilities=info["capabilities"], host_instance=info["host_instance"])
+        except (native_client.NativeBridgeError, KeyError, TypeError) as exc:
             freecad.update(connected=False, error=str(exc))
+        freecad["inspection_tools"] = list(inspection.definitions())
         result = [freecad]
         for config in self.discover():
             public = {key: value for key, value in config.items() if key != "token"}
             public["parameter_contracts"] = CONTRACTS[config["host"]]
+            if config["host"] == "solidworks":
+                public["inspection_tools"] = list(inspection.definitions())
             try:
                 method = "host.info" if config["host"] == "solidworks" else "host.describe"
                 public["info"] = self._request(config, method, {}, timeout=2)
@@ -155,7 +160,35 @@ class Hosts:
             project.remember_copy_operation(operation)
         return config, params, operation
 
+    def inspect(self, tool, host_id, project=None, **params):
+        method = {"host.context": "model.context", "host.inspect": "model.inspect", "host.section": "model.section"}.get(tool)
+        if method:
+            return self.command(host_id, method, params, project)
+        args = {key: params[key] for key in ("document", "object_ref")}
+        snapshot = self.command(host_id, "model.inspect", args, project)
+        if "error" in snapshot:
+            return snapshot
+        def section(plane):
+            result = self.command(host_id, "model.section", {**args, "plane": plane}, project)
+            if "error" in result:
+                raise ValueError(str(result["error"]))
+            return result
+        if tool == "host.measure":
+            return inspection.measure(snapshot, params["measurement"], section)
+        if tool == "host.check":
+            return inspection.check(snapshot, params["conditions"], section)
+        raise ValueError("未知模型检查工具")
+
     def command(self, host_id, method, params, project):
+        if method in inspection.NATIVE_METHODS:
+            # 同一 schema 同时约束 typed tool 与 host.read；不能借泛型入口绕过。
+            from gongke_app.tools import validate
+            tool = {"model.context": "host.context", "model.inspect": "host.inspect", "model.section": "host.section"}[method]
+            validate({"host_id": host_id, **params}, inspection.definitions()[tool][1])
+        if host_id == "freecad":
+            if method not in inspection.NATIVE_METHODS | {"host.info"}:
+                raise ValueError("FreeCAD 未声明此公共命令；轴类操作使用 freecad 专用工具")
+            return native_client.call("inspect_host", command=method, params=params)
         try:
             config, params, operation = self._prepare_command(host_id, method, params, project)
         except (ValueError, TypeError, OSError) as exc:
