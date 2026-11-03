@@ -11,12 +11,14 @@ import threading
 from uuid import UUID, uuid4
 
 from gongke_core import native_client
-from gongke_app import inspection
+from gongke_app import inspection, modeling
 
 READ_METHODS = {"host.info", "host.describe", "document.context", "documents.list", "document.snapshot",
                 "model.context", "model.inspect", "model.section", "parameters.list", "drawing.inspect", "operation.get", "operation.status", "preview.mesh", "selection.get"}
 WRITE_METHODS = {"parameter.change", "drawing.update", "document.save_copy", "drawing.export",
                  "document.select", "selection.set", "drawing.edit_text", "drawing.move_dimension_text", "drawing.import_dxf", "document.open", "document.activate", "operation.cancel"}
+READ_METHODS |= modeling.READ_METHODS
+WRITE_METHODS |= modeling.WRITE_METHODS
 COPY_METHODS = {"document.save_copy", "drawing.import_dxf"}
 
 
@@ -102,12 +104,14 @@ class Hosts:
         except (native_client.NativeBridgeError, KeyError, TypeError) as exc:
             freecad.update(connected=False, error=str(exc))
         freecad["inspection_tools"] = list(inspection.definitions())
+        freecad["modeling_tools"] = list(modeling.definitions())
         result = [freecad]
         for config in self.discover():
             public = {key: value for key, value in config.items() if key != "token"}
             public["parameter_contracts"] = CONTRACTS[config["host"]]
             if config["host"] == "solidworks":
                 public["inspection_tools"] = list(inspection.definitions())
+                public["modeling_tools"] = list(modeling.definitions())
             try:
                 method = "host.info" if config["host"] == "solidworks" else "host.describe"
                 public["info"] = self._request(config, method, {}, timeout=2)
@@ -180,6 +184,8 @@ class Hosts:
         raise ValueError("未知模型检查工具")
 
     def command(self, host_id, method, params, project):
+        if method in modeling.FROM_NATIVE:
+            return modeling.execute(self, host_id, method, params, project)
         if method in inspection.NATIVE_METHODS:
             # 同一 schema 同时约束 typed tool 与 host.read；不能借泛型入口绕过。
             from gongke_app.tools import validate

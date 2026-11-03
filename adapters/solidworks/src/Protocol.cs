@@ -22,7 +22,8 @@ namespace Gongke.SolidWorks
         public const int MaxRequestCharacters = 1024 * 1024;
         public static readonly HashSet<string> Writes = new HashSet<string>(StringComparer.Ordinal)
         { "parameter.change", "drawing.update", "document.save_copy", "document.save", "drawing.export",
-            "document.open", "document.activate", "selection.set" };
+            "document.open", "document.activate", "selection.set",
+            "model.new", "model.copy", "model.body", "model.sketch", "model.feature", "model.feature_edit", "model.feature_delete", "model.rebuild", "model.save" };
 
         public static string Required(JObject obj, string name)
         {

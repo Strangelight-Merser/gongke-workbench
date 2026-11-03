@@ -1,0 +1,29 @@
+# 在独立 FreeCAD GUI 进程中运行；环境变量明确 checkout 与端点，避免加载已安装的旧工作台。
+import os
+import sys
+import json
+import hashlib
+from pathlib import Path
+import FreeCAD as App
+import FreeCADGui as Gui
+import freecad
+
+root = Path(os.environ["GONGKE_MODELING_ROOT"]).resolve()
+endpoint = Path(os.environ["GONGKE_FREECAD_SESSION"]).resolve()
+sys.path.insert(0, str(root))
+freecad.__path__ = [str(root / "freecad"), *freecad.__path__]
+for name in list(sys.modules):
+    if name == "freecad.gongke" or name.startswith("freecad.gongke."):
+        del sys.modules[name]
+if hasattr(freecad, "gongke"):
+    del freecad.gongke
+from freecad.gongke import bridge, native_inspection, native_modeling
+sources = {}
+for module in (bridge, native_inspection, native_modeling):
+    path = Path(module.__file__).resolve()
+    assert path.is_relative_to(root), str(path)
+    sources[module.__name__] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+# 全局持有桥接，Qt timer 只在 GUI 主线程调度；不关闭或修改其他文档。
+GONGKE_MODELING_BRIDGE = bridge.Bridge(endpoint)
+(endpoint.parent / "bootstrap.json").write_text(json.dumps({"root": str(root), "freecad_version": App.Version(), "sources": sources}, indent=2), encoding="utf-8")
+App.Console.PrintMessage("原生建模验收桥接已启动："+str(endpoint)+"\n")

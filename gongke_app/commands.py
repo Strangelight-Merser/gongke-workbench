@@ -139,6 +139,11 @@ class Commands:
             return self.hosts.list()
         if method in {"host.context", "host.inspect", "host.section", "host.measure", "host.check"}:
             return self.hosts.inspect(method, **params, project=project)
+        from gongke_app.modeling import TO_NATIVE
+        if method in TO_NATIVE:
+            args = dict(params)
+            host_id = args.pop("host_id")
+            return self.hosts.command(host_id, TO_NATIVE[method], args, project)
         if method in {"host.read", "host.write"}:
             return self.hosts.command(**params, project=project)
         if method.startswith("freecad."):

@@ -120,4 +120,6 @@ def definitions():
     })
     from gongke_app.inspection import definitions as inspection_definitions
     tools.update(inspection_definitions())
+    from gongke_app.modeling import definitions as modeling_definitions
+    tools.update(modeling_definitions())
     return tools
