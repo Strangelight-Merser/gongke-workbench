@@ -1,0 +1,19 @@
+# 仅供独立约束回归进程；不把回归文档暴露给真实 Agent 的宿主。
+import os
+import runpy
+from pathlib import Path
+import FreeCAD as App
+from PySide import QtCore
+
+root = Path(os.environ["GONGKE_MODELING_ROOT"])
+GONGKE_REGRESSION = runpy.run_path(str(root / "tests/e2e/native_modeling_host.FCMacro"))
+
+def finish_regression():
+    if Path(os.environ["GONGKE_CONSTRAINT_EXIT"]).exists():
+        for name in list(App.listDocuments()):
+            App.closeDocument(name)
+        QtCore.QCoreApplication.instance().quit()
+
+GONGKE_EXIT_TIMER = QtCore.QTimer()
+GONGKE_EXIT_TIMER.timeout.connect(finish_regression)
+GONGKE_EXIT_TIMER.start(100)

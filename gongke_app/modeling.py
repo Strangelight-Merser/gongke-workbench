@@ -53,17 +53,19 @@ FEATURE = {"oneOf": [
 
 GUIDE = """先 hosts.list → host.context。按已确认尺寸拆成基体、凸台/筋、孔槽、修饰与重复特征；缺尺寸保留来源和假设。
 host.model_new 新建零件并保存到工程内新文件；已有原件先 host.model_copy。只编辑这些副本。
-所有长度 m、角度 rad。草图是局部二维 [u,v]；FreeCAD Body 局部基准面：XY=(X,Y,+Z)，XZ=(X,Z,-Y)，YZ=(Y,Z,+X)，offset 沿该基准面法向。SOLIDWORKS 用模板实际草图坐标，先空批创建读取 frame，再追加几何；不猜本地轴向。
+所有长度 m、角度 rad；例如80 mm填0.080，半径5 mm填0.005，不能填80或5。先统一单位和前后方向，优先 feature_edit 修改命名尺寸，不因尺寸调整删除整棵树。草图是局部二维 [u,v]；FreeCAD Body 局部基准面：XY=(X,Y,+Z)，XZ=(X,Z,-Y)，YZ=(Y,Z,+X)，offset 沿该基准面法向。SOLIDWORKS 用模板实际草图坐标，先空批创建读取 frame，再追加几何；不猜本地轴向。
 面上草图必须使用当前 host.inspect 的面引用，按返回的 frame 定位；不猜面号。每次调用使用上一回执 document。
-一次 host.sketch 批量几何和约束；rectangle 展开四边并加重合/水平/竖直约束。geometry 索引从 0 开始，按回执映射；point 为 start/end/center，默认 whole。
-先 host.sketch 创建，再用 sketch_ref 追加几何/约束。距离/半径/直径约束填 value(m)，angle 填 rad；保留可编辑命名尺寸。
+一次 host.sketch 批量几何和约束；rectangle 展开四边并加重合/水平/竖直约束。geometry 索引从 0 开始，按回执映射；point 为 start/end/center，默认 whole；圆弧 start/end 始终对应输入三点顺序，不受顺逆时针影响。回执 geometry 是求解后局部坐标(m)，先对照输入确认未漂移再拉伸；欠约束求解可能改变输入位置。
+创建时可一次提交全部几何和必要约束，不要求拆成创建/追加两次；仅修改已有草图才用 sketch_ref 追加，此时无新增几何也须 geometry=[]。rectangle 已含重合/水平/竖直，不重复添加这些关系。距离/半径/直径约束填 value(m)，angle 填 rad；保留可编辑命名尺寸。
+FreeCAD：fixed 只接受一个实体；whole 固定整个几何，start/end/center 只固定该点的当前位置，不固定半径。固定点在原点用重合，否则用坐标/轴约束，命名展开为 name_X/name_Y，返回全部 added_constraints。圆只能选 whole/center，线段只能选 whole/start/end，圆弧可选三种点。coincident 必须指定两个点；radius/diameter 指定一个整圆或圆弧；horizontal/vertical 指定一条整线或两个点；parallel/equal 指定两个 whole。不要用 whole 代替点。
+约束以必要集合起步，不把所有相切、等半径、端点重合和宽度同时叠加。端点 tangent 已含端点重合语义；固定 whole 后不要再约束同一几何尺寸。出现冗余时根据返回索引去掉重复关系；有效且尺寸正确的欠约束轮廓可继续，不为追求零自由度反复试约束。追加 sketch_ref 仍须 body_ref 和最新 document。
 欠约束会明确返回 solver 状态，但可继续建模；冲突、冗余或无效轮廓必须修正后再生成特征。host.feature_edit 可改命名约束或返回的特征尺寸。
 pad 沿草图正法向；pocket/hole 沿负法向，reversed 翻转。孔为直孔，不推断螺纹/公差；SOLIDWORKS 用圆草图+原生切除，圆直径必须等于 diameter。圆角/倒角最后做。
 贯通切除用 pocket 的 through_all=true，不传 length；从切入侧沿切除方向贯穿，底面草图向上切须 reversed=true。固定高度草图加固定切深不会随上游加高自动贯通。
 阵列 spacing 为相邻间距；polar_pattern angle 为总扫角，2π 为整圆均布。新建 SolidWorks Body 在首个实体特征生成时出现。
-每个特征后读回 host.inspect，最终 host.check 逐项对照图纸并修改失败项，再 host.model_save。保存不等于尺寸通过。
+使用 typed host.inspect 读取特征树/面边，不猜 model.snapshot，也不要拿 native_ref 当 freecad.read 的 entity_id。空 Body 尚无实体时可检查已创建的 sketch_ref。特征写入回执已含重建状态，按需要检查几何；检查优先用 inspect 的 native_ref；不要用任意面内坐标作 near，near 是返回 point 的邻近筛选，平面也可用 direction+offset。同一修订多项尺寸/截面条件合并到一次 host.check（可含 section_area），避免同值重复 measure。重点检查 B-rep 尺寸与孔槽底部截面，不只检查自己刚写入的 Length。最终 host.check 对照图纸并修改失败项，再 host.model_save。保存不等于尺寸通过。
 错误原样保留；FreeCAD 事务失败回滚仍可能增加 revision，重新 context。SOLIDWORKS 部分失败标 needs_review/unknown，先读回。
-结果未知只用同一个 operation_id 调 host.model_operation；not_found 也不代表没执行，禁止换 ID 重做。
+确认 rolled_back 后修改参数须新 operation_id；原 ID 不能用于不同请求。结果未知只用同一个 operation_id 调 host.model_operation；not_found 也不代表没执行，禁止换 ID 重做。
 """
 
 

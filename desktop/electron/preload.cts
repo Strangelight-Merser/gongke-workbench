@@ -25,7 +25,9 @@ contextBridge.exposeInMainWorld("gongke", {
     start: (id: string) => ipcRenderer.invoke("acp-start", id),
     authenticate: (id: string) => ipcRenderer.invoke("acp-authenticate", id),
     newSession: () => ipcRenderer.invoke("acp-new-session"),
-    prompt: (text: string) => ipcRenderer.invoke("acp-prompt", text),
+    setConfigOption: (id: string, value: string) => ipcRenderer.invoke("acp-set-config-option", id, value),
+    prompt: (text: string, referencePaths: string[] = []) =>
+      ipcRenderer.invoke("acp-prompt", text, referencePaths),
     cancel: () => ipcRenderer.invoke("acp-cancel"),
     disconnect: () => ipcRenderer.invoke("acp-disconnect"),
     permission: (id: string, optionId: string | null) =>

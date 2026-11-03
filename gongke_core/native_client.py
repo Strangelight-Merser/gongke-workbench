@@ -61,7 +61,7 @@ def call(method: str, **params):
     except HTTPError as exc:
         raise NativeBridgeError(f"FreeCAD 桥接拒绝连接（HTTP {exc.code}），请检查当前工科工作台会话。") from exc
     except (URLError, TimeoutError, OSError) as exc:
-        raise NativeBridgeError("FreeCAD 桥接未响应。请检查 FreeCAD 是否仍打开；写操作未自动重试，应先读取当前工程状态。") from exc
+        raise NativeBridgeError(f"FreeCAD 桥接未响应（{type(exc).__name__}: {exc}）。请检查 FreeCAD 是否仍打开；写操作结果未知，未自动重试，应先查询原 operation_id 并读取当前工程状态。") from exc
     except (ValueError, UnicodeError) as exc:
         raise NativeBridgeError("FreeCAD 桥接返回了无效响应。") from exc
     if not isinstance(result, dict) or not isinstance(result.get("ok"), bool):

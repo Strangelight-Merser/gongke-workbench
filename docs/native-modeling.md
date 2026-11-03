@@ -1,5 +1,7 @@
 # 原生零件建模
 
+真实窗口内 Agent 自行读图、选择工具、建模与自查的运行入口见 [真实 Agent 建模验收](agent-modeling-trial.md)。下文的 P7/P8 配方脚本验证工具执行能力，不计作真实模型成功率。
+
 `gongke_app/modeling.py` 定义输入与说明，`tools.py` 汇总；桌面已有 Agent 的 MCP 调用仍经过 `Commands` 的工程、写入开关和收据。FreeCAD/SOLIDWORKS 各自执行受限原生 API。没有脚本执行工具，也没有修改桌面前端或重写 `host.inspect/section/measure/check`。
 
 ## 工具与顺序
@@ -120,3 +122,17 @@ API 依据：[FreeCAD 1.1.4 Pocket](https://github.com/FreeCAD/FreeCAD/blob/1.1.
 验收在修改后增加 host.inspect 记录，要求包围盒顶高为28 mm，体积增量为 `π × (10²−7²) × 8 mm³`，同时仍要求原 `tube_height` 明确 fail，修复后完整条件 pass。没有修改 `tests/fixtures/model_inspection/cases.json` 或只读检查实现。
 
 本次普通 Python：**43 passed、2 deselected**（已知沙箱禁止本地服务端口的两个 MCP 测试）；SolidWorks 官方 Interop 编译 **0 warning、0 error**。日志为 `out/native-modeling-validation/through-all-python.log`、`through-all-solidworks-build.log`；run2 诊断摘录为 `run2-diagnosis.json`。修正后的 FreeCAD 几何与完整 P7/P8 流程尚待重启沙箱外宿主、使用新输出目录验收。本次未运行 git 命令。
+
+## 固定约束与错误恢复（真实 Agent 第四轮修复）
+
+FreeCAD 的 Block 只接受一个完整几何，不能传点号。`fixed` 的 `point=center/start/end` 表示固定该点当前位置：原点映射为与原点重合，其他位置映射为 X/Y 尺寸或轴上约束。固定点不固定圆半径或弧端点；非原点命名展开为 `name_X/name_Y`，`added_constraints` 包含展开后的全部索引。约束构造前验证几何/点/重载，数值以浮点传递；非法组合在 Python 层返回错误并回滚。
+
+第四轮 `Block(0,3)` 触发 FreeCAD 1.1.4 的未捕获 C++ `Py::TypeError` 退出。原请求已保留为回归夹具；真实宿主回归和两组 Agent 运行命令见 [试验记录第五轮](agent-modeling-trial.md)。25 秒桥接等待只限制请求等待，不能抢占 C++ 或恢复已退出进程；原生未知结果不自动重发。
+
+第五轮两组均通过 8 项真实宿主回归，未再出现桥接退出。vision 的 13 次草图调用中有 6 次求解冲突/冗余及 1 次缺少 body_ref；MCP 引导补充端点相切已包含重合关系、整几何固定后不再叠加尺寸、有效欠约束可继续、追加草图仍需 body_ref 和最新 document。按需一次 `host.inspect` 获取拓扑，批量 `host.check` 核对尺寸与截面；不要求草图每步重复 inspect 或把自由度清零。不引入零件专用配方或脚本执行接口。
+
+### 真实 Agent 回归补充（2026-11-03，第七轮）
+
+FreeCAD 的三点圆弧保留输入方向，但 Sketcher 的点 1/2 按逆时针排序。对负法向圆弧，工具将 `start/end` 映射到原生 2/1；公开含义始终为三点输入的首末点，追加约束也相同，不增加持久化映射属性。真实探针见本地 `out/agent-modeling-dev/round7/arc-probe.json`。第六轮 P7 原调用同时有冗余关系：修复端点后从冲突变为明确冗余；回归保留原请求，再移除重复的圆心水平/等半径关系验证可拉伸及保存。`sketch_constraint_acceptance.py` 现在包含 10 项，每项都验证后续读写仍可用。
+
+`host.sketch.geometry` 增加求解后的局部坐标（m）、圆心和半径，便于在生成特征前识别欠约束求解引起的漂移；不将输入坐标冒充求解结果。原生几何索引不变。创建轮廓与必要约束可一次提交；已有草图追加须 `geometry=[]`。这是公开回执的增量改动，原因是机器人 PDF 首轮直到实体检查才发现漂移，产生了整树删除重建。

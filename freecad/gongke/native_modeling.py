@@ -135,27 +135,102 @@ def _rebuild(doc):
     return [_sketch_status(o) for o in doc.Objects if o.isDerivedFrom("Sketcher::SketchObject")]
 
 
-def _constraint(sketch, data):
+def _constraint_specs(sketch, data):
+    """先验证原生重载签名；错误不能进入会使 FreeCAD 1.1.4 abort 的构造器。"""
+    kind, entities = data["kind"], data["entities"]
     names = {"horizontal": "Horizontal", "vertical": "Vertical", "coincident": "Coincident", "tangent": "Tangent",
              "parallel": "Parallel", "perpendicular": "Perpendicular", "equal": "Equal", "distance": "Distance",
              "distance_x": "DistanceX", "distance_y": "DistanceY", "diameter": "Diameter", "radius": "Radius", "angle": "Angle", "fixed": "Block"}
-    args = []
-    for ent in data["entities"]:
-        index = ent["geometry"]
+    refs, types = [], []
+    for ent in entities:
+        index, point = ent["geometry"], ent.get("point", "whole")
         if type(index) is not int or not 0 <= index < sketch.GeometryCount:
             raise ValueError("草图几何索引不属于当前草图")
-        args.append(index)
-        point = ent.get("point", "whole")
-        if point != "whole":
-            args.append({"start": 1, "end": 2, "center": 3}[point])
-    if data["kind"] in {"distance", "distance_x", "distance_y", "diameter", "radius", "angle"}:
-        args.append(data["value"]*(1 if data["kind"] == "angle" else 1000))
-    index = sketch.addConstraint(Sketcher.Constraint(names[data["kind"]], *args))
-    if data.get("name"):
-        if any(c.Name == data["name"] for c in sketch.Constraints[:index]):
-            raise ValueError("草图约束名称重复")
-        sketch.renameConstraint(index, data["name"])
-    return index
+        geometry = sketch.Geometry[index]
+        geometry_type = geometry.TypeId
+        valid_points = {"Part::GeomLineSegment": {"whole", "start", "end"},
+                        "Part::GeomCircle": {"whole", "center"},
+                        "Part::GeomArcOfCircle": {"whole", "start", "end", "center"}}
+        if point not in valid_points.get(geometry_type, set()):
+            raise ValueError(f"{geometry_type} 不支持草图点 {point}")
+        point_id = {"whole": None, "start": 1, "end": 2, "center": 3}[point]
+        # Sketcher 的点编号按逆时针排列；三点圆弧的 OCCT StartPoint/EndPoint 保留输入方向。
+        # 负法向圆弧交换编号，让工具的 start/end 始终指向输入端点（追加约束也一致）。
+        if geometry_type == "Part::GeomArcOfCircle" and point_id in {1, 2} and geometry.Circle.Axis.z < 0:
+            point_id = 3 - point_id
+        refs.append([index] if point_id is None else [index, point_id])
+        types.append(geometry_type)
+    shape = tuple(len(ref) for ref in refs)
+    signatures = {
+        "fixed": {(1,), (2,)}, "horizontal": {(1,), (2, 2)}, "vertical": {(1,), (2, 2)},
+        "coincident": {(2, 2)}, "parallel": {(1, 1)}, "equal": {(1, 1)},
+        "tangent": {(1, 1), (2, 1), (1, 2), (2, 2)},
+        "perpendicular": {(1, 1), (2, 1), (1, 2), (2, 2)},
+        "radius": {(1,)}, "diameter": {(1,)}, "angle": {(1, 1), (2, 2)},
+        "distance": {(1,), (2, 2), (2, 1), (1, 2)},
+        "distance_x": {(1,), (2,), (2, 2)}, "distance_y": {(1,), (2,), (2, 2)},
+    }
+    if shape not in signatures.get(kind, set()):
+        raise ValueError(f"{kind} 不支持此实体/点组合；fixed 接受一个 whole 或点，coincident 接受两个点，数值约束须使用对应的几何或点")
+    line = "Part::GeomLineSegment"
+    if ((kind in {"horizontal", "vertical", "distance", "distance_x", "distance_y"} and shape == (1,) and types[0] != line)
+            or (kind in {"parallel", "angle"} and any(t != line for t in types))
+            or (kind in {"radius", "diameter"} and types[0] not in {"Part::GeomCircle", "Part::GeomArcOfCircle"})
+            or (kind == "distance" and shape in {(1, 2), (2, 1)} and types[shape.index(1)] != line)
+            or (kind == "equal" and (types[0] == line) != (types[1] == line))):
+        raise ValueError(f"{kind} 的几何类型不匹配")
+    name = data.get("name")
+    if kind == "fixed" and shape == (2,):
+        index, point = refs[0]
+        position = sketch.getPoint(index, point)
+        # 锁定点的位置，不锁住圆弧半径/端点；原点用重合，轴上用点在线上，避免零距离约束。
+        if position.x == 0 and position.y == 0:
+            return [(("Coincident", index, point, -1, 1), name)]
+        return [(("PointOnObject", index, point, axis) if value == 0 else
+                 (dimension, index, point, float(value)), name + suffix if name else None)
+                for dimension, value, axis, suffix in (("DistanceX", position.x, -2, "_X"), ("DistanceY", position.y, -1, "_Y"))]
+    if shape == (1, 2):
+        refs.reverse()  # 原生点到曲线重载的点必须在前。
+    args = [arg for ref in refs for arg in ref]
+    if kind in {"distance", "distance_x", "distance_y", "diameter", "radius", "angle"}:
+        value = float(data["value"]) * (1 if kind == "angle" else 1000)
+        if not math.isfinite(value) or (kind in {"radius", "diameter"} and value <= 0):
+            raise ValueError("约束尺寸必须有限，半径/直径必须为正")
+        args.append(value)  # float 明确区分 C++ 的几何索引与数值重载。
+    return [((names[kind], *args), name)]
+
+
+def _constraints(sketch, data):
+    specs = [spec for item in data for spec in _constraint_specs(sketch, item)]
+    names = [c.Name for c in sketch.Constraints if c.Name]
+    for _, name in specs:
+        if name:
+            if name in names:
+                raise ValueError("草图约束名称重复：" + name)
+            names.append(name)
+    if not specs:
+        return []
+    indices = list(sketch.addConstraint([Sketcher.Constraint(*args) for args, _ in specs]))
+    for index, (_, name) in zip(indices, specs):
+        if name:
+            sketch.renameConstraint(index, name)
+    return indices
+
+
+def _solved_geometry(sketch):
+    """回传求解后的局部几何，让 Agent 在拉伸前发现欠约束漂移。"""
+    rows = []
+    def xy(point):
+        return [point.x / 1000, point.y / 1000]
+    for index, geometry in enumerate(sketch.Geometry):
+        row = {"index": index, "native_ref": f"{sketch.Name}.Geometry{index}", "type": geometry.TypeId}
+        if geometry.TypeId in {"Part::GeomLineSegment", "Part::GeomArcOfCircle"}:
+            row.update(start=xy(geometry.StartPoint), end=xy(geometry.EndPoint))
+        if geometry.TypeId in {"Part::GeomCircle", "Part::GeomArcOfCircle"}:
+            circle = geometry.Circle if geometry.TypeId == "Part::GeomArcOfCircle" else geometry
+            row.update(center=xy(circle.Center), radius=circle.Radius / 1000)
+        rows.append(row)
+    return rows
 
 
 def _sketch(doc, p):
@@ -199,12 +274,12 @@ def _sketch(doc, p):
                         Part.Arc(_vector(g["start"]), _vector(g["mid"]), _vector(g["end"])))
             ids = [sketch.addGeometry(geometry, construction)]
         added.append(ids)
-    constraints.extend(_constraint(sketch, c) for c in p["constraints"])
+    constraints.extend(_constraints(sketch, p["constraints"]))
     code = sketch.solve()
     if code != 0:
         raise ValueError(json.dumps({"solve_code": code, **_sketch_status(sketch)}, ensure_ascii=False))
     return {"native_ref": sketch.Name, "sketch_ref": sketch.Name, "body_ref": body.Name, "added_geometry": added,
-            "geometry": [{"index": i, "native_ref": f"{sketch.Name}.Geometry{i}"} for i in range(sketch.GeometryCount)],
+            "geometry": _solved_geometry(sketch),
             "added_constraints": constraints, "solver": _sketch_status(sketch), "editable_parameters": _editable(sketch)}
 
 

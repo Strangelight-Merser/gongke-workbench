@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import hashlib
 from pathlib import Path
 import threading
@@ -187,4 +188,34 @@ class Project:
             raise ValueError("此文件需由原生软件打开；工作台目前预览 SVG、JSON 和文本")
         if target.stat().st_size > 4 * 1024 * 1024:
             raise ValueError("文件超过 4 MiB 预览上限")
-        return {"path": path, "kind": target.suffix.lstrip("."), "content": target.read_text(encoding="utf-8")}
+        data = target.read_bytes()
+        return {"path": path, "kind": target.suffix.lstrip("."), "sha256": hashlib.sha256(data).hexdigest(), "content": data.decode("utf-8")}
+
+    def read_image(self, path: str, crop=None, scale: int = 1):
+        """读取绑定工程中的图纸；MCP 将其作为图片内容块交给 Agent。"""
+        target = self.resolve(path, exists=True)
+        mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}.get(target.suffix.lower())
+        if mime is None:
+            raise ValueError("图片读取支持 PNG、JPEG、WebP")
+        data = target.read_bytes()
+        from PIL import Image
+        from io import BytesIO
+        image = Image.open(BytesIO(data))
+        size = list(image.size)
+        if crop is not None:
+            if not (len(crop) == 4 and all(type(v) is int for v in crop)
+                    and 0 <= crop[0] < crop[2] <= size[0] and 0 <= crop[1] < crop[3] <= size[1]):
+                raise ValueError("crop 必须为原图像素内 [left, top, right, bottom]，右下边界不包含")
+            image = image.crop(crop)
+        if type(scale) is not int or not 1 <= scale <= 4:
+            raise ValueError("scale 必须为 1 到 4 的整数")
+        source_hash = hashlib.sha256(data).hexdigest()
+        if crop is not None or scale != 1:
+            if scale != 1:
+                image = image.resize((image.width*scale, image.height*scale), Image.Resampling.NEAREST)
+            buf = BytesIO()
+            image.save(buf, format="PNG")
+            data, mime = buf.getvalue(), "image/png"
+        return {"path": path, "mimeType": mime, "sha256": source_hash, "source_pixels": size,
+                "crop": crop, "scale": scale, "content_sha256": hashlib.sha256(data).hexdigest(),
+                "pixels": list(image.size), "data": base64.b64encode(data).decode("ascii")}

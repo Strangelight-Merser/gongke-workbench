@@ -130,6 +130,10 @@ Qt 6.8.3 的 Darwin ARM 分支只有 sysctl 成功才设置 NEON 标志，随后
 
 ## 依据
 
+2026-11-03 真实 Agent 试验发现：FreeCAD `Shape.BoundBox` 受显示三角网格影响，同一 P7 实体重开后 X 长度由 52 变为 51.97203797 mm，而体积、有效性、原生树一致。`host.inspect.bounds` 改用世界坐标 Shape 的 `optimalBoundingBox(False, False)`，不使用显示网格或形状容差扩张；不改变 m 单位、修订、读操作不重算/不保存等契约。重开验收沿用相同方法，原严格容差未放宽，旧显示包围盒仍记录作诊断。依据：[TopoShape 包围盒实现](https://github.com/FreeCAD/FreeCAD/blob/main/src/Mod/Part/App/TopoShape.cpp)、[Python 接口参数](https://github.com/FreeCAD/FreeCAD/blob/main/src/Mod/Part/App/TopoShapePyImp.cpp)。保存 BREP 的离线 OCCT 读取已确认外形仍为 52×20×20 mm；修复后的 GUI 重开待第六轮复验。
+
+MCP 输出在最终序列化处将数值负零转为正零，文本和 structuredContent 一致；原始任务回执不改，非零小数不舍入。第五轮 dsh 因 `-0.0` 拒收 7/37 和 5/51 项结果，原因与其官方 [lossless JSON 检查](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/util/values/src/index.ts) 一致。将全部原始结果经过生产规范化函数，再送同一公开检查器，拒收数均降至 0；真实模型的调用次数改善待复跑观察。
+
 - [FreeCAD TopoShape API](https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/TopoShape_API.md)、[TopoShape 实现声明](https://github.com/FreeCAD/FreeCAD/blob/main/src/Mod/Part/App/TopoShape.h)：原生section/slice与B-rep访问。
 - [FreeCAD Placement](https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/Placement.md)：全局放置；Shape自带对象Placement，不能再重复乘一次。
 - [FreeCAD SketchObjectPyImp](https://github.com/FreeCAD/FreeCAD/blob/1.1.0/src/Mod/Sketcher/App/SketchObjectPyImp.cpp)：DoF/冲突/冗余状态读最后一次求解信息，不为只读采集主动solve。
@@ -146,3 +150,5 @@ Qt 6.8.3 的 Darwin ARM 分支只有 sysctl 成功才设置 NEON 标志，随后
 ```text
 Co-Authored-By: Codex <noreply@openai.com>
 ```
+
+第七轮机器人图纸试验发现 `near` 容易被误解为“面上任意点”。其既有契约是比较 inspect 返回实体的 `point`，默认容差 1e-8 m；不计算点到面的距离。工具说明现明确优先使用实际 `native_ref`，平面也可用 `direction + offset`；未知匹配应修正选择器，不重复测同一组条件。没有改变选择器几何语义。

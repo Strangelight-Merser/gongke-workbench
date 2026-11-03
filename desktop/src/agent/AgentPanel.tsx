@@ -47,6 +47,7 @@ const phases = {
 export function AgentPanel({
   project,
   context,
+  referencePath,
   removeContext,
   mode,
   onMode,
@@ -55,6 +56,7 @@ export function AgentPanel({
 }: {
   project?: string;
   context?: string;
+  referencePath?: string;
   removeContext(): void;
   mode: "model" | "practice";
   onMode(value: "model" | "practice"): void;
@@ -96,6 +98,8 @@ export function AgentPanel({
     refresh = useRef(onTurnEnd),
     prior = useRef(state.phase);
   refresh.current = onTurnEnd;
+  const openWhenPrompting = useRef(() => {});
+  openWhenPrompting.current = () => { if (mode === "model") openModel(); };
   async function perform(action: () => Promise<unknown>) {
     setError("");
     try {
@@ -106,6 +110,8 @@ export function AgentPanel({
   }
   useEffect(() => {
     const accept = (next: AgentSnapshot) => {
+      if (next.phase === "prompting" && prior.current !== "prompting")
+        openWhenPrompting.current();
       if (
         ["prompting", "cancelling"].includes(prior.current) &&
         next.phase === "ready"
@@ -173,11 +179,11 @@ export function AgentPanel({
     if (!ready || !prompt.trim()) return;
     const message = prompt;
     void perform(async () => {
-      if (mode === "model") openModel();
       setPrompt("");
       try {
         await window.gongke.agent.prompt(
           `${mode === "practice" ? "练习：请只讲解和检查，让我自己完成模型。\n" : ""}${message}${context ? "\n当前参考：" + context : ""}`,
+          referencePath ? [referencePath] : [],
         );
       } catch (e) {
         setPrompt(message);
@@ -323,6 +329,18 @@ export function AgentPanel({
           </div>
         </div>
       )}
+      {conversationVisible && active && state.session?.configOptions
+        ?.filter(c => c.type === "select" && (c.category === "model" || c.id === "model"))
+        .map(c => c.type === "select" && (
+          <Select key={c.id} aria-label="会话模型" value={c.currentValue} disabled={!ready}
+            onChange={(_, data) => { void perform(() => window.gongke.agent.setConfigOption(c.id, data.value)); }}>
+            {c.options.map(o => "group" in o ? (
+              <optgroup key={o.group} label={o.name}>
+                {o.options.map(v => <option key={v.value} value={v.value}>{v.name}</option>)}
+              </optgroup>
+            ) : <option key={o.value} value={o.value}>{o.name}</option>)}
+          </Select>
+        ))}
       {active &&
         state.authMethods
           .filter((m) => !("type" in m) || m.type !== "terminal")
@@ -444,6 +462,7 @@ export function AgentPanel({
               className="agent-permission"
               role="group"
               aria-label="工程操作授权"
+              data-permission-id={event.id}
               key={event.id}
             >
               <strong>{event.request.toolCall.title || "工程操作"}</strong>

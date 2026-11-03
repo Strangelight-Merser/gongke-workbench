@@ -1,0 +1,63 @@
+# 在单独验收进程重开 Agent 已保存的文件，读取真实实体并截图；不修改或保存文件。
+import json
+import os
+from pathlib import Path
+import traceback
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide import QtCore, QtWidgets
+
+root = Path(os.environ["GONGKE_TRIAL_OUTPUT"]).resolve()
+summary = json.loads((root / "summary.json").read_text(encoding="utf-8"))
+results = []
+for trial in summary["results"]:
+    item = {"case": trial["case"], "repetition": trial["repetition"], "verified": False}
+    document = None
+    try:
+        audit = trial.get("audit", {})
+        model = audit.get("model")
+        if not model:
+            item["reason"] = "本轮未产生可检查的保存文件"
+            results.append(item)
+            continue
+        target = Path(model["path"]).resolve()
+        assert target.is_relative_to(root), "验收只打开本轮输出"
+        document = App.openDocument(str(target))
+        bodies = document.findObjects("PartDesign::Body")
+        assert len(bodies) == 1, "保存文件需有且仅有一个 Body"
+        body = bodies[0]
+        shape = body.Shape.copy()
+        shape.Placement = body.getGlobalPlacement().multiply(body.Placement.inverse()).multiply(shape.Placement)
+        display_box = shape.BoundBox
+        box = shape.optimalBoundingBox(False, False)
+        item.update(volume_mm3=shape.Volume, bbox_mm=[box.XLength, box.YLength, box.ZLength],
+                    valid=shape.isValid(), solids=len(shape.Solids),
+                    objects=[{"name": o.Name, "type": o.TypeId} for o in document.Objects])
+        item["display_bbox_mm"] = [display_box.XLength, display_box.YLength, display_box.ZLength]
+        item["bounds_method"] = "optimalBoundingBox(useTriangulation=False, useShapeTolerance=False)"
+        snapshot = audit["snapshot"]
+        expected_box = [(b-a)*1000 for a, b in zip(snapshot["bounds"]["min"], snapshot["bounds"]["max"])]
+        names = {(o.Name, o.TypeId) for o in document.Objects}
+        item["volume_error_mm3"] = shape.Volume - snapshot["volume"]*1e9
+        item["bbox_error_mm"] = [a-b for a, b in zip(item["bbox_mm"], expected_box)]
+        item["verified"] = (item["valid"] and item["solids"] == 1
+            and abs(shape.Volume - snapshot["volume"]*1e9) < .001
+            and max(abs(a-b) for a, b in zip(item["bbox_mm"], expected_box)) < 1e-5
+            and all((f["native_ref"], f["type"]) in names for f in snapshot["features"]))
+        view = Gui.activeDocument().activeView()
+        # 立即截图时不能停在视角动画起点（上一轮留下了俯视图）。
+        view.setAnimationEnabled(False)
+        view.viewAxonometric()
+        view.fitAll()
+        Gui.updateGui()
+        image = root / f"{trial['case']}-{trial['repetition']}" / "model-reopened.png"
+        view.saveImage(str(image), 1280, 960, "White")
+        item["screenshot"] = str(image)
+    except Exception:
+        item["error"] = traceback.format_exc()
+    finally:
+        if document:
+            App.closeDocument(document.Name)
+    results.append(item)
+(root / "reopened.json").write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+QtCore.QTimer.singleShot(0, QtWidgets.QApplication.instance().quit)

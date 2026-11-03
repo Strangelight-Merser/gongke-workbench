@@ -8,6 +8,7 @@ datas += collect_data_files("gongke_core", include_py_files=True)
 datas += collect_data_files("ezdxf")
 datas += collect_data_files("docx")
 datas += collect_data_files("mcp")
+datas += collect_data_files("pdfminer")
 hiddenimports = collect_submodules("gongke_core") + collect_submodules("gongke_app")
 a = Analysis([str(root / "packaging/service_entry.py")], pathex=[str(root)],
              binaries=collect_dynamic_libs("lib3mf"), datas=datas, hiddenimports=hiddenimports,

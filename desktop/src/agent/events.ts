@@ -5,7 +5,14 @@ export function rowsOf(events: AgentEvent[]): Row[] {
   const tools = new Map<string, Row>();
   for (const event of events) {
     if (event.type === "user" || event.type === "notice") {
-      rows.push({ kind: event.type, text: event.text });
+      rows.push({
+        kind: event.type,
+        text:
+          event.text +
+          (event.type === "user" && event.images?.length
+            ? "\n图片：" + event.images.map((image) => image.path).join("、")
+            : ""),
+      });
       continue;
     }
     if (event.type !== "update") continue;

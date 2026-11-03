@@ -7,12 +7,24 @@ from uuid import uuid4
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import (CallToolResult, ListToolsResult, TextContent, Tool, ListResourcesResult,
+from mcp.types import (CallToolResult, ListToolsResult, TextContent, ImageContent, Tool, ListResourcesResult,
                        ReadResourceResult, Resource, TextResourceContents, ListPromptsResult,
                        GetPromptResult, Prompt, PromptMessage)
 from gongke_app.modeling import GUIDE
+from gongke_app.drawing_input import GUIDE as DRAWING_GUIDE
 
 from gongke_app import __version__
+
+
+def normalize_zero(value):
+    """CAD 法向/坐标的 -0.0 与 0 等价；dsh 的无损 JSON 边界拒绝负零。"""
+    if isinstance(value, float) and value == 0:
+        return 0.0
+    if isinstance(value, dict):
+        return {k: normalize_zero(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [normalize_zero(v) for v in value]
+    return value
 
 
 async def call_bound(connection, binding, method, arguments):
@@ -46,13 +58,22 @@ def create_server(connection, binding):
             failed = result["status"] in {"failed", "interrupted", "canceled"}
         except Exception as exc:
             result, failed = {"error": str(exc), "project": binding["project"]}, True
-        return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False, allow_nan=False))],
+        images = []
+        if params.name == "project.read_image" and not failed:
+            # 二进制只放标准 image block，不让 base64 变成模型的文本 token。
+            payload = dict(result["result"])
+            images.append(ImageContent(type="image", data=payload.pop("data"), mimeType=payload["mimeType"]))
+            result = {**result, "result": payload}
+        result = normalize_zero(result)
+        return CallToolResult(content=[TextContent(type="text", text=json.dumps(result, ensure_ascii=False, allow_nan=False)), *images],
                               structured_content=result, is_error=failed)
 
     async def list_resources(ctx, params):
-        return ListResourcesResult(resources=[Resource(name="原生建模", uri="gongke://modeling", mimeType="text/plain")])
+        return ListResourcesResult(resources=[Resource(name="原生建模", uri="gongke://modeling", mimeType="text/plain"), Resource(name="图纸输入", uri="gongke://drawing-input", mimeType="text/plain")])
 
     async def read_resource(ctx, params):
+        if str(params.uri) == "gongke://drawing-input":
+            return ReadResourceResult(contents=[TextResourceContents(uri="gongke://drawing-input", mimeType="text/plain", text=DRAWING_GUIDE)])
         if str(params.uri) != "gongke://modeling":
             raise ValueError("未知资源")
         return ReadResourceResult(contents=[TextResourceContents(uri="gongke://modeling", mimeType="text/plain", text=GUIDE)])
@@ -68,7 +89,7 @@ def create_server(connection, binding):
     return Server("gongke-workbench", version=__version__, on_list_tools=list_tools, on_call_tool=call_tool,
                   on_list_resources=list_resources, on_read_resource=read_resource,
                   on_list_prompts=list_prompts, on_get_prompt=get_prompt,
-                  instructions="操作绑定的桌面工程；先读取 project.current。原生写入前另存工作副本；保留未通过项和来源缺口。写入未知时查询原操作，不换 ID 重发。切换工程后重新连接。")
+                  instructions="操作绑定的桌面工程；先读取 project.current。切换工程后重新连接。\n" + DRAWING_GUIDE + "\n" + GUIDE)
 
 
 async def serve(connection, binding):
