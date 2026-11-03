@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { DrawingViewer } from "./DrawingViewer";
 import { call, Data, errorText, text } from "./api";
+import { EmbeddedCad } from "../electron/embed/EmbeddedCad";
 import { ModelView } from "./ModelView";
 import {
   CommercialView,
@@ -55,6 +56,7 @@ function App() {
   const [result, setResult] = useState<Data | null>(null),
     [check, setCheck] = useState<Data | null>(null),
     [filesOpen, setFilesOpen] = useState(false);
+  const [nativeEditor, setNativeEditor] = useState(!!window.cadEmbed?.supported);
   const [hostKind, setHostKind] = useState("freecad");
   const importingDxf = useRef(false);
   const currentProject = useRef("");
@@ -620,8 +622,11 @@ function App() {
                   <option value="autocad">AutoCAD</option>
                 </select>
                 <button onClick={refresh}>刷新连接</button>
+                {window.cadEmbed?.supported && hostKind !== "autocad" && (
+                  <button onClick={() => setNativeEditor(!nativeEditor)}>{nativeEditor ? "工程参数" : "自由建模"}</button>
+                )}
               </div>
-              {hostKind === "freecad" ? (
+              {nativeEditor && hostKind !== "autocad" ? null : hostKind === "freecad" ? (
                 <Native
                   inspector={inspector}
                   onInspect={() => setCheck(null)}
@@ -642,6 +647,7 @@ function App() {
               )}
             </>
           )}
+          <EmbeddedCad visible={tab === "native" && nativeEditor && hostKind !== "autocad"} kind={hostKind} />
           {(stageIndex >= 0 || tab === "checks") &&
             (project ? (
               <div className="scroll paper">

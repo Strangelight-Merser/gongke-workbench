@@ -14,6 +14,7 @@ import {
   realpathSync,
   mkdirSync,
 } from "node:fs";
+import { installCadEmbedding } from "./embed/controller.cjs";
 import { Service } from "./service.cjs";
 import { normalizeProvider, mayReuseKey } from "./credentials.cjs";
 
@@ -135,6 +136,7 @@ else {
         sandbox: true,
       },
     });
+    installCadEmbedding(window);
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     ipcMain.handle("command", async (event, method, params = {}) => {
@@ -235,5 +237,5 @@ else {
     }
   });
   app.on("window-all-closed", () => app.quit());
-  app.on("before-quit", () => service?.stop());
+  app.on("will-quit", () => service?.stop());
 }
