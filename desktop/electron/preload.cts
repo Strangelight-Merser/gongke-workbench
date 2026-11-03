@@ -1,8 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("gongke", {
+  platform: process.platform,
+  documents: {
+    import: () => ipcRenderer.invoke("documents-import"),
+    read: (path: string) => ipcRenderer.invoke("documents-read", path),
+  },
+  getAgentMode: () => ipcRenderer.invoke("agent-mode-current"),
+  setAgentMode: (mode: string) => ipcRenderer.invoke("agent-mode", mode),
   onboarding: {
     state: () => ipcRenderer.invoke("acp-onboarding-state"),
-    act: (action: unknown) => ipcRenderer.invoke("acp-onboarding-action", action),
+    act: (action: unknown) =>
+      ipcRenderer.invoke("acp-onboarding-action", action),
     onState: (callback: (state: unknown) => void) => {
       const listener = (_event: unknown, state: unknown) => callback(state);
       ipcRenderer.on("onboarding-state", listener);
@@ -46,10 +54,13 @@ contextBridge.exposeInMainWorld("cadEmbed", {
   supported: process.platform === "win32",
   status: () => ipcRenderer.invoke("cad-embed", "status"),
   discover: () => ipcRenderer.invoke("cad-embed", "discover"),
-  chooseInstallation: () => ipcRenderer.invoke("cad-embed", "chooseInstallation"),
+  chooseInstallation: () =>
+    ipcRenderer.invoke("cad-embed", "chooseInstallation"),
   launch: (id: string) => ipcRenderer.invoke("cad-embed", "launch", { id }),
-  attach: (hwnd: string, pid: number, mode: string) => ipcRenderer.invoke("cad-embed", "attach", { hwnd, pid, mode }),
-  layout: (bounds: unknown) => ipcRenderer.invoke("cad-embed", "layout", bounds),
+  attach: (hwnd: string, pid: number, mode: string) =>
+    ipcRenderer.invoke("cad-embed", "attach", { hwnd, pid, mode }),
+  layout: (bounds: unknown) =>
+    ipcRenderer.invoke("cad-embed", "layout", bounds),
   focus: () => ipcRenderer.invoke("cad-embed", "focus"),
   detach: () => ipcRenderer.invoke("cad-embed", "detach"),
   closeCad: () => ipcRenderer.invoke("cad-embed", "closeCad"),

@@ -1,6 +1,0 @@
-.cad-editor { flex: 1; min-height: 300px; min-width: 0; flex-direction: column; overflow: hidden; }
-.cad-controls { flex-wrap: wrap; flex-shrink: 0; }
-.cad-controls select { max-width: 260px; }
-.cad-message { padding: 8px 16px; overflow-wrap: anywhere; flex-shrink: 0; }
-.cad-surface { flex: 1; min-height: 200px; min-width: 0; background: #eef0ed; display: grid; place-items: center; }
-.cad-surface p { color: #536052; padding: 24px; }

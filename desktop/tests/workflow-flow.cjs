@@ -31,7 +31,7 @@ async function launch() {
   });
   page = await app.firstWindow();
   page.setDefaultTimeout(15000);
-  await page.getByText("工程服务运行中", { exact: true }).waitFor();
+  await page.getByText("就绪", { exact: true }).waitFor();
 }
 async function choose(target, create) {
   await app.evaluate(({ dialog }, value) => {
@@ -41,6 +41,7 @@ async function choose(target, create) {
     });
   }, target);
   await page
+    .getByRole("toolbar", { name: "工程命令" })
     .getByRole("button", {
       name: create ? "新建工程" : "打开工程",
       exact: true,
@@ -59,15 +60,24 @@ async function until(read, timeout = 240000) {
 async function settled(kind) {
   await until(async () => {
     const tasks = await page.evaluate(() => window.gongke.request("task.list"));
-    const finished = tasks.find((t) => t.kind === kind && !["queued", "running"].includes(t.status));
-    if (finished) assert.equal(finished.status, "complete", JSON.stringify(finished));
-    return !!finished && !tasks.some((t) => ["queued", "running"].includes(t.status));
+    const finished = tasks.find(
+      (t) => t.kind === kind && !["queued", "running"].includes(t.status),
+    );
+    if (finished)
+      assert.equal(finished.status, "complete", JSON.stringify(finished));
+    return (
+      !!finished && !tasks.some((t) => ["queued", "running"].includes(t.status))
+    );
   });
 }
 (async () => {
   try {
     await launch();
     await choose(project, true);
+    await page
+      .getByLabel("工程树", { exact: true })
+      .getByText("减速器课程设计", { exact: true })
+      .click();
     assert.equal(await page.getByLabel("工作拉力 / N").inputValue(), "");
     await page.getByLabel("工作拉力 / N").fill("2500");
     await page.getByLabel("带速 / m·s⁻¹").fill("1.4");
@@ -84,7 +94,7 @@ async function settled(kind) {
     );
     await page.screenshot({ path: path.join(output, "task.png") });
     await page
-      .getByRole("button", { name: "生成模型与图纸", exact: true })
+      .getByRole("button", { name: "生成模型、图纸与说明书", exact: true })
       .click();
     await settled("generation");
     await page
@@ -115,11 +125,15 @@ async function settled(kind) {
     app = null;
     await launch();
     await choose(project, false);
-    const reopened = await page.evaluate(() => window.gongke.request("project.current"));
+    const reopened = await page.evaluate(() =>
+      window.gongke.request("project.current"),
+    );
     assert.equal(reopened.task.conveyor.belt_pull_N, 2600);
     assert.equal(reopened.delivery, null);
     await choose(other, true);
-    const isolated = await page.evaluate(() => window.gongke.request("project.current"));
+    const isolated = await page.evaluate(() =>
+      window.gongke.request("project.current"),
+    );
     assert.equal(isolated.task, null);
     fs.writeFileSync(
       path.join(output, "result.json"),

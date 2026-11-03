@@ -83,16 +83,53 @@ const server = http.createServer((req, res) => {
         bounds: { min: [0, 0, 0], max: [10, 5, 0] },
       };
       window.gongke = {
+        onboarding: {
+          onState: () => () => {},
+          state: async () => ({
+            selected: "deepseek",
+            agents: {
+              deepseek: { step: "complete" },
+              workbuddy: { step: "detect" },
+            },
+            releases: [],
+            canInstall: false,
+          }),
+        },
+        documents: {
+          read: async () => ({
+            mime: "application/dxf",
+            content: btoa("0\nSECTION\n2\nENTITIES\n0\nENDSEC\n0\nEOF"),
+          }),
+          import: async () => [],
+        },
+        getAgentMode: async () => "model",
+        setAgentMode: async () => {},
         agent: {
-          settings: async () => ({agents:[{id:"fixture", name:"Fixture",command:"fixture",args:[],env:{}}],mcp:{command:"fixture",args:[],env:{}}}),
-          state: async () => ({phase:"disconnected",project:"",agentId:"",authMethods:[],events:[]}),
+          settings: async () => ({
+            agents: [
+              {
+                id: "fixture",
+                name: "Fixture",
+                command: "fixture",
+                args: [],
+                env: {},
+              },
+            ],
+            mcp: { command: "fixture", args: [], env: {} },
+          }),
+          state: async () => ({
+            phase: "disconnected",
+            project: "",
+            agentId: "",
+            authMethods: [],
+            events: [],
+          }),
           onState: () => () => {},
         },
         onEvent: () => () => {},
         chooseProject: async () => null,
         request: async (method, params = {}) => {
-          if (method === "system.status")
-            return { ready: true };
+          if (method === "system.status") return { ready: true };
           if (method === "project.current")
             return {
               name: "UI fixture",
@@ -294,8 +331,11 @@ const server = http.createServer((req, res) => {
       };
     });
     await page.goto("http://127.0.0.1:" + server.address().port);
-    // 应用默认打开任务书；从侧栏的原生连接进入原生视图
-    await page.getByRole("button", { name: /^AutoCAD/ }).click();
+    // 从工程树进入原生文档，原有宿主契约断言不变。
+    await page
+      .getByLabel("工程树", { exact: true })
+      .getByText("原生 CAD", { exact: true })
+      .click();
     await page.getByLabel("原生软件").selectOption("autocad");
     await page
       .getByRole("button", { name: "读取当前工程", exact: true })
@@ -336,6 +376,7 @@ const server = http.createServer((req, res) => {
     await page.getByRole("button", { name: "更新文字", exact: true }).click();
     await page
       .getByText("请先保存并打开新的工作副本", { exact: true })
+      .first()
       .waitFor();
     assert.equal(
       await page.evaluate(() =>
@@ -434,9 +475,8 @@ const server = http.createServer((req, res) => {
       0,
     );
     // Import response loss must navigate to the existing pending UI, never replay the mutation.
-    await page.getByRole("button", { name: /^工程文件/ }).click();
     await page
-      .locator(".files button")
+      .locator(".project-pane [role=treeitem]:not([aria-expanded])")
       .filter({ hasText: "shaft.dxf" })
       .click();
     await page
@@ -451,7 +491,7 @@ const server = http.createServer((req, res) => {
     assert.equal(imported.method, "drawing.import_dxf");
     assert.equal(imported.error.outcome, "unknown");
     await page
-      .locator(".files button")
+      .locator(".project-pane [role=treeitem]:not([aria-expanded])")
       .filter({ hasText: "shaft.dxf" })
       .click();
     await page
@@ -478,6 +518,7 @@ const server = http.createServer((req, res) => {
       .getByText("工作副本尚未完成工程登记；保留原操作，请查询核对后继续", {
         exact: true,
       })
+      .first()
       .waitFor();
     calls = await page.evaluate(() => window.check.calls);
     assert.equal(
@@ -538,6 +579,7 @@ const server = http.createServer((req, res) => {
       .getByText("工作副本尚未完成工程登记；保留原操作，请查询核对后继续", {
         exact: true,
       })
+      .first()
       .waitFor();
     calls = await page.evaluate(() => window.check.calls);
     assert.equal(

@@ -1,0 +1,307 @@
+.agent-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+}
+.agent-panel > .panel-heading {
+  height: 40px;
+  min-height: 40px;
+  border-bottom: 1px solid var(--line);
+}
+.agent-connection {
+  font-size: var(--text-small);
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+  margin-right: 8px;
+}
+.agent-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 12px;
+}
+.agent-controls .fui-Select {
+  flex: 1;
+  min-width: 0;
+}
+.agent-controls select {
+  min-width: 0;
+  width: 100%;
+}
+.agent-modes {
+  border-bottom: 1px solid var(--line);
+  padding: 0 8px;
+}
+.mode-note {
+  font-size: var(--text-small);
+  color: var(--muted);
+  padding: 8px 12px;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+}
+.agent-context {
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: var(--text-small);
+  border-bottom: 1px solid var(--line);
+}
+.agent-context > div {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+}
+.agent-context > div > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.agent-context .fui-Button {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+}
+.conversation {
+  flex: 1;
+  min-height: 64px;
+  overflow: auto;
+  padding: 16px 16px 24px;
+  overscroll-behavior: contain;
+}
+.agent-welcome {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: 16px 0;
+}
+.agent-welcome h3 {
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+.agent-welcome p {
+  font-size: var(--text-body);
+}
+.agent-welcome .fui-Button {
+  text-align: left;
+  justify-content: flex-start;
+  white-space: normal;
+}
+.message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-body);
+  line-height: 1.75;
+  margin: 0 0 24px;
+}
+.message-author {
+  font-size: var(--text-small);
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.message.user {
+  background: var(--frame);
+  padding: 12px;
+  border-radius: 4px;
+}
+.message.notice {
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+.agent-tool {
+  border-left: 2px solid var(--line);
+  padding: 8px 0 8px 12px;
+  margin: 12px 0;
+}
+.agent-tool summary {
+  cursor: pointer;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.agent-tool summary span {
+  font-size: var(--text-small);
+  color: var(--muted);
+  margin-left: 8px;
+  font-weight: 400;
+}
+.agent-tool .data-details,
+.tool-content {
+  margin-top: 8px;
+  font-size: var(--text-small);
+  white-space: pre-wrap;
+}
+.agent-thought {
+  color: var(--muted);
+  font-size: var(--text-small);
+  margin-bottom: 12px;
+}
+.agent-permission {
+  padding: 12px;
+  max-height: 240px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  background: var(--frame);
+}
+.permission-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.agent-error {
+  padding: 8px 12px;
+  color: var(--danger);
+  font-size: var(--text-small);
+  max-height: 100px;
+  overflow: auto;
+}
+.compose {
+  padding: 12px;
+  border-top: 1px solid var(--line);
+}
+.compose > .fui-Textarea {
+  width: 100%;
+  min-height: 88px;
+}
+.compose textarea {
+  font-size: var(--text-body);
+  line-height: 1.6;
+}
+.compose > div:last-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  gap: 12px;
+}
+.compose > div:last-child > span {
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+.agent-settings .fui-Field {
+  margin: 16px 0;
+}
+.agent-settings {
+  max-width: 640px;
+}
+.env-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 8px;
+  margin: 8px 0;
+}
+.env-row .fui-Input {
+  min-width: 0;
+}
+.agent-onboarding {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  flex-shrink: 1;
+  min-height: 36px;
+  max-height: 42%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: var(--text-ui);
+}
+.onboarding-heading {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px !important;
+  background: var(--frame) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.onboarding-heading span {
+  font-size: var(--text-small);
+  font-weight: 400;
+  color: var(--muted);
+}
+.onboarding-body {
+  padding: 0 12px 12px;
+  min-height: 0;
+  overflow: auto;
+}
+.onboarding-body p {
+  margin: 8px 0;
+  line-height: 1.6;
+}
+.onboarding-body ol {
+  padding-left: 20px;
+}
+.onboarding-body li {
+  margin: 8px 0;
+}
+.onboarding-body blockquote {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border-left: 2px solid var(--accent);
+  line-height: 1.6;
+  user-select: text;
+}
+.onboarding-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.onboarding-actions button[aria-pressed="true"] {
+  background: var(--selection);
+  color: var(--accent);
+}
+.onboarding-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
+  line-height: 1.6;
+}
+.onboarding-location {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.onboarding-url {
+  overflow-wrap: anywhere;
+  font-size: var(--text-small);
+  user-select: text;
+}
+.onboarding-error {
+  color: var(--danger);
+}
+.onboarding-body small {
+  display: block;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+.onboarding-body progress {
+  width: 100%;
+}
+
+.onboarding-primary {
+  flex: 1;
+  max-height: none;
+  min-height: 160px;
+}
+.onboarding-primary .onboarding-heading {
+  margin: 0;
+  padding: 16px 12px !important;
+  background: var(--surface) !important;
+  font-size: var(--text-title);
+}
+.onboarding-primary .onboarding-body {
+  flex: 1;
+}

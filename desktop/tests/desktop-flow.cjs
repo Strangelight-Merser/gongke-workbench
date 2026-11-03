@@ -115,36 +115,49 @@ async function serviceSnapshot(page) {
     await page.evaluate(() =>
       window.gongke.onEvent((event) => window.recordServiceEvent(event)),
     );
-    await page
-      .getByText("工程服务运行中", { exact: true })
-      .waitFor({ timeout: 30000 });
+    await page.getByText("就绪", { exact: true }).waitFor({ timeout: 30000 });
     await app.evaluate(({ dialog }, path) => {
       dialog.showOpenDialog = async () => ({
         canceled: false,
         filePaths: [path],
       });
     }, project);
-    await page.getByRole("button", { name: "新建工程", exact: true }).click();
+    await page
+      .getByRole("toolbar", { name: "工程命令" })
+      .getByRole("button", { name: "新建工程", exact: true })
+      .click();
     await page.locator("footer").getByText(project, { exact: true }).waitFor();
+    await page
+      .getByLabel("工程树", { exact: true })
+      .getByText("减速器课程设计", { exact: true })
+      .click();
     await page.getByRole("button", { name: /^任务书/ }).click();
     await page.getByRole("button", { name: "载入教学条件" }).click();
     await page.waitForFunction(() => {
-      const label = [...document.querySelectorAll("label")].find((item) => item.textContent.includes("工作拉力 / N"));
+      const label = [...document.querySelectorAll("label")].find((item) =>
+        item.textContent.includes("工作拉力 / N"),
+      );
       return label?.querySelector("input")?.value === "2500";
     });
     assert.equal(await page.getByLabel("工作拉力 / N").inputValue(), "2500");
     await page.getByRole("button", { name: "计算方案", exact: true }).click();
-    await page.getByText("Y132S-4", { exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: /^电动机与传动比/ })
+      .filter({ hasText: "Y132S-4" })
+      .waitFor();
     await page.getByRole("button", { name: /^传动零件/ }).click();
     await page.locator(".ck").first().waitFor();
     await page.waitForTimeout(700);
     await page.screenshot({ path: join(output, "desktop-calculation.png") });
     await page.getByRole("button", { name: /^任务书/ }).click();
-    await page.getByRole("button", { name: "生成模型与图纸" }).click();
-    await page.locator("footer").getByRole("button", { name: /^任务/ }).click();
+    await page.getByRole("button", { name: "生成模型、图纸与说明书" }).click();
+    await page
+      .locator("footer")
+      .getByRole("button", { name: /操作记录|项执行中/ })
+      .click();
     await page
       .locator(
-        ".task-status.complete, .task-status.partial, .task-status.failed, .task-status.canceled, .task-status.interrupted",
+        ".task[data-kind=generation] .task-status.complete, .task[data-kind=generation] .task-status.partial, .task[data-kind=generation] .task-status.failed, .task[data-kind=generation] .task-status.canceled, .task[data-kind=generation] .task-status.interrupted",
       )
       .first()
       .waitFor({ timeout: 240000 });
@@ -166,16 +179,18 @@ async function serviceSnapshot(page) {
     );
     assert.equal(manifest.results.length, 1);
     assert.equal(manifest.results[0].exports_complete, true);
-    await page.getByRole("button", { name: /^工程文件/ }).click();
     const svg = page
-      .locator(".files button")
+      .locator(".project-pane [role=treeitem]:not([aria-expanded])")
       .filter({ hasText: ".svg" })
       .first();
     await svg.waitFor();
     await svg.click();
     await page.locator("img.drawing").waitFor();
     await page.screenshot({ path: join(output, "desktop-drawing.png") });
-    assert.equal(await page.getByRole("button", { name: "发送 ↑" }).isDisabled(), true);
+    assert.equal(
+      await page.getByRole("button", { name: "发送" }).isDisabled(),
+      true,
+    );
     assert.deepEqual(errors, []);
     const status = await page.evaluate(() =>
       window.gongke.request("system.status"),
