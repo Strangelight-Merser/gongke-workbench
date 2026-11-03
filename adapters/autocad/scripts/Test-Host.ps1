@@ -20,6 +20,9 @@ $hostInfo = Get-Content -Raw $HostDescriptor | ConvertFrom-Json
 $records = New-Object System.Collections.Generic.List[object]
 function Invoke-Bridge([string]$Method, [hashtable]$Parameters) {
     $requestId = [guid]::NewGuid().ToString('N')
+    # 发送前保留原 ID，即使超时也能从 evidence 查询，不能另发新 ID。
+    $record = @{ request_id=$requestId; method=$Method; params=$Parameters; response=$null }
+    $records.Add($record)
     $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $hostInfo.pipe_name, [System.IO.Pipes.PipeDirection]::InOut)
     try {
         $pipe.Connect(5000)
@@ -33,7 +36,7 @@ function Invoke-Bridge([string]$Method, [hashtable]$Parameters) {
         if (-not $read.Wait(30000)) { throw 'Host response timeout; inspect operation.status before any retry.' }
         $response = $read.Result | ConvertFrom-Json
         if ($response.id -ne $requestId) { throw 'Protocol request ID mismatch.' }
-        $records.Add(@{ method=$Method; params=$Parameters; response=$response })
+        $record.response = $response
         return $response
     } finally { $pipe.Dispose() }
 }
@@ -49,9 +52,22 @@ $evidence = Join-Path $OutputDirectory ('host-evidence-' + (Op) + '.json')
 $passed = $false
 try {
     $description = Result (Invoke-Bridge 'host.describe' @{})
-    Result (Invoke-Bridge 'drawing.import_dxf' @{operation_id=(Op); source_path=$FixtureDxf; target_path=$imported}) | Out-Null
+    $importParams = @{operation_id=(Op); source_path=$FixtureDxf; target_path=$imported}
+    $importResult = Result (Invoke-Bridge 'drawing.import_dxf' $importParams)
+    $duplicate = Result (Invoke-Bridge 'drawing.import_dxf' $importParams)
+    if ($duplicate.status -ne 'completed' -or $duplicate.response.result.path -ne $imported) { throw 'Duplicate import did not return durable receipt.' }
     $importedHash = (Get-FileHash $imported -Algorithm SHA256).Hash
-    $document = Result (Invoke-Bridge 'document.open' @{path=$imported})
+    # 同指纹、不同路径的未登记副本不获得原生写权限。
+    $unregistered = Join-Path $OutputDirectory ('unregistered-' + (Op) + '.dwg')
+    Copy-Item $imported $unregistered
+    $original = Result (Invoke-Bridge 'document.open' @{operation_id=(Op); path=$unregistered})
+    $originalSnapshot = Result (Invoke-Bridge 'document.snapshot' @{document_id=$original.document_id})
+    $originalText = @($originalSnapshot.entities | Where-Object {$_.type -eq 'TEXT'})[0]
+    $denied = Invoke-Bridge 'drawing.edit_text' @{operation_id=(Op); document_id=$original.document_id;
+        expected_revision=$originalSnapshot.revision; handle=$originalText.handle; text='MUST_NOT_BE_APPLIED'}
+    if ($denied.error.code -ne 'working_copy_required') { throw 'Native original protection failed.' }
+    $document = Result (Invoke-Bridge 'document.open' @{operation_id=(Op); path=$imported})
+    if (-not $document.is_working_copy -or $document.fingerprint -ne $importResult.native_fingerprint) { throw 'Imported native identity/permission mismatch.' }
     $snapshot = Result (Invoke-Bridge 'document.snapshot' @{document_id=$document.document_id})
     foreach ($kind in @('LINE','LWPOLYLINE','CIRCLE','ARC','TEXT','MTEXT','DIMENSION')) {
         if (@($snapshot.entities | Where-Object {$_.type -eq $kind}).Count -lt 1) { throw "Missing native entity: $kind" }
@@ -74,9 +90,15 @@ try {
     Result (Invoke-Bridge 'document.save_copy' @{operation_id=(Op); document_id=$document.document_id;
         expected_revision=$snapshot.revision; target_path=$copy}) | Out-Null
     if ((Get-FileHash $imported -Algorithm SHA256).Hash -ne $importedHash) { throw 'Original DWG was overwritten.' }
-    $reopened = Result (Invoke-Bridge 'document.open' @{path=$copy})
+    $reopened = Result (Invoke-Bridge 'document.open' @{operation_id=(Op); path=$copy})
     $final = Result (Invoke-Bridge 'document.snapshot' @{document_id=$reopened.document_id})
     if (@($final.entities | Where-Object {$_.type -eq 'TEXT' -and $_.text -eq 'GONGKE_NATIVE_EDIT_VERIFIED'}).Count -ne 1) { throw 'Saved text did not persist.' }
+    $finalDimension = @($final.entities | Where-Object {$_.type -eq 'DIMENSION'})[0]
+    if ($finalDimension.measurement -ne $dimension.measurement -or $finalDimension.text_override -ne $dimension.text_override) { throw 'Saved dimension measurement/override mismatch.' }
+    for ($index=0; $index -lt 3; $index++) {
+        if ([math]::Abs($finalDimension.text_position[$index] - $position[$index]) -gt 1e-8) { throw 'Saved dimension text position mismatch.' }
+    }
+    if ((Get-FileHash $unregistered -Algorithm SHA256).Hash -ne $importedHash) { throw 'Unregistered drawing was overwritten.' }
     if ((Get-FileHash $FixtureDxf -Algorithm SHA256).Hash -ne $before) { throw 'DXF source changed.' }
     $passed = $true
 } finally {

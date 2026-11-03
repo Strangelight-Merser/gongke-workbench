@@ -6,5 +6,6 @@
   <ItemGroup>
     <Compile Include="../Gongke.AutoCAD.Addin/Protocol.cs" Link="Protocol.cs" />
     <Compile Include="../Gongke.AutoCAD.Addin/BridgeServer.cs" Link="BridgeServer.cs" />
+    <Compile Include="../Gongke.AutoCAD.Addin/OperationStore.cs" Link="OperationStore.cs" />
   </ItemGroup>
 </Project>
