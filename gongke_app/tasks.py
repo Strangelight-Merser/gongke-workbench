@@ -32,6 +32,12 @@ class TaskContext:
     def receipt(self, command, params, result):
         self.manager.receipt(self.task_id, command, params, result)
 
+    def begin(self, command, params):
+        return self.manager.receipt(self.task_id, command, params, None, phase="prepared")
+
+    def finish(self, receipt_id, result):
+        self.manager.finish_receipt(self.task_id, receipt_id, result)
+
 
 class Tasks:
     def __init__(self, state_dir: Path, emit):
@@ -79,21 +85,31 @@ class Tasks:
         self.emit({"event": "task.updated", "task": record})
         return record
 
-    def receipt(self, task_id, command, params, result):
-        record = {"command": command, "params": params, "result": result, "at": now()}
+    def receipt(self, task_id, command, params, result, phase="finished"):
+        record = {"command": command, "params": params, "result": result, "at": now(), "phase": phase}
         with self.lock:
-            self.db.execute("INSERT INTO receipts VALUES (?,?,?)", (task_id, command, json.dumps(record, ensure_ascii=False, allow_nan=False)))
+            cursor = self.db.execute("INSERT INTO receipts VALUES (?,?,?)", (task_id, command, json.dumps(record, ensure_ascii=False, allow_nan=False)))
+            self.db.commit()
+        self.emit({"event": "task.receipt", "task_id": task_id, "receipt": record})
+        return cursor.lastrowid
+
+    def finish_receipt(self, task_id, receipt_id, result):
+        with self.lock:
+            row = self.db.execute("SELECT record FROM receipts WHERE rowid=? AND task_id=?", (receipt_id, task_id)).fetchone()
+            record = json.loads(row[0])
+            record.update(result=result, phase="finished", finished_at=now())
+            self.db.execute("UPDATE receipts SET record=? WHERE rowid=?", (json.dumps(record, ensure_ascii=False, allow_nan=False), receipt_id))
             self.db.commit()
         self.emit({"event": "task.receipt", "task_id": task_id, "receipt": record})
 
-    def start(self, kind, project, fn):
-        task_id, event = uuid4().hex, threading.Event()
+    def start(self, kind, project, fn, *, inline=False, task_id=None):
+        task_id, event = task_id or uuid4().hex, threading.Event()
         record = {"task_id": task_id, "kind": kind, "project": str(project), "status": "queued",
                   "created_at": now(), "stage": "等待执行", "cancel_requested": False}
         with self.lock:
-            self.cancel_events[task_id] = event
             self.db.execute("INSERT INTO tasks VALUES (?,?)", (task_id, json.dumps(record, ensure_ascii=False)))
             self.db.commit()
+            self.cancel_events[task_id] = event
         self.emit({"event": "task.updated", "task": record})
 
         def run():
@@ -103,7 +119,9 @@ class Tasks:
                 self.update(task_id, status="running", started_at=now())
                 result = fn(ctx)
                 status = "complete"
-                if kind == "generation" and result.get("status") == "failed":
+                if isinstance(result, dict) and "error" in result:
+                    status = "failed"
+                elif kind == "generation" and result.get("status") == "failed":
                     status = "failed"
                 elif kind == "generation" and not result.get("exports_complete"):
                     status = "partial"
@@ -111,13 +129,18 @@ class Tasks:
                 if event.is_set():
                     stage += "；取消请求未中断正在执行的操作"
                 self.update(task_id, status=status, result=result, finished_at=now(), stage=stage)
+                return result
             except Canceled as exc:
                 self.update(task_id, status="canceled", stage=str(exc), finished_at=now())
             except Exception as exc:
                 self.update(task_id, status="failed", error=str(exc), stage="执行失败", finished_at=now())
+                if inline:
+                    raise
             finally:
                 with self.lock:
                     self.cancel_events.pop(task_id, None)
+        if inline:
+            return run()
         self.pool.submit(run)
         return record
 

@@ -12,12 +12,9 @@
 
 复制要试用的 FCStd 和同名 case.json 到一个新的工作目录。将 case 的 `document.path` 改为副本的绝对路径，其他映射保持原样。打开该 FCStd，在原生 CAD 中打开 `ShaftDrawing` 并完成更新，再启用工科工作台。运行：
 
-```sh
-python -m gongke_core inspect-revision --host freecad \
-  --case /absolute/path/normal.case.json --out /absolute/path/new-result
-```
+先在桌面打开对应应用工程，按 [绑定工程 CLI](../../../docs/agent-api.md#cli-迁移) 调用 `revision.inspect`，参数为 `{"case": <完整 case>}`。原生文件与 case 基准不变；工具结果保存在桌面任务收据。
 
-必须在 FreeCAD 所在的机器上执行实时入口，或明确配置其本机桥接端点。不要把另一机器上的同名文件当作当前工程。`--capture` 仅用于离线证据重放。
+必须在 FreeCAD 所在机器执行实时入口。提供 `capture` 参数仅用于离线证据重放，不把另一机器的同名文件当作当前工程。
 
 保存的图纸重开后，投影缓存可能尚未生成；这时读取器报告未知，不自动刷新或重算。手工修复负例后，重新检查可得到新的结论。不要修改这里的基准来消除失败。
 

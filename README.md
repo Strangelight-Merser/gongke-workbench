@@ -2,7 +2,7 @@
 
 面向工科学生的统一工程工作台。模型、图纸、计算和工程助手在同一个桌面窗口中使用；原生 CAD 执行实际编辑，工作台读取结果与操作回执。
 
-当前主入口为 [桌面应用](desktop/README.md)：Electron＋React 界面、随安装包提供的 Python 服务，以及内置的模型工具调用循环。FreeCAD 工作台、SOLIDWORKS COM 插件和 AutoCAD 托管插件分别承担原生接入，手动操作与内置助手共用应用命令。
+当前主入口为 [桌面应用](desktop/README.md)：Electron＋React 界面、随安装包提供的 Python 服务，以及内置的模型工具调用循环。FreeCAD 工作台、SOLIDWORKS COM 插件和 AutoCAD 托管插件分别承担原生接入，手动操作、内置助手和绑定工程的 MCP 共用应用工具清单与执行规则。
 
 首个完整故事是：修改已有轴的明确尺寸，重新计算，更新关联工程图，再形成 AutoCAD DWG 工作修订。各环节并行推进；当前尚未完成 Windows 双宿主现场验收，不能把 SDK 编译或教学基准通过视为机械验收。
 
@@ -14,18 +14,20 @@
 | [SOLIDWORKS](adapters/solidworks/README.md) | 正式 COM add-in、尺寸读写、网格、图纸检查/更新、工作副本及 DXF | 真实 interop 编译检查；Windows 宿主待测 |
 | [AutoCAD](adapters/autocad/README.md) | 正式 .bundle、原生实体读取/选择、文字编辑、标注文字移动、DXF→DWG | Autodesk SDK 编译与协议检查；Windows 宿主待测 |
 
-工作台只允许修改由原生保存回执登记的工作副本；原件即使放在工程目录内，也不会自动获准修改。教学输入始终明确标识，缺少的机械条件不能由助手编造。以下 CLI/MCP 操作供开发、回归和外部 agent 使用；G1 只读检查继续独立保留。
+工作台只允许修改由原生保存回执登记的工作副本；原件即使放在工程目录内，也不会自动获准修改。教学输入始终明确标识，缺少的机械条件不能由助手编造。外部 Agent 通过发行包中的 MCP stdio 入口绑定桌面当前工程，操作进入同一任务与收据。配置与工具清单见 [Agent 接口](docs/agent-api.md)。
 
 ## 检查已有轴与关联图纸
 
 打开已有 FreeCAD 三段实心回转轴及其 TechDraw 图纸，启用“工科工作台”。执行者准备一个明确的 case，记录文件绝对路径、Body/草图/回转对象、目标半径约束对应的轴段，以及所选页中的每个目标直径标注。检查器核对这些对应关系，不靠尺寸数值相同猜测关系，也不需要先绑定或改写原件。
 
+先在桌面打开对应应用工程，再准备 `inspect-params.json`，内容为 `{"case": <完整修订 case>}`：
+
 ```bash
-python -m gongke_core inspect-revision --host freecad \
-  --case /absolute/path/shaft.case.json --out /absolute/path/check-01
+/path/to/gongke-service call --state-dir /absolute/application/state --project /absolute/project \
+  revision.inspect --params @inspect-params.json
 ```
 
-命令读取当前已打开的 FreeCAD，打印中文条件确认表和问题定位，并在新目录中生成 `revision.json`。检查不重算、不保存，不改模型、显示或选择。若模型或图纸待更新，结果保留未确认状态，需在 CAD 中明确更新后再读。
+命令读取当前已打开的 FreeCAD，将完整检查结果返回 stdout 和桌面任务收据。检查不重算、不保存，不改模型、显示或选择。若模型或图纸待更新，结果保留未确认状态，需在 CAD 中明确更新后再读。
 
 支持范围为三段轴的名义弯扭应力、梁挠度，以及所选图纸中显式映射的直径标注。图纸检查包括实际测量、毫米显示精度、数值覆盖和模型/视图引用；未识别对象、悬空引用和枚举缺口会保留问题位置。两个视图显示同一尺寸时，须分别映射和检查。
 
@@ -33,16 +35,9 @@ python -m gongke_core inspect-revision --host freecad \
 
 克隆后可从 [原生轴与图纸基准](tests/fixtures/revision_cases/README.md) 开始：复制一份 `.FCStd` 与同名 `.case.json` 到新工作目录，只把 case 的 `document.path` 改为该副本的绝对路径，然后在 FreeCAD 中打开副本。这些文件由 [revision_fixture.py](tests/e2e/revision_fixture.py) 构造，包含正常及四种负例；它们是测试基准，不是学生试用样本，保留仓库原件不变。
 
-手工修正后，重新检查并比较上一份结果：
+手工修正后，可在调用参数中增加 `previous`（上次工具的领域结果）重新检查。几何、条件、映射、图纸或会话改变会使旧结论过期。任务完成不代表图纸检查或计算检查通过，须阅读 `drawing_review`、`calculation` 和来源缺口。
 
-```bash
-python -m gongke_core inspect-revision --case /absolute/path/shaft.case.json \
-  --previous /absolute/path/check-01/revision.json --out /absolute/path/check-02
-```
-
-几何、条件、映射、图纸或会话改变会使旧结论过期。每次 `--out` 必须是尚不存在的新目录；已有空目录也拒绝覆盖。退出码 `0` 表示当前范围的图纸检查和数值限值检查均通过，`1` 表示已生成结果但有失败或未确认项，`2` 表示输入、连接或输出错误。通过只针对已声明条件及受支持范围，不代表机械设计、疲劳或制造验收合格。
-
-提供 `--capture /absolute/path/normal.capture.json` 时改为离线核对，不连接 FreeCAD。结果明确标为 `recorded_capture`，只能说明该次采集，不能证明当前 CAD 仍相同。完整 case、条件状态与 MCP 调用见 [agent-api.md](docs/agent-api.md#已有轴与工程图只读检查)。
+参数中提供 `capture` 时改为离线核对，不连接 FreeCAD。结果明确标为 `recorded_capture`，只能说明该次采集，不能证明当前 CAD 仍相同。完整接口见 [agent-api.md](docs/agent-api.md)。
 
 ## 原生轴协作
 
@@ -53,13 +48,13 @@ python -m gongke_core inspect-revision --case /absolute/path/shaft.case.json \
 - 可提交受限轴梁仿真，查询或取消任务；工程修改后旧结果标为过期。
 - 当前可编辑案例为教学三段轴，校核仅包括名义弯扭应力与梁挠度，不代表实际减速器的轴肩、疲劳和配合验收。
 
-MCP 的 `create_shaft_project(case="course_output")` 可从减速器任务书初始化七段输出轴、两个原生键槽和六处原生圆角。此后 `review_current_object` 直接读取当前模型，检查名义应力、刚度、键连接及轴承座、齿轮座、联轴器孔径的一致性；手改轴承座 55→54.5 mm 会明确显示与 55 mm 轴承孔径不一致。课程轴暂不开放 agent 自动改径，材料疲劳依据和配合条件仍需补齐。
+MCP 的 `freecad.create(case="course_output")` 可从减速器任务书初始化七段输出轴、两个原生键槽和六处原生圆角。此后 `freecad.review` 直接读取当前模型，检查名义应力、刚度、键连接及轴承座、齿轮座、联轴器孔径的一致性；手改轴承座 55→54.5 mm 会明确显示与 55 mm 轴承孔径不一致。课程轴暂不开放 agent 自动改径，材料疲劳依据和配合条件仍需补齐。
 
 轴肩疲劳使用当前原生圆角半径；超出公式适用范围的截面单独标为受阻。键槽槽根仍是计算假设，不视为实形疲劳通过。原生特征重算失败时停止分析，即使 FreeCAD 仍显示上一次的实体也不会沿用。
 
-课程轴可用 `preview_fillet_change` 比较右轴承邻接轴肩的圆角增大，再以 `apply_change` 写入一次可撤销的原生事务。默认案例支持 R1→R1.2/R1.5 mm，其他尺寸保持原样；预览后发生手改会使候选失效。`ready` 只表示满足本阶段编辑条件，整轴校核中的来源和模型缺口仍保留。
+课程轴可用 `freecad.preview_fillet` 比较右轴承邻接轴肩的圆角增大，再以 `freecad.apply` 写入一次可撤销的原生事务。默认案例支持 R1→R1.2/R1.5 mm，其他尺寸保持原样；预览后发生手改会使候选失效。`ready` 只表示满足本阶段编辑条件，整轴校核中的来源和模型缺口仍保留。
 
-已有的原生三段回转轴可通过 `bind_existing_shaft` 接续。工作台识别现有的具名长度和半径约束，保留个人命名、草图、先前手改尺寸及 Body 位置，只添加工程映射。材料、支承、载荷、转矩、限值和编辑区间必须明确提供并注明来源；绑定本身可撤销。表达式驱动、未完全约束或含未知特征的轴保留原样，不自动接管。
+已有的原生三段回转轴可通过 `freecad.bind` 接续。工作台识别现有的具名长度和半径约束，保留个人命名、草图、先前手改尺寸及 Body 位置，只添加工程映射。材料、支承、载荷、转矩、限值和编辑区间必须明确提供并注明来源；绑定本身可撤销。表达式驱动、未完全约束或含未知特征的轴保留原样，不自动接管。
 
 三段轴与课程轴均可提交 CalculiX 梁任务。课程轴保留轴向力产生的偏心弯矩，梁模型不计算键槽、圆角的局部应力或扭转。分析结果保存在本机并关联对象内容和计算方法版本；保存重开后可继续判断适用性，改变轴段长度会使原载荷位置绑定失效。
 
@@ -75,7 +70,7 @@ macOS 上，任务管理进程异常退出后，下一次加载会核对并清�
 python tools/install_freecad_workbench.py --mod-dir "$HOME/Library/Application Support/FreeCAD/v1-1/Mod"
 ```
 
-重启 FreeCAD 后加载工作台。MCP 使用外部 Python 3.11 或更新版本运行 `python -P -m gongke_core mcp --profile native`，将 `PYTHONPATH` 设为安装目录 `GongKeWorkbench` 的绝对路径；详细接口见 [agent-api.md](docs/agent-api.md)。`-P` 避免客户端的当前工作目录覆盖已安装模块。原生编辑不依赖 build123d。`native` 提供当前工程工具与 `inspect_revision`，`batch` 只提供 9 个任务书批处理工具，默认 `all` 提供两组。
+重启 FreeCAD 后加载工作台。MCP 使用桌面发行包自带的 `gongke-service mcp --state-dir ... --project ...`，默认只读；需要修改时显式增加 `--allow-writes`。不依赖用户 Python，也不在 FreeCAD 进程中加载 SDK。绑定在工程切换后失效，须重新连接。WorkBuddy 项目配置生成与开发启动方式见 [agent-api.md](docs/agent-api.md)。
 
 ## 减速器批处理
 
@@ -94,7 +89,7 @@ python tools/install_freecad_workbench.py --mod-dir "$HOME/Library/Application S
 
 改任何一个参数，后面的齿轮、轴、轴承、键、模型、说明书全部重算。
 
-**人和 AI 都能用**：除了 FreeCAD 图形界面和命令行，同一套能力还以 MCP 服务器（`python -P -m gongke_core mcp`，按上述配置设置 `PYTHONPATH`）的形式提供给 AI agent。
+**人和 AI 都能用**：除了 FreeCAD 图形界面和命令行，同一套能力还以 MCP 服务器（发行包中的 `gongke-service mcp --state-dir ... --project ...`）的形式提供给 AI agent。
 Claude、Cursor 等可以直接调用设计计算、多方案对比、标准件查询和出图，不需要操作界面。接入方法见 [docs/agent-api.md](docs/agent-api.md)。
 
 ## 使用方法

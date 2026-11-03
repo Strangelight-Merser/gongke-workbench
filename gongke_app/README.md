@@ -22,7 +22,7 @@
 | `freecad.read` / `freecad.review` | `session_id,entity_id`；实际原生对象和受限工程复核 |
 | `freecad.preview` | `session_id,entity_id,segment_id,diameter_m`；候选计算，不改几何 |
 | `freecad.apply` / `freecad.undo` | 会话、候选/操作标识；实际原生事务和受限撤销 |
-| `freecad.save` | `session_id,path`；只能保存为工程内尚不存在的 `.FCStd` 工作副本 |
+| `freecad.save` | `session_id,path`；保存为工程内新的 `.FCStd` 工作副本，或保存当前文档自身已登记的副本 |
 | `freecad.update_drawing` | `session_id,page_name,expected_revision` |
 | `freecad.export_drawing` | 同上，可选工程相对 `path`；省略时新建 `revisions/native-drawing-<id>/page.dxf` |
 | `hosts.list` | 实际探测 FreeCAD 和已发现的 Windows 命名管道；发现文件存在不等于连接成功 |
@@ -33,7 +33,7 @@
 
 `task.updated` 提供执行阶段，`task.receipt` 提供工具结果，`agent.delta` 是模型文字增量，`agent.message` 是该轮完整文字。界面不应将任务 `complete` 解释为工程验收通过，须继续检查结果的 `calculation_ok`、`exports_complete`、`failed` 和来源缺口。部分导出失败为 `partial`；取消不等于撤销，正在运行的导出将结束后返回真实结果。
 
-工程清单可携带，SQLite 任务和操作收据位于应用状态目录。进程中断后未完成任务标为 `interrupted`，不会恢复或重试原生写入。一个状态目录只允许一个服务进程。原生修改只允许针对清单中 `working_copies` 登记的副本；只有工作台收到成功保存/导入回执、核对目标路径并确认文件实际存在后才登记。放进工程目录的原件不会因此获得修改资格。保存与导出不覆盖现有文件。
+工程清单可携带，SQLite 任务和操作收据位于应用状态目录。进程中断后未完成任务标为 `interrupted`，不会恢复或重试原生写入。一个状态目录只允许一个服务进程。原生修改只允许针对清单中 `working_copies` 登记的副本；只有工作台收到成功保存/导入回执、核对目标路径并确认文件实际存在后才登记。放进工程目录的原件不会因此获得修改资格。导出不覆盖现有文件；FreeCAD 可以保存当前文档自身已登记的工作副本。
 
 发送原生保存副本或 DXF 导入前，工程清单中的 `copy_operations` 会保存原操作 ID、命令、参数、宿主会话与请求 ID。响应丢失后，查询同一操作可以核对终态成功回执并恢复副本登记，不重发写操作；SOLIDWORKS 还核对宿主保存的命令参数指纹。成对副本必须全部存在且引用与读回验证通过才一次登记。查询不属于当前工程记录的操作、宿主换会话、结果未知或文件缺失，均不会授予修改资格。此恢复可跨应用重启，不跨原生宿主会话。
 
@@ -50,3 +50,15 @@
 `project.current` 返回 `generations`（从新到旧）和 `delivery`（符合当前输入的最新一次生成）。每次生成记录输入摘要、产物清单、自动图检和失败状态。阶段完成要求清单中的产物成功且文件实际非空；旧文件或旧成功记录不会覆盖最新失败。条件改变后历史修订仍可打开，显示过期。未携带输入摘要的历史产物不会自动获得当前有效状态。此检查不鉴定用户在外部软件中对导出文件的内容修改。
 
 对话保存在工程目录的 `.gongke-conversation.json`，随整个工程一起携带。模型收到历史对话、工具结果和本轮选择；中断的工具调用记录作为待核对信息，不重放写操作。任务及独立回执仍保存在应用状态目录 SQLite。每个工程同一时刻执行一轮助手任务；任务未结束时不切换工程。
+
+## 统一工具与绑定 MCP
+
+工具定义位于 `tools.py`，执行入口为 `Commands.call()`；服务生成任务、桌面 `host.command`、内置助手与外部 MCP 均经过该入口。`tools.list` 返回唯一清单。原生候选/对象的身份与修订仍由现有宿主契约校验，工具层没有另建宿主协议。
+
+服务随桌面启动一个带令牌的本机连接端点，发现文件为 `<state-dir>/service.json`。外部进程使用发行包中的 `gongke-service mcp --state-dir ... --project ... [--allow-writes]`。`--project` 必须是桌面当前工程；绑定后切换工程使旧连接失效，不跟随新工程。默认只读。每次 MCP 调用都登记为桌面可见任务并返回同一个 task_id。
+
+`mcp.configure {"allow_writes":true}` 在发行包内生成项目级 WorkBuddy 配置；也可以执行 `gongke-service workbuddy --state-dir ... --project ... --allow-writes`。配置使用自包含程序，不依赖用户 Python。开发与测试须安装 `.[app]` 或 `.[dev]`。
+
+收据在执行前持久保存为 prepared，完成后更新同一条为 finished；事件仍使用 task.updated 与 task.receipt。正在运行的任务取消后不自动回滚，也不重发结果未知的原生写入。纯桌面刷新查询不新增任务。
+
+完整参数、CLI 迁移、协议取舍与官方资料见 [Agent 接口](../docs/agent-api.md) 和 [绑定决定](../docs/project-bound-mcp.md)。

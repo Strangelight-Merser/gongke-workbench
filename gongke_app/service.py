@@ -8,17 +8,23 @@ import os
 from pathlib import Path
 import sys
 import threading
+from uuid import uuid4
 
 from gongke_app import __version__
 from gongke_app.agent.provider import Provider
-from gongke_app.commands import Commands, validate, schema, TEXT, BOOL, TASK
-from gongke_app.hosts import Hosts
+from gongke_app.commands import Commands
+from gongke_app.tools import validate, schema, TEXT, BOOL, TASK
+from gongke_app.hosts import Hosts, READ_METHODS
 from gongke_app.project import Project
 from gongke_app.tasks import Tasks
 
 
 class Application:
     def __init__(self, state_dir: Path, emit=lambda event: None):
+        self.state_dir = state_dir.resolve()
+        self.lock = threading.RLock()
+        self.project_epoch = uuid4().hex
+        self.bindings = {}
         self.emit, self.project, self.provider = emit, None, None
         self.tasks = Tasks(state_dir, emit)
         self.hosts = Hosts()
@@ -30,6 +36,51 @@ class Application:
         return self.project
 
     def dispatch(self, method, params):
+        with self.lock:
+            return self._dispatch(method, params)
+
+    def bind(self, project, allow_writes=False):
+        with self.lock:
+            validate({"project": project, "allow_writes": allow_writes}, schema({"project": TEXT, "allow_writes": BOOL}, ["project"]))
+            current = self.current()
+            if Path(project).expanduser().resolve() != current.path:
+                raise ValueError("请求绑定的工程不是桌面当前工程；请先在桌面打开该工程")
+            binding = {"binding_id": uuid4().hex, "project": str(current.path),
+                       "epoch": self.project_epoch, "allow_writes": allow_writes}
+            self.bindings[binding["binding_id"]] = binding
+            return binding
+
+    def bound(self, binding_id):
+        binding = self.bindings.get(binding_id)
+        if binding is None or binding["epoch"] != self.project_epoch:
+            raise ValueError("工程绑定已失效；请在目标工程重新连接 MCP，旧连接不会跟随切换")
+        return binding
+
+    def bound_tools(self, binding_id):
+        with self.lock:
+            binding = self.bound(binding_id)
+            return [{"name": name, "description": desc, "inputSchema": definition,
+                     "annotations": {"readOnlyHint": not write, "openWorldHint": False}}
+                    for name, (desc, definition, write) in self.commands.definitions.items()
+                    if binding["allow_writes"] or not write]
+
+    def bound_call(self, binding_id, method, params, task_id):
+        with self.lock:
+            binding = self.bound(binding_id)
+            project = self.current()
+            # 先登记任务再释放锁；切换工程与接收命令不能交错。
+            fn = self.commands.submission(method, params, project, allow_writes=binding["allow_writes"])
+            return self.tasks.start("generation" if method == "design.generate" else "mcp", project.path, fn, task_id=task_id)
+
+    def bound_task(self, binding_id, task_id, *, cancel=False):
+        with self.lock:
+            binding = self.bindings.get(binding_id)
+            record = self.tasks.get(task_id)
+            if binding is None or record["project"] != binding["project"]:
+                raise ValueError("任务不属于绑定工程")
+            return self.tasks.cancel(task_id) if cancel else record
+
+    def _dispatch(self, method, params):
         if not isinstance(method, str) or not isinstance(params, dict):
             raise ValueError("请求需要 method 字符串和 params 对象")
         if method == "system.status":
@@ -43,17 +94,26 @@ class Application:
         if method == "project.create":
             validate(params, schema({"path": TEXT, "name": TEXT, "teaching": BOOL}, ["path"]))
             self.project = Project.create(**params)
+            self.project_epoch = uuid4().hex
             return self.project.view()
         if method == "project.open":
             validate(params, schema({"path": TEXT}, ["path"]))
             self.project = Project.open(**params)
+            self.project_epoch = uuid4().hex
             for record in self.project.manifest["results"]:
                 if record.get("status") == "running":
                     self.project.update_result(record["path"], {"status": "interrupted", "error": "上次生成中断；已保留实际文件，请生成新修订"})
             return self.project.view()
-        if method == "project.set_task":
-            validate(params, schema({"task": TASK, "teaching": BOOL}, ["task"]))
-            return self.commands.call(method, {"teaching": self.current().manifest["teaching"], **params}, self.current())
+        if method == "tools.list":
+            validate(params, schema())
+            return [{"name": name, "description": desc, "inputSchema": definition, "write": write}
+                    for name, (desc, definition, write) in self.commands.definitions.items()]
+        if method == "mcp.configure":
+            validate(params, schema({"allow_writes": BOOL}, ["allow_writes"]))
+            if not getattr(sys, "frozen", False):
+                raise ValueError("请使用打包后的 gongke-service workbuddy 生成配置，配置不依赖用户 Python")
+            from gongke_app.connection import write_workbuddy
+            return write_workbuddy(self.current(), self.state_dir, Path(sys.executable), params["allow_writes"])
         if method == "agent.history":
             validate(params, schema())
             return {"project": str(self.current().path), "turns": self.current().conversation()}
@@ -84,24 +144,22 @@ class Application:
             return self.tasks.start("agent", project.path, lambda ctx: run(
                 provider, self.commands, project, params["message"], params.get("allow_writes", False), ctx, self.emit, params.get("selection")))
         if method == "design.generate":
-            validate(params, self.commands.definitions[method][1])
             project = self.current()
-            with project.lock:
-                params = {**params, "task": project.task(params.get("task"))}
-                teaching = project.manifest["teaching"]
-            return self.tasks.start("generation", project.path, lambda ctx: self.commands.generate(params, project, ctx, teaching))
-        if method == "hosts.list":
-            validate(params, schema())
-            return self.hosts.list()
+            return self.tasks.start("generation", project.path, self.commands.submission(method, params, project))
         if method == "host.command":
             validate(params, schema({"host_id": TEXT, "method": TEXT, "params": TASK}, ["host_id", "method", "params"]))
-            return self.hosts.command(**params, project=self.current())
+            method = "host.read" if params["method"] in READ_METHODS else "host.write"
         # These two commands need no project and can populate the welcome screen.
-        if (method in {"design.example", "design.schema"} or
-                (method.startswith("freecad.") and method in self.commands.definitions
+        if (method in {"design.example", "design.schema", "hosts.list"} or
+                (self.project is None and method.startswith("freecad.") and method in self.commands.definitions
                  and not self.commands.definitions[method][2])):
             return self.commands.call(method, params, self.project)
-        return self.commands.call(method, params, self.current())
+        project = self.current()
+        definition = self.commands.definitions.get(method)
+        if definition and (definition[2] or method in {"design.calculate", "revision.inspect", "freecad.review", "freecad.preview", "freecad.preview_fillet"}):
+            return self.tasks.start("command", project.path,
+                                    lambda ctx: self.commands.call(method, params, project, ctx), inline=True)
+        return self.commands.call(method, params, project)
 
     def close(self):
         self.tasks.close()
@@ -155,6 +213,9 @@ def _private_protocol_input():
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in {"mcp", "call", "workbuddy", "inspect-revision"}:
+        from gongke_app.cli import main as client_main
+        return client_main(sys.argv[1:])
     # Pipes use the Windows locale by default; the desktop protocol is always UTF-8.
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
@@ -174,6 +235,7 @@ def main():
 
     instance = None
     app = None
+    connection = None
     diagnostic_file = None
     try:
         # Only the isolated desktop test enables stack-only diagnostics; no locals
@@ -193,6 +255,8 @@ def main():
         if importlib.util.find_spec("scipy") is not None:
             from scipy import linalg  # noqa: F401
         app = Application(args.state_dir, emit)
+        from gongke_app.connection import ConnectionServer
+        connection = ConnectionServer(app, args.state_dir)
         for line in protocol_input:
             request_id = None
             try:
@@ -208,6 +272,8 @@ def main():
         emit({"event": "service.error", "error": {"message": str(exc)}})
         return 1
     finally:
+        if connection:
+            connection.close()
         if app:
             app.close()
         if instance:

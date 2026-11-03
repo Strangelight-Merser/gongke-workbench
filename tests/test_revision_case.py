@@ -206,13 +206,22 @@ def write_inputs(tmp_path, revision):
 
 
 def run_cli(case, out, capture=None, previous=None, env=None):
-    command = [sys.executable, "-m", "gongke_core", "inspect-revision", "--host", "freecad",
-               "--case", str(case), "--out", str(out)]
-    if capture:
-        command.extend(("--capture", str(capture)))
-    if previous:
-        command.extend(("--previous", str(previous)))
-    return subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True, timeout=20)
+    from tests.mcp_helpers import ServiceProcess
+    root = out.parent
+    service_dir = root / ".service-test"
+    service_dir.mkdir(exist_ok=True)
+    service = ServiceProcess(service_dir, project=root, env=env)
+    try:
+        command = [sys.executable, "-m", "gongke_app", "inspect-revision", "--host", "freecad",
+                   "--state-dir", str(service.state), "--project", str(root), "--allow-writes",
+                   "--case", str(case), "--out", out.name]
+        if capture:
+            command.extend(("--capture", str(capture)))
+        if previous:
+            command.extend(("--previous", str(previous)))
+        return subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True, timeout=20)
+    finally:
+        service.close()
 
 
 def test_cli_offline_writes_readable_result_and_does_not_touch_input_files(tmp_path, revision):
@@ -281,7 +290,7 @@ def test_cli_bad_json_and_unsupported_host_are_usage_errors(tmp_path, revision):
     out = tmp_path / "bad-input"
     response = run_cli(case, out, capture)
     assert response.returncode == 2 and not out.exists()
-    response = subprocess.run([sys.executable, "-m", "gongke_core", "inspect-revision", "--host", "solidworks-capture",
+    response = subprocess.run([sys.executable, "-m", "gongke_app", "inspect-revision", "--host", "solidworks-capture",
                                "--case", str(case), "--out", str(out)], cwd=ROOT, capture_output=True, text=True, timeout=20)
     assert response.returncode == 2 and "invalid choice" in response.stderr and not out.exists()
 

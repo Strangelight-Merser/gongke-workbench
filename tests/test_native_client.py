@@ -9,7 +9,11 @@ from threading import Thread
 
 import pytest
 
-from gongke_core import mcp_server, native_client
+from gongke_core import native_client
+from gongke_app.commands import Commands
+from gongke_app.native import create_shaft_project
+from gongke_app.project import Project
+from gongke_app.tools import NATIVE
 
 
 @pytest.fixture
@@ -54,24 +58,11 @@ def test_authenticated_loopback_command_ignores_proxy(bridge, monkeypatch):
                          "payload": {"method": "read_engineering_object", "params": {"session_id": "s", "entity_id": "e"}}}]
 
 
-def test_bridge_error_is_mcp_tool_error(bridge):
+def test_bridge_error_reaches_application(bridge):
     _, state, _ = bridge
     state["response"] = {"ok": False, "error": "候选已过期，请重新读取当前轴"}
-    result = mcp_server.Server().handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
-        "name": "apply_change", "arguments": {"session_id": "s", "change_id": "c", "operation_id": "op"}}})
-    assert result["result"]["isError"] is True
-    assert "候选已过期" in result["result"]["content"][0]["text"]
-
-
-def test_stdio_mcp_reaches_bridge(bridge):
-    requests, _, _ = bridge
-    message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "get_project_context", "arguments": {}}}
-    proc = subprocess.run([sys.executable, "-m", "gongke_core", "mcp"], input=json.dumps(message) + "\n",
-                          cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=15, check=True)
-    result = json.loads(proc.stdout)
-    assert result["result"]["isError"] is False
-    assert result["result"]["structuredContent"]["session_id"] == "current-session"
-    assert requests[0]["payload"] == {"method": "get_project_context", "params": {}}
+    with pytest.raises(native_client.NativeBridgeError, match="候选已过期"):
+        Commands().call("freecad.context", {}, None)
 
 
 @pytest.mark.parametrize("url", ["http://example.com:80", "http://192.168.1.1:8080", "https://127.0.0.1:8080",
@@ -109,13 +100,13 @@ def test_invalid_reply_and_nonfinite_arguments_are_errors(bridge):
 
 
 def test_native_tools_distinguish_read_and_write():
-    tools = {tool["name"]: tool for tool in mcp_server.TOOLS}
-    for name in ("get_project_context", "read_engineering_object", "preview_shaft_change", "preview_fillet_change", "review_current_object", "get_job"):
-        assert tools[name]["annotations"]["readOnlyHint"] is True
-    for name in ("create_shaft_project", "bind_existing_shaft", "apply_change", "undo_last_agent_change", "save_project", "run_analysis", "cancel_job"):
-        assert tools[name]["annotations"]["readOnlyHint"] is False
-    assert tools["preview_shaft_change"]["inputSchema"]["properties"]["diameter_m"]["exclusiveMinimum"] == 0
-    assert tools["preview_fillet_change"]["inputSchema"]["properties"]["radius_m"]["exclusiveMinimum"] == 0
+    tools = Commands().definitions
+    for short in ("context", "read", "preview", "preview_fillet", "review", "get_job"):
+        assert tools["freecad." + short][2] is False
+    for short in ("create", "bind", "apply", "undo", "save", "run_analysis", "cancel_job"):
+        assert tools["freecad." + short][2] is True
+    assert tools["freecad.preview"][1]["properties"]["diameter_m"]["exclusiveMinimum"] == 0
+    assert tools["freecad.preview_fillet"][1]["properties"]["radius_m"]["exclusiveMinimum"] == 0
 
 
 @pytest.mark.parametrize(("name", "arguments"), [
@@ -126,28 +117,28 @@ def test_native_tools_distinguish_read_and_write():
     ("preview_fillet_change", {"session_id": "s", "entity_id": "e", "left_segment_id": "left",
                               "right_segment_id": "right", "radius_m": 0.0012}),
 ])
-def test_analysis_tools_forward_only_identifiers(bridge, name, arguments):
+def test_analysis_tools_forward_only_identifiers(bridge, name, arguments, tmp_path):
     requests, state, _ = bridge
     state["response"] = {"ok": True, "result": {"job_id": "job-1", "status": "queued"}}
-    result = mcp_server.Server().handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
-        "name": name, "arguments": arguments}})
-    assert result["result"]["isError"] is False
+    short = next(key for key, method in NATIVE.items() if method == name)
+    project = Project.create(str(tmp_path / "project"))
+    result = Commands().call("freecad." + short, arguments, project)
+    assert result["job_id"] == "job-1"
     assert requests[0]["payload"] == {"method": name, "params": arguments}
 
 
 def test_analysis_rejects_injected_snapshot_before_bridge(bridge):
     requests, _, _ = bridge
-    tool = next(t for t in mcp_server.TOOLS if t["name"] == "run_analysis")
-    assert set(tool["inputSchema"]["properties"]) == {"session_id", "entity_id"}
-    result = mcp_server.Server().handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
-        "name": "run_analysis", "arguments": {"session_id": "s", "entity_id": "e", "snapshot": {"diameter_m": 1}}}})
-    assert result["result"]["isError"] is True
+    commands = Commands()
+    assert set(commands.definitions["freecad.run_analysis"][1]["properties"]) == {"session_id", "entity_id"}
+    with pytest.raises(ValueError, match="未知参数"):
+        commands.call("freecad.run_analysis", {"session_id": "s", "entity_id": "e", "snapshot": {}}, None)
     assert not requests
 
 
 def test_course_project_creation_preserves_full_forces(bridge):
     requests, _, _ = bridge
-    mcp_server._create_shaft_project(case="course_output")
+    create_shaft_project(case="course_output")
     request = requests[0]["payload"]
     assert request["method"] == "create_project"
     snapshot = request["params"]["snapshot"]
@@ -163,5 +154,5 @@ def test_course_project_creation_preserves_full_forces(bridge):
 def test_invalid_project_creation_does_not_touch_freecad(bridge, case, task):
     requests, _, _ = bridge
     with pytest.raises(ValueError):
-        mcp_server._create_shaft_project(case=case, task=task)
+        create_shaft_project(case=case, task=task)
     assert not requests

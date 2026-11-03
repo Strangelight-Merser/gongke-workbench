@@ -63,24 +63,27 @@ def run(provider, commands, project, message, allow_writes, ctx, emit, selection
                 name = call["function"]["name"]
                 ctx.stage("执行工具：" + name)
                 params = {}
+                dispatched = False
                 try:
                     params = json.loads(call["function"]["arguments"])
                     if not isinstance(params, dict):
                         raise ValueError("工具参数必须是对象")
+                    dispatched = True
                     result = commands.agent_call(name, params, project, allow_writes, ctx)
                 except Exception as exc:
                     from gongke_app.tasks import Canceled
                     if isinstance(exc, Canceled):
                         raise
                     result = {"error": str(exc)}
-                ctx.receipt(name, params, result)
+                    if not dispatched:
+                        ctx.receipt(name, params, result)
                 executed += 1
                 turn["messages"].append({"role": "tool", "tool_call_id": call["id"],
                                          "content": json.dumps(result, ensure_ascii=False, allow_nan=False)})
                 project.save_turn(turn)
                 error = result.get("error") if isinstance(result, dict) else None
                 if (isinstance(error, dict) and error.get("outcome") == "unknown") or (
-                    isinstance(error, str) and any(marker in error for marker in ("结果待确认", "未响应"))):
+                    isinstance(error, str) and any(marker in error for marker in ("结果待确认", "结果未知", "未响应"))):
                     raise ValueError("宿主操作结果待确认，本次自动执行已停止。请读取宿主状态或查询原 operation_id；已保留操作收据")
         raise ValueError("已达到本次 12 轮执行上限；已完成的操作与收据保留，可从当前工程继续")
     except Exception as exc:

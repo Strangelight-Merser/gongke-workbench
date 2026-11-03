@@ -3,7 +3,8 @@ import math
 
 import pytest
 
-from gongke_core import api, mcp_server, standards
+from gongke_core import api, standards
+from gongke_app.commands import Commands
 from gongke_core.calc import gear
 
 
@@ -48,9 +49,5 @@ def test_motor_schema_matches_recorded_data():
     ('form_factors', {}, '缺少参数 zv'),
 ])
 def test_lookup_errors_reach_mcp_client(kind, params, expected):
-    result = mcp_server.Server().handle({
-        'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
-        'params': {'name': 'lookup_standard', 'arguments': {'kind': kind, 'params': params}},
-    })['result']
-    assert result['isError']
-    assert expected in result['content'][0]['text']
+    with pytest.raises(ValueError, match=expected):
+        Commands().call("standards.lookup", {"kind": kind, "params": params}, None)
