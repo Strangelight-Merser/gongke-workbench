@@ -25,6 +25,10 @@ export type Progress = {
   configuredAt?: string;
   verifiedAt?: string;
   evidence?: string;
+  serviceName?: string;
+  configPath?: string;
+  backupPath?: string;
+  conflicts?: { name: string; reason: string; path: string }[];
 };
 export type OnboardingState = {
   selected: Provider;
@@ -51,7 +55,7 @@ export type OnboardingAction =
   | { type: "link"; link: Link }
   | { type: "advance"; step: "account" | "credentials" | "connect" }
   | { type: "open-agent" }
-  | { type: "connect" }
+  | { type: "connect"; confirmUserConfig?: boolean }
   | { type: "verify" }
   | { type: "confirm-workbuddy"; taskId: string; sawReply: true };
 export type OnboardingAPI = {

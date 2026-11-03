@@ -82,7 +82,7 @@ export function registerOnboarding(options: {
     },
     install: (release, signal, progress) =>
       installRelease(release, app.getPath("temp"), signal, progress),
-    configureWorkbuddy: () => request("mcp.configure", { allow_writes: false }),
+    configureWorkbuddy: (confirmUserConfig = false) => request("mcp.configure", { allow_writes: false, confirm_user_config: confirmUserConfig }),
     task: (id) => request("task.get", { task_id: id }),
   });
   handle("onboarding-state", () => onboarding.snapshot());

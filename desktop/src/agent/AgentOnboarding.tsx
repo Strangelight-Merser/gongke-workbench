@@ -309,11 +309,17 @@ export function AgentOnboarding({
               <p>
                 {dsh
                   ? "连接当前工程后，发送首次对话验证模型与工程工具。"
-                  : "生成当前工程的 .workbuddy/mcp.json，保留其他 MCP 服务。随后在 WorkBuddy 选择同一个工程目录。"}
+                  : "预览用户级 WorkBuddy 配置中的工程专属连接器。同意后先备份，再更新该条目，保留其他服务。"}
               </p>
+              {!dsh && p.conflicts && <div role="alert">
+                <p>将写入 {p.configPath}。以下旧连接器或同名条目会保留：</p>
+                {p.conflicts.map((c) => <p key={c.path + c.name}>{c.path}：{c.name}（{c.reason}）</p>)}
+                <p>使用 {p.serviceName}，固定绑定当前工程、默认只读。此连接器在 WorkBuddy 的其他工作空间也可见；切换工程不会改变它绑定的路径。</p>
+                {button("同意备份并写入用户配置", { type: "connect", confirmUserConfig: true }, !project)}
+              </div>}
               {!project && <p>先创建或打开一个工程。</p>}
               {button(
-                dsh ? "连接 dsh" : "生成工程 MCP 配置",
+                dsh ? "连接 dsh" : "预览 WorkBuddy 配置",
                 { type: "connect" },
                 !project,
               )}
@@ -331,11 +337,12 @@ export function AgentOnboarding({
               </>
             ) : (
               <>
-                <p>打开 WorkBuddy 并登录，工作目录选择：</p>
+                <p>配置已写入 {p.configPath}。{p.backupPath && `备份：${p.backupPath}`}</p>
+                <p>退出并重新打开 WorkBuddy，在“专家·技能·连接器 → 连接器 → 自定义连接器”信任并启用新服务；再新建任务，工作目录选择：</p>
                 <p className="onboarding-url">{project}</p>
-                <p>在 MCP 服务器中信任 gongke，确认绿色状态，再发送：</p>
+                <p>在 WorkBuddy 中启用 {p.serviceName || "gongke"}，确认包含 project.current，再发送：</p>
                 <blockquote>
-                  请只调用 gongke 的
+                  请只调用 {p.serviceName || "gongke"} 的
                   project.current，告诉我当前工程名称、路径和状态，并列出工具返回的
                   task_id。
                 </blockquote>

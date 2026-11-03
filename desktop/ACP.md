@@ -49,8 +49,8 @@
 - dsh：注册/登录 → 充值 → 创建 Key → 打开 dsh 的 Settings → Models → DeepSeek → 保存 → 连接当前工程 → 发送首次对话。在 dsh 中已配置的用户可跳过账户引导。
 - 构想引擎不提供 Key 输入框，不读取 dsh 的凭据文件、剪贴板或认证 URL，不复制 Key，不输出 Agent stderr。只有 dsh 自己读取凭据。原始上游异常只用于分类，界面收到固定的操作提示；401/缺 Key 去 dsh 配置，402 去充值，429/5xx 稍后重试，网络问题检查网络并重连。
 - **dsh 完成条件**：本轮 `session/prompt` 返回 `end_turn` 且出现非空模型回复；回复/工具事件中的 `task_id` 必须对应本轮开始以后、当前工程、`kind=mcp`、`status=complete`、`project.current` 成功收据，返回工程路径也相符。握手、取消、拒绝、空回复、历史回执、其他工程回执均不完成引导。首次验证收起引导，给工程授权与回复留出位置。
-- **WorkBuddy 完成条件**：生成项目级 `.workbuddy/mcp.json` 后，在 WorkBuddy 选中同一个工程目录，登录、信任 gongke，检查 MCP 绿色状态并完成一轮读取工程的真实对话。用户确认看到正确回复并填写该回复的 task_id，工作台核对本次配置之后的工程读取回执。标注为“工程读取回执已验证；WorkBuddy 回复由你确认”，不把生成配置、进程存在或 MCP 绿色灯等同于模型对话成功。
-- WorkBuddy 没有在所查官方资料中提供可嵌入的 ACP 会话/回复回读契约，因此保留这一步人工确认；不读取其会话数据库，也不推断调用来源。回执证明工程操作，用户确认补足外部对话来源与回复内容。
+- **WorkBuddy 完成条件**：预览并经用户确认后备份、更新用户级工程专属连接器后，在 WorkBuddy 选中同一个工程目录，登录、信任引导显示的专属服务名，检查 MCP 绿色状态并完成一轮读取工程的真实对话。用户确认看到正确回复并填写该回复的 task_id，工作台核对本次配置之后的工程读取回执。标注为“工程读取回执已验证；WorkBuddy 回复由你确认”，不把生成配置、进程存在或 MCP 绿色灯等同于模型对话成功。
+- WorkBuddy.app 尚未查到本机 CLI/headless/stdio ACP 的官方契约，因此本机接入仍使用工程 MCP。2026-11-03 核实的 [WorkBuddy Open API](https://open.workbuddy.cn/docs/openapi) 已有云端任务 ACP（SSE + JSON-RPC POST）及本地助理 HTTP 消息 API，需要第三方应用注册与 OAuth，不能直接当作桌面 stdio Agent 启动。此处保留人工确认，不读取其会话数据库；回执证明工程操作，界面证据补足调用来源。完整 FreeCAD P7 验收见 [WorkBuddy 实机清单](../docs/workbuddy-validation.md)。
 - WorkBuddy 首次配置默认只读，合并 `gongke` 项、保留其他 MCP 服务。打包版仍使用随包 `gongke-service`；开发版的 `mcp.configure` 现在使用当前 Python 的绝对路径、`-m gongke_app` 与源码 PYTHONPATH，便于直接验证。请求 schema、工程绑定、权限和回执语义未改。
 - `userData/agent-onboarding.json` 原子保存所选 Agent、步骤、安装路径、版本、绑定工程及成功任务编号/时间。错误消息、下载内容、对话与 Key 不写入这个文件。下载中断后重启会重新检测并保留可重试步骤；付款页面打开、Key 页面打开及用户点击“下一步”都不等于已验证账号可用。
 

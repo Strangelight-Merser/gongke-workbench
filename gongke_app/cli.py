@@ -22,21 +22,27 @@ def main(argv=None):
             command.add_argument("method", help="tools.list 或应用工具名，例如 revision.inspect")
             command.add_argument("--params", default="{}", help="JSON 对象；@file 从文件读取")
         elif name == "workbuddy":
-            command.add_argument("--executable", type=Path, help="开发时指定打包后的 gongke-service，发行包自动使用自身")
+            command.add_argument("--confirm-user-config", action="store_true", help="同意备份并更新用户级 WorkBuddy 配置中的当前工程专属条目")
+            command.add_argument("--executable", type=Path, help="显式指定打包后的 gongke-service；默认使用运行中桌面服务的入口和环境")
         elif name == "inspect-revision":
             command.add_argument("--host", choices=["freecad"], default="freecad")
             command.add_argument("--case", type=Path, required=True)
             command.add_argument("--capture", type=Path)
             command.add_argument("--previous", type=Path)
             command.add_argument("--out", required=True, help="工程内尚不存在的相对目录")
+    restore = sub.add_parser("workbuddy-restore")
+    restore.add_argument("--backup", type=Path, required=True)
+    restore.add_argument("--expected-sha256", required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command == "workbuddy-restore":
+            from gongke_app.connection import restore_workbuddy
+            print(json.dumps(restore_workbuddy(args.backup, args.expected_sha256), ensure_ascii=False))
+            return 0
         connection = Connection(args.state_dir)
         if args.command == "workbuddy":
-            executable = Path(sys.executable) if getattr(sys, "frozen", False) else args.executable
-            if executable is None:
-                raise ValueError("请用打包后的入口，或用 --executable 指定打包后的 gongke-service")
-            result = connection.request("configure", project=args.project, allow_writes=args.allow_writes, executable=str(executable.resolve(strict=True)))
+            options = {"executable": str(args.executable.absolute())} if args.executable else {}
+            result = connection.request("configure", project=args.project, allow_writes=args.allow_writes, confirm_user_config=args.confirm_user_config, **options)
         else:
             binding = connection.request("bind", project=args.project, allow_writes=args.allow_writes)
             if args.command == "mcp":
@@ -62,7 +68,7 @@ def main(argv=None):
                 parameters = Path(args.params[1:]).read_text(encoding="utf-8") if args.params.startswith("@") else args.params
                 result = asyncio.run(call_bound(connection, binding, args.method, json.loads(parameters)))
         print(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False))
-        return 1 if isinstance(result, dict) and result.get("status") in {"failed", "canceled", "interrupted"} else 0
+        return 1 if isinstance(result, dict) and result.get("status") in {"failed", "canceled", "interrupted", "confirmation_required"} else 0
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 2

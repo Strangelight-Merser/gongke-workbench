@@ -11,6 +11,7 @@
   "mcpServers": {
     "gongke": {
       "command": "/absolute/path/to/gongke-service",
+      "cwd": "/absolute/project",
       "args": ["mcp", "--state-dir", "/absolute/application/state", "--project", "/absolute/project", "--allow-writes"]
     }
   }
@@ -23,16 +24,15 @@
 
 启动时 `--project` 必须等于桌面当前工程的规范路径。绑定同时记录本次打开的身份，切换工程或重新打开同一路径都会使旧连接失效。调用接收与切换工程在同一把锁内检查，已登记的任务运行期间不能切换工程。MCP 进程不能因为绑定失效自动跟随新工程。
 
-## WorkBuddy 项目配置
+## WorkBuddy 工程专属连接器
 
-发行包入口可生成 `<项目>/.workbuddy/mcp.json`：
+`gongke-service workbuddy --state-dir /absolute/application/state --project /absolute/project` 先预览将追加到用户级 `~/.workbuddy/mcp.json` 的工程专属条目，返回 `status=confirmation_required`（退出码 1），不写文件。用户明确同意后增加 `--confirm-user-config`，先备份再原子更新，保留其他条目；需要建模时另外明确增加 `--allow-writes`。成功结果含 `service_name`、`backup_path`、`config_sha256`。
 
-```sh
-/path/to/gongke-service workbuddy --state-dir /absolute/application/state \
-  --project /absolute/project --allow-writes
-```
+桌面 `mcp.configure {allow_writes: true|false, confirm_user_config: true|false}` 使用同一安装器。引导默认只读，每次写入都先显示用户配置路径、专属名称、跨工作空间可见但固定绑定工程的说明；确认后才进入首次对话。配置请求必须匹配桌面当前工程。撤销用 `gongke-service workbuddy-restore --backup PATH --expected-sha256 HASH`，文件已被后续修改时拒绝整份恢复。
 
-只更新 `mcpServers.gongke`，保留其他服务器。命令使用打包程序自身的绝对路径，不使用用户 Python。开发时可用 `python -m gongke_app workbuddy ... --executable /path/to/packaged/gongke-service` 指定已构建入口。桌面服务也提供 `mcp.configure {allow_writes: true|false}`，供 Agent 面板接入；本次未修改面板 UI。
+开发版可执行 `python -m gongke_app workbuddy ...`。入口使用运行中桌面服务的实际 Python（保留 venv 符号链接）、`-m gongke_app`、源码绝对 `PYTHONPATH` 和工程绝对 `cwd`；打包版使用随包程序。不依赖 WorkBuddy 的 shell、PATH 或默认工作目录。
+
+官方文档虽声明项目级 `.workbuddy/mcp.json`，本机 5.9.3 在改名、正常信任工作区、重开、新建任务及替代路径实验后仍未加载，故产品采用明确同意的用户级安装，详见[实测与撤销](workbuddy-conflicts.md)。新服务的实际 WorkBuddy 端到端验收尚待完成。外部改文件后，退出重开 WorkBuddy、信任新服务、核对工具并新建任务；不以文件存在代替成功。既有 MCP 连接的权限不会因改文件自动升级。
 
 ## 工具与结果
 
@@ -97,11 +97,16 @@ FreeCAD 保存允许新文件及当前文档自身已登记的工作副本。其
 - [官方 MCP Python SDK low-level Server](https://py.sdk.modelcontextprotocol.io/advanced/low-level-server/)：按既有注册表提供 schema 与处理函数；参数校验由应用执行层负责。
 - [官方 SDK stdio 示例](https://github.com/modelcontextprotocol/python-sdk/blob/main/examples/snippets/servers/lowlevel/direct_call_tool_result.py)：使用 `Server`、`stdio_server`、`CallToolResult`，不手写 MCP JSON-RPC。
 - [WorkBuddy MCP 配置](https://www.codebuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Function-Description/MCP-Guide)：项目级 `.workbuddy/mcp.json`，`mcpServers` 下以 `command/args` 启动服务。
+- [WorkBuddy 连接器规范](https://open.workbuddy.cn/docs/connector)：stdio 的 `env/cwd` 与版本要求；`type` 可由 `command` 推断。
 
 - [MCP 官方 filesystem 参考服务](https://github.com/modelcontextprotocol/servers/blob/main/src/filesystem/README.md)：参考其启动目录边界与符号链接目标校验。本应用以桌面工程和服务端绑定为权限来源，不接受客户端改变工程边界。
 
 ## WorkBuddy 面板引导
 
-Agent 面板可自动发现 WorkBuddy、经用户同意安装已固定版本，并调用现有 `mcp.configure` 生成当前工程的 `.workbuddy/mcp.json`。默认只读，保留其他 MCP 服务；构想引擎需要保持当前工程打开。打包版配置指向随包 `gongke-service`；开发版指向当前 Python 的绝对路径、`-m gongke_app` 和源码 PYTHONPATH。
+Agent 面板可自动发现 WorkBuddy、经用户同意安装已固定版本，并调用现有 `mcp.configure` 预览并经用户确认后备份、更新用户级工程专属连接器。默认只读，保留其他 MCP 服务；构想引擎需要保持当前工程打开。打包版配置指向随包 `gongke-service`；开发版指向当前 Python 的绝对路径、`-m gongke_app` 和源码 PYTHONPATH。
 
 配置生成后状态是“待首次对话”。学生在 WorkBuddy 选择相同工程目录，信任 gongke 并确认绿色 MCP 状态，发送 `project.current` 读取工程。工作台通过用户提供的 task_id 核对本次配置以后的当前工程成功回执；外部真实回复的正确性由学生确认。不会从配置文件存在或进程存在推断“已连接”，也不读取 WorkBuddy 的会话数据库。完整安装/状态/Windows 验收见 [desktop/ACP.md](../desktop/ACP.md#agent-首次引导2026-11-03)。
+
+本机 WorkBuddy.app 的 CLI/headless/stdio ACP 尚无已核实的官方契约；不要用 CodeBuddy CLI 的 `-p` 或 ACP 参数替代验收。[WorkBuddy Open API](https://open.workbuddy.cn/docs/openapi) 确实提供需开发者应用与 OAuth 的本地助理 HTTP API、云端任务 ACP（SSE + JSON-RPC POST），但这不是本机桌面 stdio ACP 托管，本轮不另建云端接入。窗口内 Agent 继续走 dsh，WorkBuddy 走工程 MCP。
+
+逐轮命令、界面入口、P7 建模提示词、截图与收据核对见 [WorkBuddy 真实验收](workbuddy-validation.md)。脚本探针和真实 WorkBuddy 的调用证据分别保存。
