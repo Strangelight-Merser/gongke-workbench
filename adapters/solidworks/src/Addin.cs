@@ -21,6 +21,8 @@ namespace Gongke.SolidWorks
         {
             try
             {
+                if (System.Threading.Thread.CurrentThread.GetApartmentState() != System.Threading.ApartmentState.STA)
+                    throw new InvalidOperationException("插件必须在 SOLIDWORKS 的 STA 宿主线程连接。");
                 app = (SldWorks)ThisSW;
                 if (!app.SetAddinCallbackInfo2(0, this, Cookie)) return false;
                 var root = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), "Gongke");

@@ -52,4 +52,5 @@ try
     }
 }
 finally { Directory.Delete(root, true); }
+count += ReliabilityChecks.Run();
 Console.WriteLine($"{count} protocol, receipt, and dispatch checks passed. No SOLIDWORKS host behavior was exercised.");

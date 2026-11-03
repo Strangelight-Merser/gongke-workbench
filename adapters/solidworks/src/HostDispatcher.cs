@@ -17,16 +17,24 @@ namespace Gongke.SolidWorks
         private readonly ConcurrentQueue<Work> queue = new ConcurrentQueue<Work>();
         private readonly Func<JObject, JObject> execute;
         private readonly int hostThread = Thread.CurrentThread.ManagedThreadId;
+        private readonly object gate = new object();
+        private readonly TimeSpan timeout;
+        private bool executing;
         private volatile bool disposed;
-        public HostDispatcher(Func<JObject, JObject> execute) { this.execute = execute; }
+        public HostDispatcher(Func<JObject, JObject> execute, TimeSpan? timeout = null)
+        { this.execute = execute; this.timeout = timeout ?? TimeSpan.FromSeconds(45); }
 
         public async Task<JObject> Submit(JObject request)
         {
-            if (disposed) return Protocol.Error(request["id"], new CommandError("disconnected", "Add-in is unloading."));
             var work = new Work { Request = request };
-            queue.Enqueue(work);
-            if (await Task.WhenAny(work.Completion.Task, Task.Delay(TimeSpan.FromSeconds(45))).ConfigureAwait(false) == work.Completion.Task)
+            lock (gate)
+            {
+                if (disposed) return Protocol.Error(request["id"], new CommandError("disconnected", "Add-in is unloading."));
+                queue.Enqueue(work);
+            }
+            if (await Task.WhenAny(work.Completion.Task, Task.Delay(timeout)).ConfigureAwait(false) == work.Completion.Task)
                 return await work.Completion.Task.ConfigureAwait(false);
+            if (work.Completion.Task.IsCompleted) return await work.Completion.Task.ConfigureAwait(false);
             var cancelledBeforeStart = Interlocked.CompareExchange(ref work.State, 2, 0) == 0;
             return Protocol.Error(request["id"], new CommandError("host_timeout",
                 cancelledBeforeStart ? "SOLIDWORKS was busy; command was cancelled before execution."
@@ -37,22 +45,33 @@ namespace Gongke.SolidWorks
         // Called only from SOLIDWORKS OnIdleNotify, never from an IPC worker.
         public int OnIdle()
         {
-            if (disposed || Thread.CurrentThread.ManagedThreadId != hostThread) return 0;
-            if (queue.TryDequeue(out var work) && Interlocked.CompareExchange(ref work.State, 1, 0) == 0)
+            if (Thread.CurrentThread.ManagedThreadId != hostThread || executing) return 0;
+            Work work;
+            lock (gate)
+            {
+                if (disposed || !queue.TryDequeue(out work) || Interlocked.CompareExchange(ref work.State, 1, 0) != 0) return 0;
+                executing = true;
+            }
+            // STA 中的 COM 调用可以泵消息并再次触发 OnIdle；锁不能阻止同线程重入。
+            try
             {
                 try { work.Completion.TrySetResult(execute(work.Request)); }
                 catch (Exception error) { work.Completion.TrySetResult(Protocol.Error(work.Request["id"], error, "unknown")); }
             }
+            finally { executing = false; }
             return 0;
         }
 
         public void Dispose()
         {
-            disposed = true;
-            while (queue.TryDequeue(out var work))
+            lock (gate)
             {
-                Interlocked.CompareExchange(ref work.State, 2, 0);
-                work.Completion.TrySetResult(Protocol.Error(work.Request["id"], new CommandError("disconnected", "Add-in unloaded before command execution.")));
+                disposed = true;
+                while (queue.TryDequeue(out var work))
+                {
+                    Interlocked.CompareExchange(ref work.State, 2, 0);
+                    work.Completion.TrySetResult(Protocol.Error(work.Request["id"], new CommandError("disconnected", "Add-in unloaded before command execution.")));
+                }
             }
         }
     }
