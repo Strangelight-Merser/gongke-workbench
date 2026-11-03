@@ -106,7 +106,7 @@ def measure(snapshot, request, section=None):
         if cut["document"] != snapshot["document"]:
             raise ValueError("截面与模型修订不一致")
         return {**result, "status": cut["status"], "value": cut.get("area"), "reason": cut.get("reason"),
-                "locations": [{"object_ref": snapshot["object_ref"], "plane": cut["plane"]}]}
+                "locations": [{"object_ref": snapshot["object_ref"], "plane": cut["plane"], "edges": cut.get("edges", [])}]}
     if kind == "parameter":
         found = [p for f in snapshot["features"] if f["native_ref"] == request.get("feature")
                  for p in f["parameters"] if p["name"] == request.get("parameter")]
