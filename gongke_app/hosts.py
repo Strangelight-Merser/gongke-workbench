@@ -45,13 +45,13 @@ def _host_session(config):
 CONTRACTS = {
     "solidworks": {
         "document.context": {},
-        "document.open": {"document_path": "工程内相对 .sldprt/.slddrw 路径", "configuration": "零件配置名；图纸可省略", "operation_id": "UUID"},
-        "document.activate": {"document_path": "已打开文件绝对路径", "configuration": "零件配置名；图纸可省略", "operation_id": "UUID"},
+        "document.open": {"session_id": "宿主会话（应用自动补齐）", "document_path": "工程内相对 .sldprt/.slddrw 路径", "configuration": "零件配置名；图纸可省略", "operation_id": "UUID"},
+        "document.activate": {"session_id": "宿主会话（应用自动补齐）", "document_path": "已打开文件绝对路径", "configuration": "零件配置名；图纸可省略", "operation_id": "UUID"},
         "parameters.list": {"document_path": "当前文档绝对路径", "configuration": "当前零件配置"},
         "parameter.change": {"document_path": "已登记工作副本的绝对路径", "configuration": "当前配置", "session_id": "document.context 的会话", "expected_revision": "当前文档 revision 整数", "operation_id": "UUID", "parameter_name": "parameters.list 中writable=true的线性或直径name", "expected_value": "当前实际值（m）", "value": "目标值（m）"},
         "preview.mesh": {"document_path": "当前零件绝对路径", "configuration": "当前配置"},
         "selection.get": {"document_path": "当前文档绝对路径", "configuration": "零件配置"},
-        "selection.set": {"document_path": "当前文档绝对路径", "configuration": "零件配置", "persistent_reference": "实际快照返回的引用", "expected_revision": "当前revision整数", "operation_id": "UUID"},
+        "selection.set": {"session_id": "宿主会话（应用自动补齐）", "document_path": "当前文档绝对路径", "configuration": "零件配置", "persistent_reference": "实际快照返回的引用", "expected_revision": "当前revision整数", "operation_id": "UUID"},
         "drawing.inspect": {"document_path": "当前图纸绝对路径"},
         "drawing.update": {"document_path": "已登记图纸副本绝对路径", "session_id": "会话", "expected_revision": "当前图纸revision整数", "operation_id": "UUID"},
         "document.save_copy": {"document_path": "原文档绝对路径", "configuration": "零件配置；图纸可省略", "session_id": "会话", "expected_revision": "原文档当前revision整数", "operation_id": "UUID", "output_path": "新工作副本工程相对路径，零件.sldprt或图纸.slddrw", "output_part_path": "复制图纸时必填，关联零件的新相对.sldprt路径", "expected_part_revision": "复制图纸时必填，关联零件当前revision整数"},
@@ -144,6 +144,8 @@ class Hosts:
             if config["host"] == "solidworks" and method in {"parameter.change", "drawing.update"}:
                 if not project.is_working_copy(params.get("document_path"), "solidworks"):
                     raise ValueError("请先通过工作台保存并打开新的原生工作副本，再执行修改")
+        if config["host"] == "solidworks" and method in WRITE_METHODS:
+            params.setdefault("session_id", _host_session(config))
         operation = None
         if method in COPY_METHODS:
             operation = {"operation_id": _operation_id(config["host"], params["operation_id"]),
@@ -198,8 +200,12 @@ class Hosts:
                     raise ValueError("关联工作副本回执未完整验证两个文件与引用关系；未授予修改资格")
                 project.register_copies([(item["path"], item) for item in copies], host, operation_id=operation_id)
                 return
-            if result.get("file_exists") is not True or type(result.get("errors")) is not int or result["errors"] != 0:
-                raise ValueError("原生副本保存回执缺少可靠成功状态；未授予修改资格")
+            if (result.get("file_exists") is not True or type(result.get("errors")) is not int or result["errors"] != 0
+                    or any(result.get(flag) is not True for flag in
+                           ("reopen_verified", "parameter_values_verified", "source_state_preserved"))
+                    or not isinstance(result.get("path"), str)
+                    or Path(result["path"]).resolve() != Path(params["output_path"]).resolve()):
+                raise ValueError("零件副本回执未通过重开、参数、原件状态及操作身份核对；未授予修改资格")
         else:
             if result.get("outcome") != "committed":
                 return
@@ -283,5 +289,12 @@ class Hosts:
         threading.Thread(target=transact, daemon=True, name="cad-pipe").start()
         try:
             return future.result(timeout=timeout)
-        except TimeoutError:
-            raise ValueError("宿主操作超时，结果待确认；未自动重试，请查询原 operation_id") from None
+        except Exception as exc:
+            if method in WRITE_METHODS:
+                return {"error": {"code": "host_timeout" if isinstance(exc, TimeoutError) else "transport_error",
+                                  "outcome": "unknown", "operation_id": params.get("operation_id"),
+                                  "session_id": config.get("session_id"),
+                                  "message": "宿主响应未确认；查询原 operation_id，禁止换 ID 重发：" + str(exc)}}
+            if isinstance(exc, TimeoutError):
+                raise ValueError("宿主操作超时，结果待确认；未自动重试，请查询原 operation_id") from None
+            raise

@@ -19,12 +19,15 @@ namespace Gongke.SolidWorks
         private readonly string session;
         private readonly OperationJournal journal;
         private bool nativeMutationStarted;
+        private bool nativeEffectObserved;
+        private readonly HashSet<string> workingCopies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public HostOperations(SldWorks app, string session, OperationJournal journal)
         { this.app = app; this.session = session; this.journal = journal; }
 
         public JObject Execute(JObject request)
         {
             nativeMutationStarted = false;
+            nativeEffectObserved = false;
             var id = request["id"];
             string operationId = null;
             string fingerprint = null;
@@ -39,44 +42,65 @@ namespace Gongke.SolidWorks
                         throw new CommandError("stale_session", "This request belongs to another SOLIDWORKS session.");
                     operationId = Protocol.OperationId(p);
                     fingerprint = Protocol.Fingerprint(method, p);
-                    var previous = journal.Get(operationId);
+                    JObject previous;
+                    try { previous = journal.Get(operationId); }
+                    catch (Exception error) { throw new CommandError("receipt_read_failed", "无法读取原操作回执：" + error.Message, "unknown"); }
                     if (previous != null)
                     {
                         if ((string)previous["fingerprint"] != fingerprint)
                             throw new CommandError("operation_conflict", "operation_id was already used for different parameters.");
                         if (previous["response"] is JObject saved)
                         {
-                            var result = (JObject)saved.DeepClone(); result["id"] = id?.DeepClone(); return result;
+                            var replay = (JObject)saved.DeepClone(); replay["id"] = id?.DeepClone(); return replay;
                         }
                         throw new CommandError("operation_incomplete", "A previous attempt started without a final receipt. Inspect the document and receipt; automatic retry is disabled.", "unknown");
                     }
                     // Persist before entering any mutation. A crash cannot become an unrecorded retry.
                     journal.Put(operationId, new JObject { ["operation_id"] = operationId, ["session_id"] = session,
-                        ["fingerprint"] = fingerprint, ["method"] = method, ["state"] = "started", ["started_at"] = DateTime.UtcNow.ToString("o") });
+                        ["fingerprint"] = fingerprint, ["method"] = method, ["params"] = p.DeepClone(),
+                        ["state"] = "started", ["outcome"] = "unknown", ["started_at"] = DateTime.UtcNow.ToString("o") });
                     started = true;
                 }
                 var payload = Dispatch(method, p);
+                if (started && payload is JObject result)
+                {
+                    result["operation_id"] = operationId;
+                    result["session_id"] = session;
+                }
                 var response = new JObject { ["id"] = id?.DeepClone(), ["result"] = payload };
-                if (started) Finish(operationId, fingerprint, response);
-                return response;
+                return started ? FinishResponse(operationId, response) : response;
             }
             catch (Exception error)
             {
-                if (nativeMutationStarted && error is CommandError known && known.Outcome == "not_applied")
-                    error = new CommandError(known.Code, known.Message, "unknown");
-                var response = Protocol.Error(id, error, started ? "unknown" : "not_applied");
-                if (started)
-                {
-                    try { Finish(operationId, fingerprint, response); }
-                    catch { return Protocol.Error(id, new CommandError("receipt_write_failed", "Native operation may have run but its final receipt could not be saved. Inspect current state; do not retry with a new operation_id.", "unknown")); }
-                }
-                return response;
+                // 校验异常发生在写入前才是 not_applied；进入 COM 写调用以后不能沿用异常的默认值。
+                var outcome = nativeEffectObserved ? "needs_review" : nativeMutationStarted ? "unknown" : "not_applied";
+                if (error is CommandError known && nativeMutationStarted && known.Outcome == "not_applied")
+                    error = new CommandError(known.Code, known.Message, outcome);
+                var response = Protocol.Error(id, error, outcome);
+                return started ? FinishResponse(operationId, response) : response;
             }
         }
 
-        private void Finish(string id, string fingerprint, JObject response) => journal.Put(id,
-            new JObject { ["operation_id"] = id, ["session_id"] = session, ["fingerprint"] = fingerprint,
-                ["state"] = "finished", ["finished_at"] = DateTime.UtcNow.ToString("o"), ["response"] = response });
+        private JObject FinishResponse(string operationId, JObject response)
+        {
+            try { Finish(operationId, response); return response; }
+            catch (Exception error)
+            {
+                // 不把落盘失败伪装成宿主失败再覆盖已知结果。started 回执仍禁止重放。
+                return Protocol.Error(response["id"], new CommandError("receipt_write_failed",
+                    "终态回执未保存：" + error.Message + "。查询原 operation_id 并核对文档，禁止换 ID 重发。", "unknown"));
+            }
+        }
+
+        private void Finish(string id, JObject response)
+        {
+            var receipt = journal.Get(id);
+            receipt["state"] = "finished";
+            receipt["finished_at"] = DateTime.UtcNow.ToString("o");
+            receipt["outcome"] = response["result"]?["outcome"] ?? response["error"]?["outcome"];
+            receipt["response"] = response;
+            journal.Put(id, receipt);
+        }
 
         private JToken Dispatch(string method, JObject p)
         {
@@ -119,7 +143,7 @@ namespace Gongke.SolidWorks
             return new JObject { ["session_id"] = session, ["active_document"] = active == null ? null : Document(active), ["documents"] = documents };
         }
 
-        private ModelDoc2 Bound(JObject p, bool write = false)
+        private ModelDoc2 Bound(JObject p, bool write = false, bool requireCopy = false)
         {
             var model = app.IActiveDoc2 ?? throw new CommandError("no_document", "Open a document in SOLIDWORKS.");
             if (model.IsOpenedViewOnly()) throw new CommandError("view_only", "Wait for the document to load fully; view-only documents are not supported.");
@@ -133,6 +157,8 @@ namespace Gongke.SolidWorks
                 RequireRevision(model, p);
                 if (model.IsOpenedReadOnly()) throw new CommandError("read_only", "Document is read-only.");
             }
+            if (requireCopy && !workingCopies.Contains(Path.GetFullPath(model.GetPathName())))
+                throw new CommandError("working_copy_required", "请先在本宿主会话创建并验证工作副本，再修改或保存。");
             return model;
         }
 
@@ -150,11 +176,15 @@ namespace Gongke.SolidWorks
             var type = extension == ".sldprt" ? swDocumentTypes_e.swDocPART
                 : extension == ".slddrw" ? swDocumentTypes_e.swDocDRAWING
                 : throw new CommandError("unsupported_document", "Open supports native part and drawing files.");
+            if (type == swDocumentTypes_e.swDocPART) Protocol.Required(p, "configuration");
             int errors = 0, warnings = 0;
+            nativeMutationStarted = true;
             var model = (ModelDoc2)app.OpenDoc6(path, (int)type, (int)swOpenDocOptions_e.swOpenDocOptions_Silent,
                 (string)p["configuration"] ?? "", ref errors, ref warnings);
             if (model == null) throw new CommandError("open_failed", "SOLIDWORKS open error=" + errors + ", warning=" + warnings);
+            nativeEffectObserved = true;
             var result = Activate(p);
+            if (errors != 0 || warnings != 0) result["outcome"] = "needs_review";
             result["open_errors"] = errors; result["open_warnings"] = warnings;
             return result;
         }
@@ -164,17 +194,22 @@ namespace Gongke.SolidWorks
             var path = Path.GetFullPath(Protocol.Required(p, "document_path"));
             var model = (ModelDoc2)app.GetOpenDocumentByName(path)
                 ?? throw new CommandError("document_not_open", "Document is not open in this SOLIDWORKS instance.");
+            var requested = model.GetType() == (int)swDocumentTypes_e.swDocDRAWING ? null : Protocol.Required(p, "configuration");
+            if (requested != null && model.GetConfigurationByName(requested) == null)
+                throw new CommandError("configuration_missing", "指定配置不存在。");
             int errors = 0;
-            var activated = (ModelDoc2)app.ActivateDoc3(model.GetTitle(), false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref errors);
+            nativeMutationStarted = true;
+            var activated = (ModelDoc2)app.ActivateDoc3(Path.GetFileName(model.GetPathName()), false, (int)swRebuildOnActivation_e.swDontRebuildActiveDoc, ref errors);
             if (activated == null || !string.Equals(activated.GetPathName(), path, StringComparison.OrdinalIgnoreCase))
                 throw new CommandError("activate_failed", "SOLIDWORKS did not activate the requested document; error=" + errors);
-            if (activated.GetType() != (int)swDocumentTypes_e.swDocDRAWING)
+            nativeEffectObserved = true;
+            if (requested != null && Configuration(activated) != requested)
             {
-                var requested = Protocol.Required(p, "configuration");
-                if (Configuration(activated) != requested && !activated.ShowConfiguration2(requested))
-                    throw new CommandError("configuration_missing", "Requested configuration could not be activated.");
+                if (!activated.ShowConfiguration2(requested) || Configuration(activated) != requested)
+                    throw new CommandError("configuration_missing", "指定配置未激活。", "needs_review");
             }
-            return new JObject { ["document"] = Document(activated), ["errors"] = errors };
+            return new JObject { ["document"] = Document(activated), ["errors"] = errors,
+                ["outcome"] = errors == 0 ? "applied" : "needs_review" };
         }
 
         private IEnumerable<DisplayDimension> Dimensions(ModelDoc2 model)
@@ -242,7 +277,7 @@ namespace Gongke.SolidWorks
 
         private JObject Change(JObject p)
         {
-            var model = Bound(p, true);
+            var model = Bound(p, true, requireCopy: true);
             var name = Protocol.Required(p, "parameter_name");
             var configuration = Protocol.Required(p, "configuration");
             var expected = Protocol.Number(p, "expected_value");
@@ -257,24 +292,24 @@ namespace Gongke.SolidWorks
                 throw new CommandError("unsupported_parameter", "Only linear and diameter dimensions are currently writable.");
             var before = Value(dimension, configuration);
             if (Math.Abs(before - expected) > 1e-10) throw new CommandError("stale_parameter", "Parameter value changed since review.");
-            var undoFinished = false;
-            var status = -1;
-            var rebuilt = false;
-            model.Extension.StartRecordingUndoObject();
-            try
-            {
-                nativeMutationStarted = true;
-                status = dimension.SetSystemValue3(target, (int)swSetValueInConfiguration_e.swSetValue_InSpecificConfigurations, new[] { configuration });
-                rebuilt = model.EditRebuild3();
-            }
-            finally { undoFinished = model.Extension.FinishRecordingUndoObject2("Gongke: " + name, false); }
-            var actual = Value(dimension, configuration);
-            var matches = Math.Abs(actual - target) <= 1e-10;
-            return new JObject { ["operation_id"] = (string)p["operation_id"], ["before"] = before, ["requested"] = target,
-                ["actual"] = actual, ["unit"] = "m", ["set_status"] = status, ["rebuilt"] = rebuilt,
-                ["readback_matches"] = matches, ["undo_recorded"] = undoFinished,
-                ["status"] = status == (int)swSetValueReturnStatus_e.swSetValue_Successful && rebuilt && matches ? "applied" : "needs_review",
-                ["document"] = Document(model), ["saved"] = false };
+            var result = ParameterEdit.Run(before, target, (int)swSetValueReturnStatus_e.swSetValue_Successful,
+                () => model.Extension.StartRecordingUndoObject(),
+                () => {
+                    nativeMutationStarted = true;
+                    return dimension.SetSystemValue3(target, (int)swSetValueInConfiguration_e.swSetValue_InSpecificConfigurations, new[] { configuration });
+                },
+                () => model.EditRebuild3(),
+                () => model.Extension.FinishRecordingUndoObject2("Gongke: " + name, false),
+                () => {
+                    // 重建后重新取得尺寸，避免使用已失效的 COM 尺寸对象。
+                    Bound(p);
+                    var current = Dimensions(model).Select(d => (Dimension)d.GetDimension2(0))
+                        .FirstOrDefault(d => d?.FullName == name)
+                        ?? throw new CommandError("unresolved_dimension", "重建后无法解析原尺寸。");
+                    return Value(current, configuration);
+                },
+                () => Document(model));
+            return result;
         }
 
         private JArray Selection(ModelDoc2 model)
@@ -294,8 +329,14 @@ namespace Gongke.SolidWorks
             var reference = Convert.FromBase64String(Protocol.Required(p, "persistent_reference"));
             var value = model.Extension.GetObjectByPersistReference3(reference, out var state);
             if (value == null || state != 0) throw new CommandError("selection_missing", "Persistent reference no longer resolves.");
+            nativeMutationStarted = true;
             var selected = model.Extension.MultiSelect2(new[] { value }, false, null);
-            return new JObject { ["selected"] = selected == 1, ["selection"] = Selection(model) };
+            var selection = Selection(model);
+            var matches = selected == 1 && selection.Count == 1
+                && (string)selection[0]["persistent_reference"] == (string)p["persistent_reference"];
+            nativeEffectObserved = selected > 0;
+            return new JObject { ["selected"] = matches, ["selection"] = selection,
+                ["outcome"] = matches ? "applied" : nativeEffectObserved ? "needs_review" : "unknown" };
         }
 
         private JObject Mesh(ModelDoc2 model)
@@ -352,11 +393,13 @@ namespace Gongke.SolidWorks
 
         private JObject UpdateDrawing(JObject p)
         {
-            var model = Bound(p, true);
+            var model = Bound(p, true, requireCopy: true);
             if (model.GetType() != (int)swDocumentTypes_e.swDocDRAWING) throw new CommandError("unsupported_document", "Activate the drawing to update.");
             nativeMutationStarted = true;
             var rebuilt = model.ForceRebuild3(false);
+            nativeEffectObserved = rebuilt;
             var inspection = Drawing(model);
+            inspection["outcome"] = rebuilt ? "applied" : "unknown";
             inspection["rebuilt"] = rebuilt;
             inspection["saved"] = false;
             return inspection;
@@ -367,27 +410,22 @@ namespace Gongke.SolidWorks
             var model = Bound(p, true);
             if (model.GetType() == (int)swDocumentTypes_e.swDocDRAWING) return SaveDrawingCopy(model, p);
             if (model.GetType() != (int)swDocumentTypes_e.swDocPART) throw new CommandError("unsupported_document", "Copy supports one part or a drawing referring to one part and configuration.");
-            RequireIndependentPart(model);
-            var output = Protocol.NewOutputPath(p, ".sldprt");
-            int errors = 0, warnings = 0;
-            nativeMutationStarted = true;
-            var ok = model.Extension.SaveAs3(output, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
-                (int)swSaveAsOptions_e.swSaveAsOptions_Silent | (int)swSaveAsOptions_e.swSaveAsOptions_Copy,
-                null, null, ref errors, ref warnings);
-            return Saved(model, output, ok, errors, warnings);
+            return SavePartCopy(model, p);
         }
 
         private JObject Save(JObject p)
         {
-            var model = Bound(p, true);
+            var model = Bound(p, true, requireCopy: true);
             int errors = 0, warnings = 0;
             nativeMutationStarted = true;
             var ok = model.Save3((int)swSaveAsOptions_e.swSaveAsOptions_Silent, ref errors, ref warnings);
+            nativeEffectObserved = ok && errors == 0;
             return Saved(model, model.GetPathName(), ok, errors, warnings);
         }
 
         private static JObject Saved(ModelDoc2 model, string path, bool ok, int errors, int warnings) => new JObject {
-            ["status"] = ok && errors == 0 && File.Exists(path) ? "saved" : "needs_review",
+            ["status"] = ok && errors == 0 && warnings == 0 && File.Exists(path) ? "saved" : "needs_review",
+            ["outcome"] = ok && errors == 0 && File.Exists(path) ? (warnings == 0 ? "applied" : "needs_review") : "unknown",
             ["path"] = path, ["file_exists"] = File.Exists(path), ["errors"] = errors, ["warnings"] = warnings,
             ["document"] = Document(model), ["reopen_verified"] = false };
 
@@ -402,8 +440,10 @@ namespace Gongke.SolidWorks
             // Export only the reviewed active sheet. Restore the user's global setting even on failure.
             var preference = (int)swUserPreferenceIntegerValue_e.swDxfMultiSheetOption;
             var previous = app.GetUserPreferenceIntegerValue(preference);
+            JObject result = null;
             try
             {
+                nativeMutationStarted = true;
                 if (!app.SetUserPreferenceIntegerValue(preference, (int)swDxfMultisheet_e.swDxfActiveSheetOnly))
                     throw new CommandError("export_setting_failed", "Cannot restrict DXF export to the active sheet.");
                 model.ClearSelection2(true);
@@ -411,15 +451,30 @@ namespace Gongke.SolidWorks
                 nativeMutationStarted = true;
                 var ok = model.Extension.SaveAs3(path, (int)swSaveAsVersion_e.swSaveAsCurrentVersion,
                     (int)swSaveAsOptions_e.swSaveAsOptions_Silent, null, null, ref errors, ref warnings);
-                var result = Saved(model, path, ok, errors, warnings);
+                nativeEffectObserved = File.Exists(path);
+                result = Saved(model, path, ok, errors, warnings);
+                if ((string)result["outcome"] == "unknown" && nativeEffectObserved) result["outcome"] = "needs_review";
                 result["sheet"] = sheet.GetName();
                 result["unit_verification"] = "requires_dxf_inspection";
                 return result;
             }
             finally
             {
-                if (!app.SetUserPreferenceIntegerValue(preference, previous))
-                    throw new CommandError("export_preference_restore_failed", "DXF output may exist, but the previous multi-sheet export preference could not be restored. Check SOLIDWORKS export settings before continuing.", "unknown");
+                try
+                {
+                    var restored = app.SetUserPreferenceIntegerValue(preference, previous)
+                        && app.GetUserPreferenceIntegerValue(preference) == previous;
+                    if (!restored) throw new InvalidOperationException("DXF 多页导出设置未恢复。");
+                    if (result != null) result["preference_restored"] = true;
+                }
+                catch (Exception error)
+                {
+                    if (result == null) throw new CommandError("export_preference_restore_failed", error.Message, "unknown");
+                    result["preference_restored"] = false;
+                    result["preference_error"] = error.Message;
+                    result["status"] = "needs_review";
+                    result["outcome"] = nativeEffectObserved ? "needs_review" : "unknown";
+                }
             }
         }
     }
