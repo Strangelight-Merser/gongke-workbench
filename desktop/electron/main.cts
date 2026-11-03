@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { join, resolve, relative, isAbsolute } from "node:path";
 import { existsSync, realpathSync, mkdirSync } from "node:fs";
+import { installCadEmbedding } from "./embed/controller.cjs";
 import { Service } from "./service.cjs";
 import { AgentClient } from "./acp/client.cjs";
 import { AgentConfiguration } from "./acp/settings.cjs";
@@ -105,6 +106,7 @@ else {
         sandbox: true,
       },
     });
+    installCadEmbedding(window);
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     ipcMain.handle("command", async (event, method, params = {}) => {

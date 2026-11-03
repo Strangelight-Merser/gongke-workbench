@@ -69,6 +69,15 @@
     "win": {
       "target": [
         "nsis"
+      ],
+      "extraResources": [
+        {
+          "from": "native/embed/publish",
+          "to": "embed",
+          "filter": [
+            "**/*"
+          ]
+        }
       ]
     },
     "linux": {

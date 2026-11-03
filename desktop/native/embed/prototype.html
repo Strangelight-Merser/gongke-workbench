@@ -1,0 +1,31 @@
+<!doctype html><html lang="zh-CN"><meta charset="UTF-8"><title>CAD 嵌入原型</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eef0ed;color:#26372b;font:14px system-ui;height:100vh;display:grid;grid-template:70px 1fr 55px / 220px 1fr 280px}header{grid-column:1/-1;padding:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}aside{padding:20px;background:#dde5db}main{min-width:0;display:flex;flex-direction:column}#surface{flex:1;background:#fff;display:grid;place-items:center;min-height:0}footer{grid-column:1/-1;padding:12px;overflow:auto}button,select,input,textarea{font:inherit;padding:7px;max-width:250px}textarea{width:100%;height:160px}#message{padding:8px;overflow-wrap:anywhere}h2{font-size:16px}
+</style>
+<header><select id="install" aria-label="CAD 安装"></select><button id="launch">启动</button><button id="browse">选择程序</button><button id="refresh">刷新窗口</button><select id="windows" aria-label="CAD 主窗口"></select><select id="mode"><option value="embed">嵌入</option><option value="dock">自动停靠</option></select><button id="attach">进入建模</button><button id="detach">独立窗口</button><button id="close">关闭 CAD</button><button id="diagnose">保存诊断</button></header>
+<aside><h2>工程</h2><input aria-label="工程名称" placeholder="键盘焦点测试"><p>草图 → 特征 → 保存原生文档</p><button id="toggle">隐藏 / 显示编辑区</button></aside>
+<main><div id="message" role="status"></div><div id="surface" tabindex="0">选择真实 CAD 主窗口</div></main>
+<aside><h2>Agent 面板区域</h2><textarea id="agent" aria-label="Agent 输入" placeholder="在此输入中文、快捷键，再返回 CAD"></textarea><button id="focus">返回 CAD</button><p>Ctrl+Alt+F6 切换焦点</p><button id="cancel">取消退出</button></aside>
+<footer id="status">等待窗口组件</footer>
+<script>
+const api = window.cadEmbed;
+if (!api) throw new Error("请通过 Electron 原型入口打开，普通浏览器无法托管 CAD 窗口");
+const el = id => document.getElementById(id);
+let found={installations:[], windows:[]}, visible=true;
+const run=fn=>async()=>{try{await fn();}catch(e){el('message').textContent=String(e);}};
+async function refresh(){found=await api.discover();el('install').replaceChildren(...found.installations.map(i=>new Option(i.name,i.id)));el('windows').replaceChildren(...found.windows.map(w=>new Option(w.title+' · PID '+w.pid,w.hwnd)));el('status').textContent=JSON.stringify(await api.status());}
+function layout(){const r=el('surface').getBoundingClientRect();return api.layout({x:r.x,y:r.y,width:r.width,height:r.height,visible});}
+el('refresh').onclick=run(refresh);
+el('launch').onclick=run(async()=>{await api.launch(el('install').value);el('message').textContent='等待 CAD 主窗口出现后刷新窗口列表';});
+el('browse').onclick=run(async()=>{const result=await api.chooseInstallation();if(result){found=result;el('install').replaceChildren(...result.installations.map(i=>new Option(i.name,i.id)));}});
+el('attach').onclick=run(async()=>{const w=found.windows.find(w=>w.hwnd===el('windows').value);api.cancelClose();await layout();el('status').textContent=JSON.stringify(await api.attach(w.hwnd,w.pid,el('mode').value));});
+el('detach').onclick=run(async()=>{await api.detach();await refresh();});
+el('close').onclick=run(async()=>{await api.closeCad();await refresh();});
+el('diagnose').onclick=run(async()=>{el('message').textContent=(await api.diagnose()).path;});
+el('focus').onclick=run(()=>api.focus());el('surface').onfocus=run(()=>api.focus());
+el('toggle').onclick=run(async()=>{visible=!visible;await layout();});
+el('cancel').onclick=()=>{api.cancelClose();el('message').textContent='已取消退出';};
+api.onEvent(e=>{if(e.event==='returnFocus')el('agent').focus();if(e.message)el('message').textContent=e.message;if(e.state)el('status').textContent=JSON.stringify(e.state);});
+new ResizeObserver(()=>void layout().catch(e=>el('message').textContent=String(e))).observe(el('surface'));
+window.addEventListener('resize',()=>void layout());void run(refresh)();
+</script></html>

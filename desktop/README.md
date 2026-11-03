@@ -105,3 +105,27 @@ ACP 确定性协议测试使用独立 stdio Agent 替身；真实 Agent 联调�
 随桌面打包的 `service/gongke-service/gongke-service`（Windows 为 `.exe`）同时提供 `mcp`、`call`、`workbuddy` 子命令。`workbuddy --state-dir <用户数据目录>/state --project <工程> [--allow-writes]` 生成项目 `.workbuddy/mcp.json`，不依赖系统 Python。
 
 `tools.list` 与 `mcp.configure` 可由 renderer 通过既有 request 调用。外部 MCP 工具执行推送现有 task.updated/task.receipt 事件，任务列表无需另建同步通道；工程切换后旧 MCP 绑定失效。参见 [完整接口](../docs/agent-api.md)。
+## Windows 自由建模编辑区
+
+Windows 的“原生模型”默认显示自由建模区；“工程参数”返回已有原生桥视图。选择 FreeCAD 或 SOLIDWORKS 安装，启动后刷新窗口列表，选择对应主窗口进入建模。特征树和建模命令都来自原生 CAD；窗口接入不替代 GongKe 工作台/SOLIDWORKS 插件。切换软件前释放或关闭当前 CAD，工程文件不自动转换。
+
+Windows 开发/打包前构建窗口组件：
+
+```powershell
+# 仓库根目录；需要 .NET 8 或更新 SDK
+powershell -ExecutionPolicy Bypass -File desktop/native/embed/build.ps1
+# 然后按上方步骤启动/打包桌面
+```
+
+Windows 安装包携带 `native/embed/publish/` 全目录到 `resources/embed/`，学生无需安装 .NET。可选 FreeCAD 放在 `resources/freecad/bin/FreeCAD.exe`；当前打包规则不自动下载或分发 CAD。开发环境可用 `GONGKE_FREECAD_EXE` 指向本机 FreeCAD。未发现安装时用“选择程序”。
+
+不依赖 Python 服务的独立原型与 Windows 冒烟：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File desktop/native/embed/run-prototype.ps1
+powershell -ExecutionPolicy Bypass -File desktop/native/embed/test-windows.ps1
+```
+
+原型提供“嵌入”和“自动停靠”对比。完整主窗口重挂在本机已实现并编译，但菜单、模态、焦点、混合 DPI 和异常恢复尚需真实 Windows CAD 验证。具体架构、来源、逐项操作与诊断回传见 [Windows CAD 编辑区说明](native/embed/README.md)。
+
+正常关闭走 CAD 自己的保存提示；取消后点击“取消退出”继续。异常退出优先恢复可见的 CAD 独立窗口，保留未保存文档，不强杀。`Ctrl+Alt+F6` 切换焦点。“保存诊断”记录窗口状态；它不包含模型数据，也不证明原生桥已连接。
