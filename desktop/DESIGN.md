@@ -133,3 +133,21 @@ node tests/visual-review.cjs /absolute/path/to/frontend-review
 - [Playwright locators](https://playwright.dev/docs/locators)：窗口流程按可访问角色和标签定位真实控件。
 
 - [ACP 会话建立](https://agentclientprotocol.com/protocol/v1/session-setup)与[对话流程](https://agentclientprotocol.com/protocol/v1/prompt-turn)：会话建立、模型回复与工具执行是不同阶段，各自保留错误来源。
+
+## 原生建模过程（2026-11-03）
+
+中间视图默认显示原生几何，Windows 仍可切回嵌入编辑。首次打开自动读取；建模完成回执到达后读取一次 `freecad.scene`，不再用定时器把修订变化后的模型清空。读取期间到达的回执合并为一次后续读取，不并发请求宿主。手工操作仍可用“读取 FreeCAD 工程”刷新。WebGL renderer、相机与 OrbitControls 保留，仅替换网格；新文档的第一个非空几何自动取景，后续修改不改变视角。
+
+`host.context/inspect` 提供文档身份、Body 下的特征树和世界坐标边轮廓，`freecad.scene` 提供实体网格与图纸；前后修订不一致则不拼接快照，保留上一画面并显示刷新原因。草图尚未生成实体时按成功回执的草图引用读取轮廓。蓝色轮廓标出本次特征的原生边，不将完整特征形体称作布尔差分。
+
+右侧步骤来自公共执行服务的 `task.receipt`，因此外部 WorkBuddy MCP 与窗口内 Agent 共用记录。新事件增加 `project` 用于工程过滤；准备/完成回执按既有 task_id、at、command 关联；磁盘收据格式保持原语义。`host.check` 的桌面调用也记录回执。重新打开工程从现有 `task.list/task.get` 恢复最近记录；步骤可展开原参数和原结果。草图名称、长度、角度与阵列数量按真实输入显示，不从线弧组合臆测胶囊、贯穿孔或设计用途。查询原 operation_id 得到确定成功后才刷新，不重发写入。
+
+点击历史特征步骤，只在同一宿主实例、文档和配置的当前特征树中重新解析仍存在的对象；删除项不提供定位。面/边检查必须匹配完整修订。红色半透明平面/圆柱表示**量测支撑面或轴面**，不冒充有限拓扑面的精确着色；边用实际采样轮廓。没有实体的 missing/unknown 保留文字，不虚构位置。新修订自动移除旧检查标记。Windows FreeCAD 嵌入视图同时使用带修订校验的原生 selection 高亮；步骤定位会切到工作台视图以查看轮廓与检查标记。SOLIDWORKS 的步骤文案可展示，当前没有通用显示网格协议，本轮不声称实现其 Three.js 实体镜像。
+
+验证入口：`npm run build`、`GONGKE_PYTHON=<含 app 依赖的 Python> npm test`；`node tests/modeling-headless.cjs` 使用 headless Chrome 检查实际 React/Three.js 渲染、首次读取、回执后网格只读一次、canvas 保留、删除树节点与检查过期。`tests/fixtures/modeling-live.*` 是明确标记的合成几何样例，不能作为 FreeCAD 真机证据。Python 回执与公共入口回归见 `tests/test_modeling_receipt_events.py` 及原有 app/modeling/inspection 测试。
+
+本轮日志与截图：`out/live-model-validation/`。真实 FreeCAD→MCP→Electron 验收须在屏幕释放后，使用独立 `GONGKE_FREECAD_SESSION`、独立桌面状态目录和工程，按 `docs/native-modeling.md` 的脚本驱动草图、拉伸、修改、检查失败/修复和删除；不得连接其他会话的活动模型。当前只读屏幕核对仍存在 `WorkBuddy P7 验收`，底栏路径为 `.../out/workbuddy-20261103-065546/project`，未启动或操控另一个 GUI。
+
+依据：[Three.js OrbitControls](https://threejs.org/docs/pages/OrbitControls.html) 的 camera/target 与 damping 生命周期；[ACP tool calls](https://agentclientprotocol.com/protocol/v1/tool-calls) 的展示更新与实际执行分工；同类 [freecad-mcp](https://github.com/neka-nat/freecad-mcp) 的宿主插件读取方式。采用项目已有原生读取和受限工具，没有引入其任意代码执行入口或依赖。
+
+补充无窗口原生验证：`/Applications/FreeCAD.app/Contents/Resources/bin/python tests/e2e/modeling_display_freecad.py` 在全新 Python 进程中创建并关闭自己的内存文档，验证真实 Sketch 轮廓、Body/Sketch/Pad 树和世界坐标边，产出 `native-read.json`。本机已通过；这是 FreeCAD 原生读取证据，仍不等同于 GUI/MCP/Electron 端到端验收。系统缺少可选 3Dconnexion 驱动库的提示保留在 `native-read.log`。

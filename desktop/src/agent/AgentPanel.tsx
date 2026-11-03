@@ -1,3 +1,6 @@
+import { useModelingProgress } from "./ModelingProgress";
+import { ModelingSteps } from "./ModelingTimeline";
+import { stepTitle } from "./modelingSteps";
 import { AgentErrorDetails } from "./AgentErrorDetails";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -58,6 +61,7 @@ export function AgentPanel({
   onTurnEnd(): void;
   openModel(): void;
 }) {
+  const modeling = useModelingProgress();
   const [state, setState] = useState<AgentSnapshot>({
     phase: "disconnected",
     project: "",
@@ -337,6 +341,8 @@ export function AgentPanel({
         className="conversation"
         hidden={
           !conversationVisible &&
+          !modeling.steps.length &&
+          !modeling.error &&
           !(onboardingStep === "verify" && rows.length > 0)
         }
         role="log"
@@ -372,6 +378,7 @@ export function AgentPanel({
             )}
           </div>
         )}
+        <ModelingSteps openModel={openModel} />
         {rows.map((row, i) =>
           row.kind === "tool" ? (
             <details
@@ -380,7 +387,10 @@ export function AgentPanel({
               open={row.tool.status !== "completed"}
             >
               <summary>
-                {row.tool.title || "工程操作"}
+                {stepTitle(
+                  row.tool.title || "工程操作",
+                  row.tool.rawInput || {},
+                )}
                 <span>
                   {
                     (

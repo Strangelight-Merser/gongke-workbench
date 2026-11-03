@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useModelingProgress } from "../agent/ModelingProgress";
+import {
+  commandOf,
+  modelResult,
+  resultRef,
+  sameDocument,
+  sameIdentity,
+  serialRefresh,
+  stepInput,
+} from "../agent/modelingSteps";
+import { readLiveScene } from "./liveScene";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Input } from "../ui/controls";
 import { call, Data, errorText } from "../api";
 import { DataDetails } from "../ui/DataDetails";
@@ -40,13 +51,15 @@ export function FreeCadInspector({
       selected_object: selected,
     });
   }, [context, scene, selected, onContext]);
+  const [locateRequest, setLocateRequest] = useState(0);
   const select = useCallback(
     (id: string) => {
       setSelected(id);
+      setLocateRequest((value) => value + 1);
       setObject(null);
       setPreview(null);
       setReview(null);
-      if (context.session_id)
+      if (context.session_id && !window.cadEmbed?.supported)
         run("选择原生对象", () =>
           call("freecad.select", {
             session_id: context.session_id,
@@ -57,19 +70,143 @@ export function FreeCadInspector({
     },
     [context.session_id, context.revision, run],
   );
+  const { steps, target } = useModelingProgress();
+  const locatedRequest = useRef<number | undefined>(undefined);
+  const [features, setFeatures] = useState<Data[]>([]),
+    [detail, setDetail] = useState<Data | null>(null);
+  const focus = useRef("");
+  const focusDocument = useRef<Data | undefined>(undefined);
+  const live = useRef<ReturnType<typeof serialRefresh> | null>(null);
+  const newest = [...steps]
+    .reverse()
+    .find(
+      (s) =>
+        s.phase === "finished" &&
+        !!modelResult(s).document &&
+        commandOf(s.command, s.params) !== "host.check" &&
+        s.params?.host_id === "freecad",
+    );
+  useEffect(() => {
+    let active = true;
+    const queue = serialRefresh(
+      async () => {
+        const value = await readLiveScene(
+          focus.current,
+          call,
+          focusDocument.current,
+        );
+        if (!active) return;
+        setConnectionError("");
+        setContext(value.context);
+        setScene(value.scene);
+        setFeatures(value.features);
+        setDetail(value.detail);
+        setSelected(value.selected);
+        setPreview(null);
+        setReview(null);
+        setObject(null);
+      },
+      (error) => {
+        if (active) setConnectionError(errorText(error));
+      },
+    );
+    live.current = queue;
+    void queue.request();
+    return () => {
+      active = false;
+      queue.close();
+    };
+  }, [project?.path]);
+  useEffect(() => {
+    if (!newest) return;
+    focusDocument.current = modelResult(newest).document;
+    const p = stepInput(newest.command, newest.params);
+    focus.current =
+      modelResult(newest).outcome !== "committed" ||
+      modelResult(newest).deleted_ref
+        ? ""
+        : resultRef(modelResult(newest), p);
+    // 空 Body 尚无可读取的形体。
+    if (
+      ["host.model_new", "host.body", "host.model_copy"].includes(
+        commandOf(newest.command, newest.params),
+      )
+    )
+      focus.current = "";
+    void live.current?.request();
+  }, [newest]);
   const refresh = async () => {
-    setConnectionError("");
-    const c = await call("freecad.context");
-    const s = await call("freecad.scene");
-    const current = { ...c, revision: s.revision };
-    setContext(current);
-    setScene(s);
-    setPreview(null);
-    setReview(null);
-    setObject(null);
-    if (s.objects?.length && !s.objects.find((x: Data) => x.id === selected))
-      setSelected(s.objects[0].id);
+    await live.current?.request();
   };
+  const check = [...steps]
+    .reverse()
+    .find(
+      (s) =>
+        s.result?.checks &&
+        (!newest ||
+          sameDocument(modelResult(newest).document, scene?.nativeDocument)) &&
+        sameDocument(s.result.document, scene?.nativeDocument),
+    )?.result;
+  useEffect(() => {
+    if (
+      !target ||
+      target.params?.host_id !== "freecad" ||
+      !scene?.nativeDocument ||
+      locatedRequest.current === target.requestedAt
+    )
+      return;
+    locatedRequest.current = target.requestedAt;
+    if (
+      !(modelResult(target).checks ? sameDocument : sameIdentity)(
+        modelResult(target).document,
+        scene?.nativeDocument,
+      )
+    ) {
+      setConnectionError("该步骤属于旧文档或旧修订，请在当前特征树中选择对象");
+      return;
+    }
+    const id = resultRef(
+      modelResult(target),
+      stepInput(target.command, target.params),
+    );
+    if (id && features.some((f) => f.native_ref === id)) {
+      setSelected(id);
+      setPage("");
+      setLocateRequest((value) => value + 1);
+    } else if (id) setConnectionError("该特征已不在当前模型中");
+  }, [target, scene?.nativeDocument]);
+  useEffect(() => {
+    if (!selected || !scene?.nativeDocument) {
+      setDetail(null);
+      return;
+    }
+    if (
+      detail?.object_ref === selected &&
+      sameDocument(detail.document, scene.nativeDocument)
+    )
+      return;
+    let active = true;
+    call("host.inspect", {
+      host_id: "freecad",
+      document: scene.nativeDocument,
+      object_ref: selected,
+    })
+      .then((value) => {
+        if (active) {
+          if (value.error) throw new Error(value.error.message);
+          setDetail(value);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setDetail(null);
+          setConnectionError(errorText(error));
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected, scene?.nativeDocument]);
   useEffect(() => {
     if (!selected || !context.session_id) return;
     let current = true;
@@ -101,44 +238,13 @@ export function FreeCadInspector({
     };
   }, [selected, context]);
   useEffect(() => {
-    if (!context.session_id) return;
-    let active = true,
-      polling = false;
-    const timer = setInterval(() => {
-      if (polling) return;
-      polling = true;
-      call("freecad.context")
-        .then((current) => {
-          if (
-            active &&
-            (current.session_id !== context.session_id ||
-              current.revision !== context.revision)
-          ) {
-            setContext(current);
-            setPreview(null);
-            setReview(null);
-            setObject(null);
-            setScene(null);
-          }
-        })
-        .catch((error) => {
-          if (active) {
-            setConnectionError(errorText(error));
-            setContext({});
-            setPreview(null);
-            setObject(null);
-            setScene(null);
-          }
-        })
-        .finally(() => {
-          polling = false;
-        });
-    }, 3000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, [context.session_id, context.revision, onContext]);
+    if (!window.cadEmbed?.supported || !selected || !scene?.session_id) return;
+    void call("freecad.select", {
+      session_id: scene.session_id,
+      expected_revision: scene.revision,
+      object_name: selected,
+    }).catch((error) => setConnectionError(errorText(error)));
+  }, [selected, scene?.session_id, scene?.revision]);
   const params = {
     session_id: context.session_id,
     entity_id: object?.entity_id,
@@ -220,6 +326,11 @@ export function FreeCadInspector({
           </Button>
         </div>
       )}
+      {connectionError && scene && (
+        <div className="error" role="status">
+          {connectionError}
+        </div>
+      )}
       {!scene ? (
         <Empty
           title={connectionError ? "原生连接已中断" : "读取正在编辑的工程"}
@@ -298,19 +409,48 @@ export function FreeCadInspector({
               </div>
             </div>
             <div className="model-document" hidden={!!page}>
-              <ModelView scene={scene} selected={selected} onSelect={select} />
+              <ModelView
+                scene={scene}
+                selected={selected}
+                onSelect={select}
+                detail={detail}
+                focusRequest={locateRequest}
+                checks={check}
+              />
             </div>
             <div className="properties">
-              <h3>对象</h3>
-              {scene.objects?.map((o: Data) => (
+              <h3>特征树</h3>
+              {features.map((f: Data) => (
                 <Button
-                  className={selected === o.id ? "object active" : "object"}
-                  key={o.id}
-                  onClick={() => select(o.id)}
+                  key={f.native_ref}
+                  className={
+                    selected === f.native_ref ? "object active" : "object"
+                  }
+                  style={{ paddingLeft: f.parent ? 24 : 8 }}
+                  onClick={() => select(f.native_ref)}
                 >
-                  {o.label}
+                  {f.label}
+                  {f.sketch ? " · 草图" : ""}
                 </Button>
               ))}
+              {check?.checks
+                ?.filter((c: Data) => c.status !== "pass")
+                .map((c: Data) => (
+                  <div className="error" key={c.id}>
+                    {c.id} · {c.status === "fail" ? "不符" : "待核实"}
+                    {!c.actual?.locations?.length && " · 无可定位实体"}
+                  </div>
+                ))}
+              {!features.length &&
+                scene.objects?.map((o: Data) => (
+                  <Button
+                    className={selected === o.id ? "object active" : "object"}
+                    key={o.id}
+                    onClick={() => select(o.id)}
+                  >
+                    {o.label}
+                  </Button>
+                ))}
               {object?.supported ? (
                 <>
                   <h3>原生尺寸</h3>
@@ -362,10 +502,7 @@ export function FreeCadInspector({
                   </Button>
                 </>
               ) : (
-                <p className="muted">
-                  {object?.reason ||
-                    "选择已绑定的受支持轴，可读取工程条件并进行尺寸修改。"}
-                </p>
+                <p className="muted">{object?.reason}</p>
               )}
               {preview && (
                 <div className="candidate">
