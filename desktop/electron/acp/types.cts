@@ -1,3 +1,4 @@
+import type { AgentDiagnostic } from "./diagnostics.cjs";
 import type {
   AuthMethod,
   NewSessionResponse,
@@ -33,6 +34,7 @@ export type AgentSnapshot = {
   session?: NewSessionResponse;
   events: AgentEvent[];
   error?: string;
+  errorDetails?: AgentDiagnostic;
 };
 export type AgentAPI = {
   settings(): Promise<AgentSettings>;

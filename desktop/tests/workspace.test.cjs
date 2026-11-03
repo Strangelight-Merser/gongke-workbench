@@ -274,3 +274,32 @@ test("深色控件常态与悬停文字/图标至少 4.5:1，禁用使用独立�
     darkTheme.colorNeutralForeground2,
   );
 });
+
+const { guideProgress, recoveryFor } = load("agent/onboardingPresentation.ts");
+test("连接与首次对话属于同一步，完成前不越过验证", () => {
+  assert.equal(guideProgress("deepseek", "credentials").index, 2);
+  assert.equal(guideProgress("deepseek", "connect").index, 3);
+  assert.equal(guideProgress("deepseek", "verify").index, 3);
+  const complete = guideProgress("deepseek", "complete");
+  assert.equal(complete.index, complete.labels.length);
+  assert.equal(guideProgress("workbuddy", "verify").index, 2);
+});
+test("仅明确的密钥或余额错误提供相应恢复入口", () => {
+  const { agentError } = require("../dist-electron/onboarding/errors.cjs");
+  for (const message of ["HTTP 401", "api key missing"]) {
+    assert.deepEqual(recoveryFor(agentError(new Error(message))), {
+      key: true,
+      balance: false,
+    });
+  }
+  assert.deepEqual(recoveryFor(agentError(new Error("HTTP 402"))), {
+    key: false,
+    balance: true,
+  });
+  for (const message of ["", "timeout", "unknown failure", "HTTP 429"]) {
+    assert.deepEqual(recoveryFor(agentError(new Error(message))), {
+      key: false,
+      balance: false,
+    });
+  }
+});

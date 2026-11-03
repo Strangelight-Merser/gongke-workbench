@@ -450,3 +450,51 @@ test("同步启动错误结束 starting，允许用户重新选择路径", async
   assert.equal(client.busy, false);
   assert.equal(client.snapshot().phase, "disconnected");
 });
+
+test("引导保留原始 ACP 详情且只记录一次，MCP 失败回执提供具体原因", async (t) => {
+  const {
+    AgentFailure,
+    diagnosticFor,
+    logDiagnostic,
+  } = require("../dist-electron/acp/diagnostics.cjs");
+  const f = fixture(t);
+  const flow = new Onboarding(f.d);
+  await flow.act({ type: "detect" });
+  await flow.act({ type: "connect" });
+  const original = Object.assign(new Error("model unavailable"), {
+    code: -32603,
+    data: { details: "unknown model" },
+  });
+  const details = diagnosticFor(original, "session/prompt");
+  logDiagnostic(details, join(f.directory, "agent-errors.jsonl"));
+  f.d.agent.prompt = async () => {
+    throw new AgentFailure(agentError(original), details);
+  };
+  const failed = await flow.act({ type: "verify" });
+  assert.equal(failed.errorDetails.code, -32603);
+  assert.match(failed.errorDetails.details, /unknown model/);
+  assert.equal(
+    readFileSync(details.logPath, "utf8").trim().split("\n").length,
+    1,
+  );
+  f.d.agent.snapshot = () => ({
+    phase: "ready",
+    project: "/工程",
+    agentId: "deepseek",
+    events: [
+      {
+        type: "update",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "bad",
+          status: "failed",
+          rawOutput: { error: "MCP project is not open" },
+        },
+      },
+    ],
+  });
+  f.d.agent.prompt = async () => ({ completed: true, events: [] });
+  const missing = await flow.act({ type: "verify" });
+  assert.notEqual(missing.agents.deepseek.step, "complete");
+  assert.match(missing.errorDetails.tools, /MCP project is not open/);
+});

@@ -112,7 +112,50 @@ const records = [],
                   );
                 }
               }
+              if (name === "onboarding") {
+                // 已配置 Agent 走真实菜单；切换面板不能伪造引导完成。
+                await page
+                  .getByRole("button", { name: "Agent 连接设置", exact: true })
+                  .click();
+                await page
+                  .getByRole("menuitem", {
+                    name: "使用已配置的 Agent",
+                    exact: true,
+                  })
+                  .click();
+                await page
+                  .getByRole("button", { name: "连接", exact: true })
+                  .waitFor();
+                assert.equal(
+                  await page.locator(".agent-onboarding:visible").count(),
+                  0,
+                );
+                assert.equal(
+                  (await page.evaluate(() => window.gongke.onboarding.state()))
+                    .agents.deepseek.step,
+                  "credentials",
+                );
+                await page
+                  .getByRole("button", { name: "Agent 连接设置", exact: true })
+                  .click();
+                await page
+                  .getByRole("menuitem", {
+                    name: "安装与连接引导",
+                    exact: true,
+                  })
+                  .click();
+                await page
+                  .getByRole("button", { name: "打开 dsh", exact: true })
+                  .waitFor();
+                assert.equal(await page.locator(".compose:visible").count(), 0);
+              }
               if (name === "modeling") {
+                assert.equal(
+                  await page
+                    .getByText("模型保存状态未同步", { exact: true })
+                    .count(),
+                  0,
+                );
                 await page
                   .getByRole("button", { name: "新建模型", exact: true })
                   .click();
@@ -147,8 +190,81 @@ const records = [],
                   0,
                 );
                 assert.equal(await page.locator(".compose:visible").count(), 0);
+                assert.equal(
+                  await page
+                    .locator(".onboarding-primary-action:visible")
+                    .count(),
+                  1,
+                );
+                assert.deepEqual(
+                  await page.locator(".onboarding-steps li").allTextContents(),
+                  [
+                    "1检测 / 安装",
+                    "2注册与充值",
+                    "3在 dsh 填 Key",
+                    "4连接并首次对话",
+                  ],
+                );
+                assert.equal(
+                  await page
+                    .getByRole("button", { name: "去充值", exact: true })
+                    .count(),
+                  0,
+                );
+                assert.equal(
+                  await page
+                    .getByRole("button", {
+                      name: "去 dsh 更新 Key",
+                      exact: true,
+                    })
+                    .count(),
+                  0,
+                );
+              }
+              if (name === "onboarding") {
+                // 已配置 Agent 走真实菜单；切换面板不能伪造引导完成。
+                await page
+                  .getByRole("button", { name: "Agent 连接设置", exact: true })
+                  .click();
+                await page
+                  .getByRole("menuitem", {
+                    name: "使用已配置的 Agent",
+                    exact: true,
+                  })
+                  .click();
+                await page
+                  .getByRole("button", { name: "连接", exact: true })
+                  .waitFor();
+                assert.equal(
+                  await page.locator(".agent-onboarding:visible").count(),
+                  0,
+                );
+                assert.equal(
+                  (await page.evaluate(() => window.gongke.onboarding.state()))
+                    .agents.deepseek.step,
+                  "credentials",
+                );
+                await page
+                  .getByRole("button", { name: "Agent 连接设置", exact: true })
+                  .click();
+                await page
+                  .getByRole("menuitem", {
+                    name: "安装与连接引导",
+                    exact: true,
+                  })
+                  .click();
+                await page
+                  .getByRole("button", { name: "打开 dsh", exact: true })
+                  .waitFor();
+                assert.equal(await page.locator(".compose:visible").count(), 0);
               }
               if (name === "modeling") {
+                assert.equal(
+                  await page
+                    .getByText("模型保存状态未同步", { exact: true })
+                    .count(),
+                  0,
+                );
                 assert.equal(
                   await page.locator(".cad-workspace > .toolbar").count(),
                   1,

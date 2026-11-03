@@ -44,6 +44,29 @@ const app = agent({ name: "gongke-test-agent" })
     const update = (update) =>
       client.notify("session/update", { sessionId, update });
     if (params.prompt[0].text === "crash") process.exit(7);
+    if (params.prompt[0].text === "diagnostic") {
+      process.stderr.write(
+        "MCP startup failed: ModuleNotFoundError: mcp\nAuthorization: Bearer sk-",
+      );
+      await new Promise((r) => setTimeout(r, 10));
+      process.stderr.write(
+        "stderr-private\n" + process.env.FIXTURE_API_KEY + "\n",
+      );
+      await update({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "failed-tool",
+        status: "failed",
+        rawOutput: { error: "gongke MCP unavailable", api_key: "data-private" },
+      });
+      throw RequestError.internalError(
+        {
+          details: "MCP connection refused",
+          headers: { Authorization: "Bearer sk-header-private" },
+        },
+        "first prompt failed",
+      );
+    }
+
     if (params.prompt[0].text === "forbidden") {
       for (const [method, args] of [
         [

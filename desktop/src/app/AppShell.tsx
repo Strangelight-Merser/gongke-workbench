@@ -194,10 +194,10 @@ export function AppShell() {
             {busy ||
               (native.document
                 ? native.modified === true || native.dirty === true
-                  ? "模型有未保存修改"
+                  ? "有未保存的修改"
                   : native.modified === false || native.dirty === false
                     ? "模型已保存"
-                    : "模型保存状态未同步"
+                    : ""
                 : project
                   ? "工程已打开"
                   : "未打开工程")}
