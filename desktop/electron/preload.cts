@@ -1,5 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("gongke", {
+  onboarding: {
+    state: () => ipcRenderer.invoke("acp-onboarding-state"),
+    act: (action: unknown) => ipcRenderer.invoke("acp-onboarding-action", action),
+    onState: (callback: (state: unknown) => void) => {
+      const listener = (_event: unknown, state: unknown) => callback(state);
+      ipcRenderer.on("onboarding-state", listener);
+      return () => ipcRenderer.removeListener("onboarding-state", listener);
+    },
+  },
   agent: {
     settings: () => ipcRenderer.invoke("acp-settings"),
     saveSettings: (settings: unknown) =>

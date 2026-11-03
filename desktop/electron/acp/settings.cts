@@ -5,27 +5,29 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { delimiter, isAbsolute, join, resolve } from "node:path";
+import { join, win32, posix } from "node:path";
 import type { AgentSettings, StdioCommand } from "./types.cjs";
 
 export function resolveCommand(
   command: string,
   env: NodeJS.ProcessEnv = process.env,
+  platform = process.platform,
 ) {
-  const directories = (env.PATH || "").split(delimiter);
-  if (process.platform === "darwin")
+  const path = platform === "win32" ? win32 : posix;
+  const directories = (env.PATH || env.Path || "").split(path.delimiter).filter(Boolean);
+  if (platform === "darwin")
     directories.push("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin");
-  const candidates = isAbsolute(command)
+  const candidates = path.isAbsolute(command)
     ? [command]
     : directories.flatMap((dir) =>
-        process.platform === "win32"
-          ? [join(dir, command), join(dir, command + ".exe")]
-          : [join(dir, command)],
+        platform === "win32"
+          ? [command, ...(/\.[^\\/]+$/.test(command) ? [] : [command + ".exe", command + ".cmd", command + ".bat"])].map((name) => path.join(dir, name))
+          : [path.join(dir, command)],
       );
   for (const file of candidates) {
     try {
-      accessSync(file, constants.X_OK);
-      return resolve(file);
+      accessSync(file, platform === "win32" ? constants.F_OK : constants.X_OK);
+      return path.resolve(file);
     } catch {
       /* 继续检索 PATH */
     }

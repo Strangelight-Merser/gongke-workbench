@@ -108,10 +108,11 @@ class Application:
                     for name, (desc, definition, write) in self.commands.definitions.items()]
         if method == "mcp.configure":
             validate(params, schema({"allow_writes": BOOL}, ["allow_writes"]))
-            if not getattr(sys, "frozen", False):
-                raise ValueError("请使用打包后的 gongke-service workbuddy 生成配置，配置不依赖用户 Python")
             from gongke_app.connection import write_workbuddy
-            return write_workbuddy(self.current(), self.state_dir, Path(sys.executable), params["allow_writes"])
+            packaged = bool(getattr(sys, "frozen", False))
+            return write_workbuddy(self.current(), self.state_dir, Path(sys.executable), params["allow_writes"],
+                                  prefix=() if packaged else ("-m", "gongke_app"),
+                                  env=None if packaged else {"PYTHONPATH": str(Path(__file__).resolve().parent.parent)})
         if method == "task.list":
             validate(params, schema())
             return self.tasks.list(str(self.project.path) if self.project else None)

@@ -1,3 +1,4 @@
+import { AgentOnboarding } from "./AgentOnboarding";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentEvent,
@@ -174,6 +175,10 @@ export function AgentPanel({
           {phases[active ? state.phase : "disconnected"]}
         </span>
       </div>
+      <AgentOnboarding project={project} onConnected={() => {
+        setSelected("deepseek");
+        window.gongke.agent.settings().then(setSettings);
+      }} />
       <div className="acp-toolbar">
         <select
           aria-label="选择 Agent"

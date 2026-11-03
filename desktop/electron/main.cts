@@ -1,3 +1,4 @@
+import { registerOnboarding } from "./onboarding/ipc.cjs";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { join, resolve, relative, isAbsolute } from "node:path";
 import { existsSync, realpathSync, mkdirSync } from "node:fs";
@@ -150,6 +151,8 @@ else {
         requireMainFrame(event);
         return action(...args);
       });
+    registerOnboarding({ window, agent, configuration, project: () => projectRoot,
+      request: (method, params) => service.request(method, params), handle });
     handle("settings", () => configuration.read());
     handle("save-settings", async (settings) => {
       if (agent.busy) throw new Error("请先取消当前 Agent 操作");
@@ -164,7 +167,7 @@ else {
     });
     handle("authenticate", (id) => agent.authenticate(id));
     handle("new-session", () => agent.newSession());
-    handle("prompt", (text) => agent.prompt(text));
+    handle("prompt", async (text) => { await agent.prompt(text); });
     handle("cancel", () => agent.cancel());
     handle("disconnect", () => agent.disconnect());
     handle("permission", (id, optionId) => agent.permission(id, optionId));
