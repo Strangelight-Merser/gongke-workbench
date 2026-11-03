@@ -1,15 +1,15 @@
 # 构想引擎
 
-面向工科学生的工程软件集成工作台，Windows 优先，以构想引擎为主窗口。产品目标是在窗口内托管用户已有的 Agent 与 CAD 原生编辑界面，支持自由建模；默认 FreeCAD，可切换到本机已安装的 SOLIDWORKS，交付文件尽量保留原生特征树。
+面向工科学生的建模工作台，Windows 优先。目标是在构想引擎窗口内嵌入 CAD，学生照图纸建模或自由建模；默认 FreeCAD，可切换到本机 SOLIDWORKS。Agent 按图纸或要求直接在原生 CAD 中建模并对照图纸检查修正，学生可接着编辑；可选的练习模式下 Agent 只讲解和检查。
 
-学生从任务书、分组表、照片和已有 CAD 文件等材料包开始，确认题号与缺项，逐步完成方案、计算、建模和出图；Agent 区分“老师给定／学生选择／程序建议”，以讲解和检查为主，不代做、不编造实验数据。窗口内 Agent 采用 ACP，首个接入 DeepSeek Harness；WorkBuddy 通过 MCP 接工程工具。阶段方向见 [PLAN.md](PLAN.md)。
+首次引导将经用户同意下载安装 DeepSeek Harness Desktop，引导注册 DeepSeek 平台、充值，并在 dsh 中自行填写 API Key，构想引擎不经手 Key。已有 dsh 引导通过 ACP 连接；WorkBuddy 可选安装，已有用户引导写入工程 MCP 配置。
 
-当前主入口为 [桌面应用](desktop/README.md)，采用 Electron＋React 与随包提供的 Python 服务；FreeCAD 工作台、SOLIDWORKS COM 插件和 AutoCAD 托管插件承担原生接入。下表记录已有实现，窗口内 ACP 与嵌入编辑按 PLAN 推进。窗口内 ACP 通过统一工程 MCP 调用工具，内置 Key 助手已删除，历史会话资料保留。
+当前主入口为[桌面应用](desktop/README.md)。近期按 Fluent UI React v9 重构为工程树、中间 CAD／文档、右侧 Agent 与状态栏，优先完成引导连接、嵌入编辑及模型检查。材料包与任务书提取后移，减速器计算出图保留为专项模块，见 [PLAN.md](PLAN.md)。下表为已有能力；内置 Key 助手已删除，历史会话保留。
 
 | 入口 | 已有能力 | 验证边界 |
 |---|---|---|
-| 桌面应用 | 创建与打开工程、真实计算和导出、SVG 图纸预览、任务记录、模型服务配置 | 已运行真实桌面流程；发行包未签名、公证 |
-| 过渡工程助手 | Chat Completions 流式工具调用、工程读取、确定性计算、受限原生操作 | 协议与工具循环已测；真实模型账号任务待连接验证 |
+| 桌面应用 | 创建与打开工程、真实计算和导出、SVG 图纸预览、任务记录 | 已运行真实桌面流程；发行包未签名、公证 |
+| 窗口内 Agent | ACP 会话、权限请求、绑定工程的 MCP 工具调用 | 连接记录见 [ACP.md](desktop/ACP.md)；Windows 首次安装与连接待验收 |
 | FreeCAD | 原生轴读写、候选校核、撤销、网格与 TechDraw 页显示、原生 DXF 导出 | macOS 宿主稳定性仍单独跟踪 |
 | [SOLIDWORKS](adapters/solidworks/README.md) | 正式 COM add-in、尺寸读写、网格、图纸检查/更新、工作副本及 DXF | 真实 interop 编译检查；Windows 宿主待测 |
 | [AutoCAD](adapters/autocad/README.md) | 正式 .bundle、原生实体读取/选择、文字编辑、标注文字移动、DXF→DWG | Autodesk SDK 编译与协议检查；Windows 宿主待测 |
