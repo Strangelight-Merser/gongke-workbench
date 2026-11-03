@@ -67,7 +67,7 @@ CONTRACTS = {
         "drawing.move_dimension_text": {"document_id": "已登记工作副本ID", "expected_revision": "当前revision整数", "handle": "原生DIMENSION的handle", "position": "WCS工程单位的[x,y,z]数值数组", "operation_id": "UUID"},
         "drawing.import_dxf": {"source_path": "工程内已存在的相对.dxf路径", "target_path": "新的工程相对.dwg路径", "operation_id": "UUID"},
         "document.save_copy": {"document_id": "原文档ID", "expected_revision": "当前revision整数", "target_path": "新的工程相对.dwg路径", "operation_id": "UUID"},
-        "operation.status": {"operation_id": "原操作UUID"},
+        "operation.status": {"operation_id": "原操作ID；可向重启后的AutoCAD查询，unknown禁止重放"},
         "operation.cancel": {"operation_id": "要取消的原操作UUID；只能停止未开始操作"},
     },
 }
@@ -217,8 +217,9 @@ class Hosts:
         # A successful unrelated operation cannot grant permission to a file.
         if operation is None:
             return
-        if (operation["host"] != config["host"] or operation["host_id"] != config["host_id"]
-                or operation["host_session"] != _host_session(config)
+        if (operation["host"] != config["host"]
+                or (config["host"] == "solidworks" and (operation["host_id"] != config["host_id"]
+                    or operation["host_session"] != _host_session(config)))
                 or operation["method"] not in COPY_METHODS
                 or _operation_id(config["host"], operation["params"].get("operation_id")) != operation_id
                 or operation["fingerprint"] != _fingerprint(operation["method"], operation["params"])):
@@ -229,8 +230,12 @@ class Hosts:
             result.get("status") == "completed" and result.get("outcome") == "committed")
         if not finished:
             return
-        if (result.get("operation_id") != operation_id or (config["host"] == "solidworks" and (
-                result.get("session_id") != operation["host_session"] or result.get("fingerprint") != operation["fingerprint"]))):
+        # AutoCAD 的持久化回执由同一用户的各实例共享；验证原会话和参数，
+        # 而非要求重启后的查询进程拥有旧 instance_id。
+        if (result.get("operation_id") != operation_id
+                or result.get("session_id") != operation["host_session"]
+                or result.get("fingerprint") != operation["fingerprint"]
+                or (config["host"] == "autocad" and result.get("method") != operation["method"])):
             raise ValueError("宿主回执的操作 ID、会话或命令参数指纹不匹配；未授予修改资格")
         response = result.get("response")
         if not isinstance(response, dict) or "error" in response:

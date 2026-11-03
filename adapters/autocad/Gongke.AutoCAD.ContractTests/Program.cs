@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using Gongke.AutoCAD;
 
+if (args.Length > 0 && args[0] == "--crash-child") { RecoveryChecks.Child(args[1], args[2]); return; }
+
 int checks = 0;
 void Check(bool condition, string name) { if (!condition) throw new Exception(name); checks++; }
 void Rejected(Action action, string code)
@@ -14,6 +16,10 @@ var temporary = Path.Combine(Path.GetTempPath(), $"gongke-autocad-contract-{Guid
 Directory.CreateDirectory(temporary);
 try
 {
+    var unicode = new Request("fingerprint", "drawing.import_dxf", JsonSerializer.SerializeToElement(new {
+        operation_id = "指纹-1", source_path = "C:\\课程\\😀\u0085\u2028\u2029\u001f.dxf", target_path = "C:\\副本.dwg" }));
+    Check(OperationStore.Fingerprint(unicode) == "1759d0c6d11dbb879b8e78cd9509c73cecec422ac1979876257a5f9314e7d726",
+        "Native fingerprint matches hosts.py including non-BMP and escaped characters");
     var request = Request.Parse("""{"id":"1","token":"secret","method":"host.describe","params":{}}""", "secret");
     Check(request.Method == "host.describe", "Parse method");
     Rejected(() => Request.Parse("""{"id":"1","token":"wrong","method":"host.describe"}""", "secret"), "unauthorized");
@@ -31,6 +37,8 @@ try
     try { FilePolicy.Publish(staging, target); throw new Exception("Overwrite was allowed"); }
     catch (IOException) { Check(File.ReadAllText(target) == "original sentinel", "Publish race preserves original"); }
     Check(File.ReadAllText(source) == "source sentinel", "Source unchanged");
+
+    await RecoveryChecks.Run(temporary, Check);
 
     using var server = new BridgeServer(temporary);
     server.Start();
@@ -82,7 +90,43 @@ try
     Check((await queued).GetProperty("error").GetProperty("outcome").GetString() == "unchanged", "Cancelled command outcome unchanged");
     var unknown = await Call("unknown", "operation.status", new { operation_id = "other-session" });
     Check(unknown.GetProperty("result").GetProperty("outcome").GetString() == "unknown", "Missing receipt is not inferred unchanged");
-    Check(Directory.GetFiles(temporary, "autocad-*.jsonl").Length == 1, "Operation journal persisted");
+    Check(Directory.GetFiles(Path.Combine(temporary, "autocad-operations"), "*.json").Length == 2, "Operation records persisted");
+    var reordered = JsonSerializer.Deserialize<JsonElement>("""{"text":"new note","handle":"A","expected_revision":4,"document_id":"doc","operation_id":"edit-1"}""");
+    var reorderedResult = await Call("reordered", "drawing.edit_text", reordered);
+    Check(reorderedResult.GetProperty("result").GetProperty("status").GetString() == "completed", "Property order does not create a conflict");
+
+    foreach (var phase in new[] { "queued", "running" })
+    {
+        var op = "io-failure-" + phase;
+        var task = Call(op, "document.open", new { operation_id = op, path = "new.dwg" });
+        await WaitQueued();
+        BridgeServer.Pending? faultPending = null;
+        if (phase == "running") Check(server.TryDequeue(out faultPending), "Start operation before completion failure");
+        var path = server.Operations.RecordPath(op);
+        File.Move(path, path + ".backup");
+        Directory.CreateDirectory(path);
+        if (phase == "queued") Check(!server.TryDequeue(out _), "Failed running barrier never reaches native API");
+        else server.Complete(faultPending!, new { opened = true });
+        var fault = await task;
+        Check(fault.GetProperty("error").GetProperty("code").GetString() == "operation_store_unavailable", "Persistence failure visible to client");
+        Check(fault.GetProperty("error").GetProperty("outcome").GetString() == (phase == "queued" ? "unchanged" : "unknown"), "Persistence failure outcome reflects execution phase");
+        Directory.Delete(path);
+        File.Move(path + ".backup", path);
+        var recovered = await Call("recover", "operation.status", new { operation_id = op });
+        Check(recovered.GetProperty("result").GetProperty("status").GetString() == (phase == "queued" ? "interrupted_before_start" : "interrupted"), "Last durable state governs recovery");
+        var replay = await Call("retry", "document.open", new { operation_id = op, path = "new.dwg" });
+        Check(server.PendingCount == 0 && replay.GetProperty("result").GetProperty("outcome").GetString() == (phase == "queued" ? "unchanged" : "unknown"), "Persistence failure never triggers replay");
+    }
+    var oldSession = server.Session;
+    server.Dispose();
+    using var restartedServer = new BridgeServer(temporary);
+    restartedServer.Start();
+    using var newDescriptor = JsonDocument.Parse(File.ReadAllText(Path.Combine(temporary, $"autocad-{Environment.ProcessId}.json")));
+    token = newDescriptor.RootElement.GetProperty("token").GetString()!;
+    var persisted = await Call("after-restart", "operation.status", new { operation_id = "edit-1" });
+    Check(persisted.GetProperty("result").GetProperty("session_id").GetString() == oldSession && restartedServer.Session != oldSession,
+        "New plugin session returns original receipt session");
+    Check(persisted.GetProperty("result").GetProperty("response").GetProperty("id").GetString() == "edit", "Original response survives server restart");
     Console.WriteLine($"PASS: {checks} protocol, transport, cancellation, receipt and no-overwrite checks. No AutoCAD host APIs executed.");
 }
 finally { Directory.Delete(temporary, true); }

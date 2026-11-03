@@ -9,9 +9,22 @@ using AcApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace Gongke.AutoCAD;
 
-internal sealed class HostCommands(string session) : IDisposable
+internal sealed class HostCommands : IDisposable
 {
+    private readonly string session;
+    private readonly OperationStore operations;
     private readonly Dictionary<Document, DocumentState> documents = new();
+    internal HostCommands(string session, OperationStore operations)
+    {
+        this.session = session;
+        this.operations = operations;
+        AcApplication.DocumentManager.DocumentToBeDestroyed += OnDocumentClosing;
+    }
+    private void OnDocumentClosing(object sender, DocumentCollectionEventArgs e)
+    {
+        // 在原生 Database 销毁前解除事件，不在下一次请求中访问已释放对象。
+        if (documents.Remove(e.Document, out var state)) state.Dispose();
+    }
     public object Execute(Request request)
     {
         ObserveDocuments();
@@ -25,7 +38,7 @@ internal sealed class HostCommands(string session) : IDisposable
                 capabilities = new[] { "documents.list", "document.snapshot", "document.select", "drawing.edit_text",
                     "drawing.move_dimension_text", "drawing.import_dxf", "document.save_copy", "document.open", "operation.status", "operation.cancel" },
                 entity_types = new[] { "LINE", "LWPOLYLINE", "POLYLINE", "CIRCLE", "ARC", "TEXT", "MTEXT", "DIMENSION" },
-                limitations = new[] { "No nested block or xref editing", "Dimension measurements and text overrides are read-only", "No overwrite saves" }
+                limitations = new[] { "No nested block or xref editing", "Dimension measurements and text overrides are read-only", "Save edits to a new DWG with document.save_copy", "Edits require a verified working copy" }
             },
             "documents.list" => new { documents = documents.Select(x => Info(x.Key, x.Value)).ToArray() },
             "document.snapshot" => Snapshot(p),
@@ -40,17 +53,14 @@ internal sealed class HostCommands(string session) : IDisposable
     }
     private void ObserveDocuments()
     {
-        var live = AcApplication.DocumentManager.Cast<Document>().ToHashSet();
-        foreach (var closed in documents.Keys.Where(x => !live.Contains(x)).ToArray())
-        { documents[closed].Dispose(); documents.Remove(closed); }
-        foreach (var doc in live)
+        foreach (Document doc in AcApplication.DocumentManager)
             if (!documents.ContainsKey(doc)) documents.Add(doc, new DocumentState(doc, session));
     }
-    private static object Info(Document doc, DocumentState state) => new {
+    private object Info(Document doc, DocumentState state) => new {
         document_id = state.Id, revision = state.Revision, path = doc.Name,
         fingerprint = doc.Database.FingerprintGuid.ToString(), active = doc == AcApplication.DocumentManager.MdiActiveDocument,
         dirty = doc == AcApplication.DocumentManager.MdiActiveDocument ? Convert.ToInt32(AcApplication.GetSystemVariable("DBMOD")) != 0 : (bool?)null,
-        read_only = doc.IsReadOnly, units = doc.Database.Insunits.ToString()
+        read_only = doc.IsReadOnly, is_working_copy = operations.IsWorkingCopy(doc.Name, doc.Database.FingerprintGuid.ToString()), units = doc.Database.Insunits.ToString()
     };
     private (Document Doc, DocumentState State) Resolve(JsonElement p, bool verifyRevision = true, bool active = false)
     {
@@ -118,24 +128,26 @@ internal sealed class HostCommands(string session) : IDisposable
     private object Select(JsonElement p)
     {
         var (doc, state) = Resolve(p, true, true);
-        using var documentLock = doc.LockDocument();
         var id = EntityId(doc, p);
-        using var tx = doc.Database.TransactionManager.StartOpenCloseTransaction();
-        if (tx.GetObject(id, OpenMode.ForRead) is not Entity entity) throw new BridgeException("unsupported_entity", "Only drawing entities can be selected.");
-        var owner = tx.GetObject(entity.OwnerId, OpenMode.ForRead) as BlockTableRecord;
-        if (owner is null || !owner.IsLayout) throw new BridgeException("unsupported_entity", "Nested block entities cannot be selected directly.");
-        var layout = (Layout)tx.GetObject(owner.LayoutId, OpenMode.ForRead);
-        LayoutManager.Current.CurrentLayout = layout.LayoutName;
+        string layoutName;
+        using (var tx = doc.Database.TransactionManager.StartOpenCloseTransaction())
+        {
+            if (tx.GetObject(id, OpenMode.ForRead) is not Entity entity) throw new BridgeException("unsupported_entity", "Only drawing entities can be selected.");
+            var owner = tx.GetObject(entity.OwnerId, OpenMode.ForRead) as BlockTableRecord;
+            if (owner is null || !owner.IsLayout) throw new BridgeException("unsupported_entity", "Nested block entities cannot be selected directly.");
+            layoutName = ((Layout)tx.GetObject(owner.LayoutId, OpenMode.ForRead)).LayoutName;
+        }
+        LayoutManager.Current.CurrentLayout = layoutName;
         doc.Editor.SetImpliedSelection([id]);
         return new { document_id = state.Id, revision = state.Revision, handle = id.Handle.ToString(), selected = true };
     }
     private object EditText(JsonElement p)
     {
         var (doc, state) = Resolve(p, true, true);
+        RequireWorkingCopy(doc);
         var text = p.Text("text");
         if (text.Length > 10000 || text.IndexOf('\0') >= 0 || text.Contains("%<"))
             throw new BridgeException("invalid_parameter", "Text must contain at most 10000 characters and no NUL or field expressions.");
-        using var documentLock = doc.LockDocument();
         var id = EntityId(doc, p);
         using (var tx = doc.Database.TransactionManager.StartTransaction())
         {
@@ -157,14 +169,20 @@ internal sealed class HostCommands(string session) : IDisposable
             }
             tx.Commit();
         }
-        doc.Editor.Regen();
-        return Readback(doc, state, id, p.NonEmpty("operation_id"));
+        // Commit 之后的重生成或读回失败不能解释为事务回滚。
+        try
+        {
+            doc.Editor.Regen();
+            return Readback(doc, state, id, p.NonEmpty("operation_id"));
+        }
+        catch (Exception error)
+        { throw new BridgeException("readback_failed", error.Message, "unknown"); }
     }
     private object MoveDimension(JsonElement p)
     {
         var (doc, state) = Resolve(p, true, true);
+        RequireWorkingCopy(doc);
         var coordinates = p.Point("position");
-        using var documentLock = doc.LockDocument();
         var id = EntityId(doc, p);
         using (var tx = doc.Database.TransactionManager.StartTransaction())
         {
@@ -179,10 +197,21 @@ internal sealed class HostCommands(string session) : IDisposable
                 throw new BridgeException("dimension_changed", "Moving text unexpectedly changed the measurement or override; transaction rolled back.");
             tx.Commit();
         }
-        doc.Editor.Regen();
-        return Readback(doc, state, id, p.NonEmpty("operation_id"));
+        // Commit 之后的重生成或读回失败不能解释为事务回滚。
+        try
+        {
+            doc.Editor.Regen();
+            return Readback(doc, state, id, p.NonEmpty("operation_id"));
+        }
+        catch (Exception error)
+        { throw new BridgeException("readback_failed", error.Message, "unknown"); }
     }
-    private static object Readback(Document doc, DocumentState state, ObjectId id, string operationId)
+    private void RequireWorkingCopy(Document doc)
+    {
+        if (!operations.IsWorkingCopy(doc.Name, doc.Database.FingerprintGuid.ToString()))
+            throw new BridgeException("working_copy_required", "请先导入或另存并打开已验证的 DWG 工作副本。");
+    }
+    private object Readback(Document doc, DocumentState state, ObjectId id, string operationId)
     {
         using var tx = doc.Database.TransactionManager.StartOpenCloseTransaction();
         var entity = (Entity)tx.GetObject(id, OpenMode.ForRead);
@@ -195,10 +224,11 @@ internal sealed class HostCommands(string session) : IDisposable
         var source = FilePolicy.Existing(p.NonEmpty("source_path"), ".dxf");
         var target = FilePolicy.NewDwg(p.NonEmpty("target_path"));
         var staging = FilePolicy.Staging(target);
+        string fingerprint;
         var log = Path.ChangeExtension(staging, ".log");
         try
         {
-            // Autodesk explicitly requires buildDefaultDrawing=false for DxfIn.
+            // DxfIn 必须使用 buildDefaultDrawing=false 的全新数据库。
             using (var database = new Database(false, true))
             {
                 database.DxfIn(source, log);
@@ -208,10 +238,11 @@ internal sealed class HostCommands(string session) : IDisposable
             {
                 verify.ReadDwgFile(staging, FileOpenMode.OpenForReadAndAllShare, false, "");
                 verify.CloseInput(true);
+                fingerprint = verify.FingerprintGuid.ToString();
             }
             FilePolicy.Publish(staging, target);
             return new { operation_id = p.NonEmpty("operation_id"), outcome = "committed", source_path = source, path = target,
-                disk_reopen_verified = true, original_preserved = true, import_log = File.Exists(log) ? log : null };
+                disk_reopen_verified = true, original_preserved = true, native_fingerprint = fingerprint, import_log = File.Exists(log) ? log : null };
         }
         finally { if (File.Exists(staging)) File.Delete(staging); }
     }
@@ -220,19 +251,21 @@ internal sealed class HostCommands(string session) : IDisposable
         var (doc, state) = Resolve(p);
         var target = FilePolicy.NewDwg(p.NonEmpty("target_path"));
         var staging = FilePolicy.Staging(target);
+        string fingerprint;
         using var documentLock = doc.LockDocument();
         try
         {
-            // Wblock() creates a complete in-memory database copy, preserving unsaved edits.
+            // Wblock() 复制当前内存数据库，保留尚未保存的人工修改。
             using (var copy = doc.Database.Wblock()) copy.SaveAs(staging, DwgVersion.Current);
             using (var verify = new Database(false, true))
             {
                 verify.ReadDwgFile(staging, FileOpenMode.OpenForReadAndAllShare, false, "");
                 verify.CloseInput(true);
+                fingerprint = verify.FingerprintGuid.ToString();
             }
             FilePolicy.Publish(staging, target);
             return new { operation_id = p.NonEmpty("operation_id"), outcome = "committed", document_id = state.Id,
-                revision = state.Revision, path = target, disk_reopen_verified = true, original_preserved = true,
+                revision = state.Revision, path = target, disk_reopen_verified = true, original_preserved = true, native_fingerprint = fingerprint,
                 source_document_remains_open = true };
         }
         finally { if (File.Exists(staging)) File.Delete(staging); }
@@ -246,7 +279,12 @@ internal sealed class HostCommands(string session) : IDisposable
         ObserveDocuments();
         return Info(doc, documents[doc]);
     }
-    public void Dispose() { foreach (var state in documents.Values) state.Dispose(); documents.Clear(); }
+    public void Dispose()
+    {
+        AcApplication.DocumentManager.DocumentToBeDestroyed -= OnDocumentClosing;
+        foreach (var state in documents.Values) state.Dispose();
+        documents.Clear();
+    }
     private sealed class DocumentState : IDisposable
     {
         private readonly Database database;

@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.IO.Pipes;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,15 +10,17 @@ internal sealed class BridgeServer : IDisposable
 {
     private readonly CancellationTokenSource stop = new();
     private readonly ConcurrentQueue<Pending> queue = new();
-    private readonly ConcurrentDictionary<string, Receipt> receipts = new();
+    private readonly Dictionary<string, Pending> pendingOperations = new();
+    private readonly object gate = new();
+    private bool disposed;
+    private Task? listener;
     private readonly string token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private readonly string pipeName = $"gongke-autocad-{Environment.ProcessId}";
     private readonly string session = Guid.NewGuid().ToString("N");
     private readonly string folder;
     private readonly string descriptor;
-    private readonly string journal;
-    private readonly object journalLock = new();
-    internal static readonly HashSet<string> Mutations = ["drawing.edit_text", "drawing.move_dimension_text", "drawing.import_dxf", "document.save_copy"];
+    internal OperationStore Operations { get; }
+    internal static readonly HashSet<string> Mutations = ["drawing.edit_text", "drawing.move_dimension_text", "drawing.import_dxf", "document.save_copy", "document.open", "document.select"];
     internal string Session => session;
     internal int PendingCount => queue.Count;
 
@@ -28,7 +29,7 @@ internal sealed class BridgeServer : IDisposable
         folder = discoveryFolder ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Gongke", "hosts");
         Directory.CreateDirectory(folder);
         descriptor = Path.Combine(folder, $"autocad-{Environment.ProcessId}.json");
-        journal = Path.Combine(folder, $"autocad-{session}.jsonl");
+        Operations = new OperationStore(Path.Combine(folder, "autocad-operations"));
     }
 
     internal void Start()
@@ -38,7 +39,7 @@ internal sealed class BridgeServer : IDisposable
             transport = "named_pipe", pipe_name = pipeName, token, protocol_version = 1,
             started_at = DateTimeOffset.UtcNow, validation_level = "sdk_compiled_host_unverified"
         }));
-        _ = Task.Run(Listen);
+        listener = Task.Run(Listen);
     }
 
     private async Task Listen()
@@ -56,8 +57,9 @@ internal sealed class BridgeServer : IDisposable
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { break; }
             catch (Exception e)
             {
-                Log(new { event_name = "transport_error", message = e.Message, at = DateTimeOffset.UtcNow });
-                await Task.Delay(1000, stop.Token).ConfigureAwait(false);
+                System.Diagnostics.Trace.TraceError($"AutoCAD 管道错误：{e}");
+                try { await Task.Delay(1000, stop.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (stop.IsCancellationRequested) { break; }
             }
         }
     }
@@ -83,6 +85,8 @@ internal sealed class BridgeServer : IDisposable
                         response = await Submit(request);
                     }
                     catch (BridgeException e) { response = Error(id, e.Code, e.Message, e.Outcome); }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    { response = Error(id, "operation_store_unavailable", e.Message, "unknown"); }
                     catch (Exception e) when (e is JsonException or InvalidOperationException or KeyNotFoundException or FormatException)
                     { response = Error(id, "invalid_request", e.Message, "unchanged"); }
                     await writer.WriteLineAsync(JsonSerializer.Serialize(response));
@@ -92,114 +96,118 @@ internal sealed class BridgeServer : IDisposable
             catch (IOException) { /* Client disconnect does not cancel or replay a host operation. */ }
             catch (Exception e)
             {
-                Log(new { event_name = "transport_error", message = e.Message, at = DateTimeOffset.UtcNow });
+                System.Diagnostics.Trace.TraceError($"AutoCAD 管道错误：{e}");
             }
         }
     }
 
     private Task<object> Submit(Request request)
     {
-        if (request.Method == "operation.status")
+        lock (gate)
         {
-            var operationId = request.Params.NonEmpty("operation_id");
-            return Task.FromResult<object>(new { id = request.Id, result = receipts.TryGetValue(operationId, out var found)
-                ? (object)new { operation_id = operationId, status = found.Status, outcome = found.Outcome, response = found.Response }
-                : new { operation_id = operationId, status = "unknown", outcome = "unknown", response = (object?)null } });
-        }
-        if (request.Method == "operation.cancel")
-        {
-            var operationId = request.Params.NonEmpty("operation_id");
-            var cancelled = receipts.TryGetValue(operationId, out var receipt) && receipt.Pending?.TryCancel() == true;
-            return Task.FromResult<object>(new { id = request.Id, result = new { operation_id = operationId, cancelled,
-                outcome = cancelled ? "unchanged" : "unknown", status = cancelled ? "cancelled_before_start" : "not_cancelled" } });
-        }
-        string? op = null;
-        if (Mutations.Contains(request.Method))
-        {
-            op = request.Params.NonEmpty("operation_id");
-            var key = request.Method + "\n" + request.Params.GetRawText();
-            var receipt = new Receipt(key);
-            if (!receipts.TryAdd(op, receipt))
+            if (disposed) throw new BridgeException("host_stopping", "AutoCAD 正在关闭。");
+            if (request.Method == "operation.status")
+                return Task.FromResult<object>(new { id = request.Id, result = Operations.Get(request.Params.NonEmpty("operation_id")).Wire() });
+            if (request.Method == "operation.cancel")
             {
-                var existing = receipts[op];
-                if (existing.RequestKey != key) throw new BridgeException("operation_id_conflict", "Operation ID was already used for a different request.");
-                return Task.FromResult<object>(new { id = request.Id, result = new { operation_id = op,
-                    status = existing.Status, outcome = existing.Outcome, response = existing.Response, replayed = false } });
+                var operationId = request.Params.NonEmpty("operation_id");
+                var cancelled = pendingOperations.TryGetValue(operationId, out var item) && !item.Started;
+                if (cancelled)
+                    Complete(item!, null, new BridgeException("cancelled", "操作在执行前取消。"));
+                var state = Operations.Get(operationId);
+                return Task.FromResult<object>(new { id = request.Id, result = new { operation_id = operationId,
+                    cancelled, status = state.Status, outcome = state.Outcome } });
             }
-            Log(new { operation_id = op, method = request.Method, status = "queued", outcome = "unknown", at = DateTimeOffset.UtcNow });
+            OperationStore.Lease? lease = null;
+            if (Mutations.Contains(request.Method))
+            {
+                lease = Operations.Begin(request, session, out var existing);
+                if (lease is null)
+                    return Task.FromResult<object>(new { id = request.Id, result = existing!.Wire() });
+            }
+            var pending = new Pending(request, lease);
+            if (lease is not null) pendingOperations.Add(lease.Current.OperationId, pending);
+            queue.Enqueue(pending);
+            return pending.Completion.Task;
         }
-        var pending = new Pending(request, op);
-        if (op is not null) receipts[op].Pending = pending;
-        queue.Enqueue(pending);
-        return pending.Completion.Task;
     }
 
     internal bool TryDequeue(out Pending? pending)
     {
-        while (queue.TryDequeue(out pending))
+        lock (gate)
         {
-            if (!pending.TryStart())
+            while (queue.TryDequeue(out pending))
             {
-                Complete(pending, null, new BridgeException("cancelled", "Operation cancelled before native execution."));
-                continue;
+                if (pending.Completion.Task.IsCompleted) continue;
+                try { pending.Lease?.Update("running", "unknown"); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // 执行屏障未落盘，绝不调用原生 API。保留旧记录和占位供后续查询。
+                    FinishUnavailable(pending, e, "unchanged");
+                    continue;
+                }
+                pending.Started = true;
+                return true;
             }
-            if (pending.OperationId is { } op) receipts[op].Status = "running";
-            return true;
+            pending = null;
+            return false;
         }
-        pending = null;
-        return false;
     }
     internal void Complete(Pending pending, object? result, Exception? error = null)
     {
-        object response;
-        var outcome = "unchanged";
-        if (error is null)
+        lock (gate)
         {
-            response = new { id = pending.Request.Id, result };
-            outcome = pending.OperationId is null ? "unchanged" : "committed";
+            if (pending.Completion.Task.IsCompleted) return;
+            var outcome = error is null ? (pending.Lease is null ? "unchanged" : "committed")
+                : error is BridgeException known ? known.Outcome : "unknown";
+            object response = error is null ? new { id = pending.Request.Id, result }
+                : Error(pending.Request.Id, error is BridgeException bridge ? bridge.Code : "host_error", error.Message, outcome);
+            try
+            {
+                pending.Lease?.Update(error is null ? "completed" : !pending.Started ? "cancelled_before_start" : "failed", outcome, response);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // 原生结果和回执不是同一事务；完成记录失败必须对客户端可见。
+                FinishUnavailable(pending, e, pending.Started ? "unknown" : "unchanged");
+                return;
+            }
+            Release(pending);
+            pending.Completion.TrySetResult(response);
         }
-        else if (error is BridgeException known)
-        { response = Error(pending.Request.Id, known.Code, known.Message, known.Outcome); outcome = known.Outcome; }
-        else
-        { response = Error(pending.Request.Id, "host_error", error.Message, "unknown"); outcome = "unknown"; }
-        if (pending.OperationId is { } op)
-        {
-            var receipt = receipts[op];
-            receipt.Status = error is null ? "completed" : "failed";
-            receipt.Outcome = outcome;
-            receipt.Response = response;
-            Log(new { operation_id = op, status = receipt.Status, outcome, response, at = DateTimeOffset.UtcNow });
-        }
-        pending.Completion.TrySetResult(response);
+    }
+    private void FinishUnavailable(Pending pending, Exception error, string outcome)
+    {
+        Release(pending);
+        pending.Completion.TrySetResult(Error(pending.Request.Id, "operation_store_unavailable", error.Message, outcome));
+    }
+    private void Release(Pending pending)
+    {
+        if (pending.Lease is not { } lease) return;
+        pendingOperations.Remove(lease.Current.OperationId);
+        lease.Dispose();
     }
     private static object Error(string? id, string code, string message, string outcome) => new { id, error = new { code, message, outcome } };
-    private void Log(object entry)
-    {
-        try { lock (journalLock) File.AppendAllText(journal, JsonSerializer.Serialize(entry) + "\n"); }
-        catch (IOException e) { Debug.WriteLine($"Gongke operation journal unavailable: {e.Message}"); }
-        catch (UnauthorizedAccessException e) { Debug.WriteLine($"Gongke operation journal unavailable: {e.Message}"); }
-    }
     public void Dispose()
     {
-        stop.Cancel();
-        while (queue.TryDequeue(out var pending)) Complete(pending, null, new BridgeException("host_stopping", "AutoCAD is closing.", "unchanged"));
-        if (File.Exists(descriptor)) File.Delete(descriptor);
+        lock (gate)
+        {
+            if (disposed) return;
+            disposed = true;
+            stop.Cancel();
+            while (queue.TryDequeue(out var pending))
+                Complete(pending, null, new BridgeException("host_stopping", "AutoCAD 正在关闭。"));
+            foreach (var pending in pendingOperations.Values.ToArray())
+                Complete(pending, null, new BridgeException("host_stopping", "原生操作执行中退出，需读回确认。", "unknown"));
+            if (File.Exists(descriptor)) File.Delete(descriptor);
+        }
+        listener?.GetAwaiter().GetResult();
     }
-    internal sealed class Pending(Request request, string? operationId)
+    internal sealed class Pending(Request request, OperationStore.Lease? lease)
     {
-        private int state;
-        internal bool TryStart() => Interlocked.CompareExchange(ref state, 1, 0) == 0;
-        internal bool TryCancel() => Interlocked.CompareExchange(ref state, 2, 0) == 0;
+        internal bool Started { get; set; }
         internal Request Request { get; } = request;
-        internal string? OperationId { get; } = operationId;
+        internal OperationStore.Lease? Lease { get; } = lease;
         internal TaskCompletionSource<object> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
-    private sealed class Receipt(string requestKey)
-    {
-        internal string RequestKey { get; } = requestKey;
-        internal string Status { get; set; } = "queued";
-        internal string Outcome { get; set; } = "unknown";
-        internal object? Response { get; set; }
-        internal Pending? Pending { get; set; }
     }
 }

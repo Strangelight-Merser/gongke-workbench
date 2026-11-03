@@ -1,8 +1,6 @@
 using Autodesk.AutoCAD.ApplicationServices;
-using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Runtime;
 using AcApplication = Autodesk.AutoCAD.ApplicationServices.Core.Application;
-using System.Runtime.InteropServices;
 
 [assembly: ExtensionApplication(typeof(Gongke.AutoCAD.Plugin))]
 
@@ -16,9 +14,9 @@ public sealed class Plugin : IExtensionApplication
     public void Initialize()
     {
         server = new BridgeServer();
-        commands = new HostCommands(server.Session);
-        AcApplication.Idle += OnIdle;
+        commands = new HostCommands(server.Session, server.Operations);
         server.Start();
+        AcApplication.Idle += OnIdle;
     }
     public void Terminate()
     {
@@ -37,18 +35,21 @@ public sealed class Plugin : IExtensionApplication
         try
         {
             object? result = null;
+            System.Exception? commandError = null;
             // Native edits run in command context so normal AutoCAD command undo semantics apply.
             if (pending.Request.Method is "drawing.edit_text" or "drawing.move_dimension_text" or "document.select")
             {
                 if (active is null) throw new BridgeException("no_document", "Open a drawing first.");
                 await AcApplication.DocumentManager.ExecuteInCommandContextAsync(_ =>
                 {
-                    result = commands.Execute(pending.Request);
+                    // 异常不能越过 AutoCAD 的原生命令回调边界。
+                    try { result = commands.Execute(pending.Request); }
+                    catch (System.Exception error) { commandError = error; }
                     return Task.CompletedTask;
                 }, null);
             }
             else result = commands.Execute(pending.Request);
-            server.Complete(pending, result);
+            server.Complete(pending, result, commandError);
         }
         catch (System.Exception error) { server.Complete(pending, null, error); }
         finally { executing = false; }
