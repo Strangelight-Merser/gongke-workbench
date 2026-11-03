@@ -140,13 +140,13 @@ def test_original_outside_and_stale_writes_same_rules_on_all_entries(tmp_path, m
 def test_workbuddy_config_preserves_other_servers_and_uses_packaged_command(service, tmp_path):
     executable = tmp_path / "gongke-service"
     executable.write_text("packaged executable fixture")
-    config = service.project / ".workbuddy/mcp.json"
-    config.parent.mkdir()
+    config = Path.home() / ".workbuddy/mcp.json"
+    config.parent.mkdir(parents=True)
     config.write_text(json.dumps({"mcpServers": {"other": {"command": "existing"}}}))
-    result = Connection(service.state).request("configure", project=str(service.project), executable=str(executable), allow_writes=True)
+    result = Connection(service.state).request("configure", project=str(service.project), executable=str(executable), allow_writes=True, confirm_user_config=True)
     value = json.loads(config.read_text())
     assert value["mcpServers"]["other"] == {"command": "existing"}
-    assert result["server"] == value["mcpServers"]["gongke"]
+    assert result["server"] == value["mcpServers"][result["service_name"]]
     assert result["server"]["command"] == str(executable)
     assert result["server"]["args"][-1] == "--allow-writes"
     assert "python" not in result["server"]["command"]
@@ -246,19 +246,16 @@ def test_active_bound_task_blocks_switch_and_cancel_preserves_committed_result(t
         app.close()
 
 
-def test_connection_auth_and_config_symlink_boundary(service, tmp_path):
+def test_connection_auth_and_config_preview(service, tmp_path):
     from urllib.error import HTTPError
     conn = Connection(service.state)
     conn.token = "incorrect"
     with pytest.raises(HTTPError) as error:
         conn.request("bind", project=str(service.project))
     assert error.value.code == 403
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    (service.project / ".workbuddy").symlink_to(outside, target_is_directory=True)
-    with pytest.raises(ValueError, match="工程目录以外"):
-        Connection(service.state).request("configure", project=str(service.project), executable=sys.executable, allow_writes=False)
-    assert not list(outside.iterdir())
+    result = Connection(service.state).request("configure", project=str(service.project), executable=sys.executable, allow_writes=False)
+    assert result["status"] == "confirmation_required"
+    assert not Path(result["path"]).exists()
 
 
 def test_native_rejection_cannot_be_replaced_with_old_success_receipt(tmp_path, monkeypatch):
@@ -283,3 +280,11 @@ def test_native_rejection_cannot_be_replaced_with_old_success_receipt(tmp_path, 
         assert app.tasks.list()[0]["status"] == "failed"
     finally:
         app.close()
+
+
+# 配置测试使用独立用户目录，不读取开发者真实 WorkBuddy 配置。
+import pytest
+
+@pytest.fixture(autouse=True)
+def workbuddy_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))

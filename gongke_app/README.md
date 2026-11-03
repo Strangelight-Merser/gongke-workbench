@@ -54,7 +54,7 @@ Agent 接入由 Electron 的 ACP 客户端负责；Python 服务不再接收模�
 
 服务随桌面启动一个带令牌的本机连接端点，发现文件为 `<state-dir>/service.json`。外部进程使用发行包中的 `gongke-service mcp --state-dir ... --project ... [--allow-writes]`。`--project` 必须是桌面当前工程；绑定后切换工程使旧连接失效，不跟随新工程。默认只读。每次 MCP 调用都登记为桌面可见任务并返回同一个 task_id。
 
-`mcp.configure {"allow_writes":true}` 在发行包内生成项目级 WorkBuddy 配置；也可以执行 `gongke-service workbuddy --state-dir ... --project ... --allow-writes`。配置使用自包含程序，不依赖用户 Python。开发与测试须安装 `.[app]` 或 `.[dev]`。
+`mcp.configure {"allow_writes":true}` 先预览用户级 WorkBuddy 工程专属配置；明确同意后增加 `confirm_user_config:true`，备份并写入。CLI 对应 `gongke-service workbuddy --state-dir ... --project ... --allow-writes --confirm-user-config`。撤销与实测差异见 [配置说明](../docs/workbuddy-conflicts.md)。配置默认使用运行中桌面服务的入口：发行包使用自包含程序，开发版保留 Python 虚拟环境入口并显式传源码 PYTHONPATH；均设置工程 cwd。开发与测试须安装 `.[app]` 或 `.[dev]`，可直接运行 `python -m gongke_app workbuddy ...`。真实 WorkBuddy、FreeCAD 与桌面收据的逐轮验收见 [操作清单](../docs/workbuddy-validation.md)。
 
 收据在执行前持久保存为 prepared，完成后更新同一条为 finished；事件仍使用 task.updated 与 task.receipt。正在运行的任务取消后不自动回滚，也不重发结果未知的原生写入。纯桌面刷新查询不新增任务。
 

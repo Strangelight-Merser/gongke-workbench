@@ -74,7 +74,7 @@ function fixture(t) {
       report("正在下载", 100);
       effects.push(release);
     },
-    configureWorkbuddy: async () => effects.push("configure"),
+    configureWorkbuddy: async () => { effects.push("configure"); return { status: "configured", service_name: "gongke" }; },
     task: async () => record(),
     publish: () => {},
   };
@@ -497,4 +497,35 @@ test("引导保留原始 ACP 详情且只记录一次，MCP 失败回执提供�
   const missing = await flow.act({ type: "verify" });
   assert.notEqual(missing.agents.deepseek.step, "complete");
   assert.match(missing.errorDetails.tools, /MCP project is not open/);
+});
+
+
+test("WorkBuddy 用户级写入须明确确认，工程切换使旧确认失效", async (t) => {
+  const f = fixture(t);
+  const confirmations = [];
+  f.d.configureWorkbuddy = async (consent) => {
+    confirmations.push(consent);
+    return { status: consent ? "configured" : "confirmation_required", service_name: "gongke-project123",
+      conflicts: [{ name: "gongke", reason: "旧工程入口", path: "/home/.workbuddy/mcp.json" }] };
+  };
+  const flow = new Onboarding(f.d);
+  await flow.act({ type: "select", provider: "workbuddy" });
+  await flow.act({ type: "detect" });
+  await flow.act({ type: "connect" });
+  let p = flow.snapshot().agents.workbuddy;
+  assert.equal(p.step, "connect");
+  assert.equal(p.configuredAt, undefined);
+  assert.equal(p.conflicts[0].name, "gongke");
+  f.setProject("/另一个工程");
+  await flow.act({ type: "connect", confirmUserConfig: true });
+  assert.match(flow.snapshot().error, /工程已切换/);
+  assert.deepEqual(confirmations, [false]);
+  f.setProject("/工程");
+  await flow.act({ type: "connect", confirmUserConfig: true });
+  p = flow.snapshot().agents.workbuddy;
+  assert.equal(p.step, "verify");
+  assert.equal(p.serviceName, "gongke-project123");
+  assert.equal(p.conflicts, undefined);
+  assert.deepEqual(confirmations, [false, true]);
+  assert.equal(new Onboarding(f.d).snapshot().agents.workbuddy.serviceName, "gongke-project123");
 });

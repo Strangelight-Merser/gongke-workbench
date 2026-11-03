@@ -42,7 +42,7 @@ export type Dependencies = {
     signal: AbortSignal,
     progress: (phase: string, received: number) => void,
   ): Promise<void>;
-  configureWorkbuddy(): Promise<unknown>;
+  configureWorkbuddy(confirmUserConfig?: boolean): Promise<any>;
   task(id: string): Promise<any>;
   publish(state: OnboardingState): void;
 };
@@ -257,7 +257,18 @@ export class Onboarding {
           } else {
             if (!p.application)
               throw new Error("请先检测或选择 WorkBuddy 安装位置");
-            await this.d.configureWorkbuddy();
+            if (action.confirmUserConfig && p.project !== project)
+              throw new Error("工程已切换，请重新检查连接配置");
+            const configured = await this.d.configureWorkbuddy(action.confirmUserConfig === true);
+            p.serviceName = configured.service_name;
+            p.configPath = configured.path;
+            p.backupPath = configured.backup_path;
+            p.conflicts = configured.conflicts;
+            if (configured.status === "confirmation_required") {
+              Object.assign(p, { step: "connect", project, configuredAt: undefined, verifiedAt: undefined, evidence: undefined });
+              break;
+            }
+            p.conflicts = undefined;
           }
           Object.assign(p, {
             step: "verify",

@@ -107,10 +107,11 @@ class Application:
             return [{"name": name, "description": desc, "inputSchema": definition, "write": write}
                     for name, (desc, definition, write) in self.commands.definitions.items()]
         if method == "mcp.configure":
-            validate(params, schema({"allow_writes": BOOL}, ["allow_writes"]))
+            validate(params, schema({"allow_writes": BOOL, "confirm_user_config": BOOL}, ["allow_writes"]))
             from gongke_app.connection import write_workbuddy
             packaged = bool(getattr(sys, "frozen", False))
             return write_workbuddy(self.current(), self.state_dir, Path(sys.executable), params["allow_writes"],
+                                  confirm_user_config=params.get("confirm_user_config", False),
                                   prefix=() if packaged else ("-m", "gongke_app"),
                                   env=None if packaged else {"PYTHONPATH": str(Path(__file__).resolve().parent.parent)})
         if method == "task.list":
