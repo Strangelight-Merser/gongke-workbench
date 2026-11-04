@@ -446,7 +446,8 @@ namespace Gongke.SolidWorks
                         bool horizontal = (string)data["axis"] == "horizontal";
                         line = model.SketchManager.CreateCenterLine(0, 0, 0, horizontal ? .01 : 0, horizontal ? 0 : .01, 0);
                         if (line == null) throw new CommandError("axis_failed", "CreateCenterLine 返回空");
-                        AddSketchRelation(model, sketch, new object[] { line }, "sgFIXED");
+                        // 不给轴线加固定关系：SOLIDWORKS 2023 SP0.1 实机上旋转在此路径崩溃，AddRelation 是已知的崩溃点。
+                        // 轴线按精确坐标画在草图原点，草图里没有其他关系会移动它。
                     }
                     finally { model.SketchManager.AddToDB = addToDb; model.SketchManager.InsertSketch(true); }
                     ModelingSelect(model, profile);
