@@ -25,11 +25,13 @@ $node = (Get-Command node.exe).Source
 $script = Join-Path $evidence 'run.ps1'
 @"
 `$ErrorActionPreference = 'Stop'
+Start-Transcript -LiteralPath '$($evidence.Replace("'", "''"))/bootstrap.log' | Out-Null
 `$env:USERNAME = [Environment]::UserName
 `$env:USERPROFILE = [Environment]::GetFolderPath('UserProfile')
 `$env:APPDATA = [Environment]::GetFolderPath('ApplicationData')
 `$env:LOCALAPPDATA = [Environment]::GetFolderPath('LocalApplicationData')
-`$env:TEMP = New-Item -ItemType Directory -Force -Path (Join-Path `$env:LOCALAPPDATA 'Temp') | ForEach-Object FullName
+`$env:TEMP = Join-Path `$env:USERPROFILE 'AppData\Local\Temp'
+[IO.Directory]::CreateDirectory(`$env:TEMP) | Out-Null
 `$env:TMP = `$env:TEMP
 `$env:GONGKE_TEST_EXECUTABLE = '$($exe.Replace("'", "''"))'
 `$env:GONGKE_INSTALL_EVIDENCE = '$($evidence.Replace("'", "''"))'
