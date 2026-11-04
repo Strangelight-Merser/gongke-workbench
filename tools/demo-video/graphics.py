@@ -19,10 +19,10 @@ def card(canvas,pic,box,active):
  canvas.paste(pic,(x,y),mask)
  if active:ImageDraw.Draw(canvas).rounded_rectangle((x-3,y-3,x+w+3,y+h+3),21,outline='#72d8cc',width=4)
 
-def opening(canvas,t,root,font,ease):
+def opening(canvas,t,root,font,ease,crop):
  # 两张真实素材在同一舞台切换视觉焦点。图纸只裁切，不重绘、不改标注。
  pdf=asset(str(root/'out/demo-video/v2-assets/robot4.png'))
- w,h=pdf.size;pdf=pdf.crop((w*.10,h*.025,w*.45,h*.415))
+ w,h=pdf.size;pdf=pdf.crop(tuple(round(v*(w if i%2==0 else h)) for i,v in enumerate(crop)))
  cad=asset(str(root/'out/demo-video/v2-main-02/opening-cad.png'))
  w,h=cad.size;cad=cad.crop((w*.24,h*.43,w*.64,h*.79))
  phase=min(3,int(t/3));u=ease(min(1,(t%3)/.85))

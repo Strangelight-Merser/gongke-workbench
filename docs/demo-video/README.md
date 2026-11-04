@@ -23,3 +23,8 @@ GONGKE_DEMO_OUTPUT=out/demo-video/final-v2 GONGKE_DEMO_REPLAY=out/demo-video/v2-
 graphics.py 只生成影片外部的示意动画和证据页，不注入产品界面。
 未新增模型生成、未调用 dsh。重新录制时不会执行原会话的工具调用。
 模型是首次成功会话的结果，并非按回放时序重新建模。
+
+## 第三轮：避开图纸水印
+
+使用 timeline-v3.json，输出环境变量改为 out/demo-video/final-v3；其余生成、验证命令与 v2 相同。
+开场图纸仅裁到原始栅格图比例 [0.10, 0.025, 0.45, 0.25] 的主视图上部与尺寸区域，避开斜向水印，不做遮盖或重绘。原始 PDF / PNG 保持不变。其余九镜、字幕和声音沿用 v2。

@@ -38,6 +38,9 @@ def main():
   if 'source' not in s:
    lines.append(f"| {s['shot']:02} | {s['film_start']:.3f} | {s['graphic']} · 见下方素材 | 示意动画 / 证据文字页 | — |");continue
   lines.append(f"| {s['shot']:02} | {s['film_start']:.3f} | `{s['source']}/raw.mp4` | {s['begin']:.3f}–{s['end']:.3f} | {s['speed']:.4f} |")
+ for source in sources:
+  if source.get('crop_note'):
+   lines+=['',f"- 第 {source['shot']} 镜图纸处理：{source['crop_note']} 裁切比例（左、上、右、下）：{source['drawing_crop']}。"]
  lines+=['','## 来源与事实边界','',
  '- 开场图纸：用户批准的 robot4.pdf，pdftoppm 等比栅格化后裁取主视图；CAD：v2-main-02/opening-cad.png 的真实模型视口裁切。仅对素材卡片做位移、缩放和视觉焦点切换，明确标注示意动画。',
  '- final-main-03 / v2-main-02：工作台展示首次实际生成的 robot4.FCStd、原生树、另存工作修订和真实鼠标旋转；回放源 paid-robot4/robot4-1/conversation.json，71 个事件。用户输入的完整参考原文在已有折叠区保留，displayText 只显示原始 prompt 完整前缀；project 元数据路由到独立播放工程。Agent 执行 IPC 已封禁，未调用 dsh。',

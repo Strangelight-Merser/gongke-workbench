@@ -88,7 +88,7 @@ def main():
     badge=segment.get('badge','')
     if speed>1.001:badge=(badge+'  ·  ' if badge else '')+f'×{speed:g} 加速'
     if badge:draw.text((1760,20),badge,font=font(22),fill='#77d6cd',anchor='ra')
-    if segment.get('graphic')=='opening':opening(canvas,t,ROOT,font,ease)
+    if segment.get('graphic')=='opening':opening(canvas,t,ROOT,font,ease,segment.get("drawing_crop",[.10,.025,.45,.415]))
     elif segment.get('graphic')=='evidence':evidence(canvas,t,ROOT,font,ease)
     elif segment.get('layout') in ['replay','validation','opening']:
      w,h=frame.size

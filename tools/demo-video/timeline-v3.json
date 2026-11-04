@@ -1,0 +1,415 @@
+[
+  {
+    "id": 1,
+    "title": "一张图纸，多个窗口",
+    "segments": [
+      {
+        "graphic": "opening",
+        "duration": 12,
+        "badge": "示意动画 · 真实图纸与 CAD 截图",
+        "assets": [
+          "out/demo-video/paid-robot4/inputs/robot4.pdf",
+          "out/demo-video/v2-assets/robot4.png",
+          "out/demo-video/v2-main-02/opening-cad.png"
+        ],
+        "drawing_crop": [
+          0.1,
+          0.025,
+          0.45,
+          0.25
+        ],
+        "crop_note": "仅取主视图上部及尺寸区域，避开斜向水印；未遮盖、重绘或修改图纸线条与尺寸。"
+      }
+    ],
+    "voice_starts": [
+      0.25,
+      6.2
+    ]
+  },
+  {
+    "id": 2,
+    "title": "工程工具与自己的智能体",
+    "segments": [
+      {
+        "source": "out/demo-video/final-main-03",
+        "begin": 11.08400001525879,
+        "end": 23.084000015258788,
+        "duration": 12,
+        "zoom": [
+          1.07,
+          1.18
+        ],
+        "focus": [
+          0.62,
+          0.52
+        ]
+      }
+    ],
+    "voice_starts": [
+      0.25,
+      6.4
+    ]
+  },
+  {
+    "id": 3,
+    "title": "从图纸开始",
+    "segments": [
+      {
+        "source": "out/demo-video/v2-main-02",
+        "begin": 27.085999965667725,
+        "end": 32.085999965667725,
+        "duration": 5,
+        "zoom": [
+          1.14,
+          1.28
+        ],
+        "focus": [
+          0.6,
+          0.51
+        ],
+        "focus_end": [
+          0.63,
+          0.53
+        ],
+        "badge": "真实会话回放 · 总时长压缩约 ×5.3"
+      },
+      {
+        "source": "out/demo-video/v2-main-02",
+        "begin": 32.085999965667725,
+        "end": 37.085999965667725,
+        "duration": 5,
+        "zoom": [
+          1.28,
+          1.42
+        ],
+        "focus": [
+          0.63,
+          0.53
+        ],
+        "focus_end": [
+          0.83,
+          0.49
+        ],
+        "badge": "真实会话回放 · 总时长压缩约 ×5.3"
+      },
+      {
+        "source": "out/demo-video/v2-main-02",
+        "begin": 37.085999965667725,
+        "end": 45.085999965667725,
+        "duration": 8,
+        "zoom": [
+          1.42,
+          1.2
+        ],
+        "focus": [
+          0.83,
+          0.49
+        ],
+        "focus_end": [
+          0.63,
+          0.53
+        ],
+        "badge": "真实会话回放 · 总时长压缩约 ×5.3"
+      }
+    ],
+    "voice_starts": [
+      0.3,
+      4.8,
+      11.5
+    ]
+  },
+  {
+    "id": 4,
+    "title": "草图、特征与真实回执",
+    "segments": [
+      {
+        "source": "out/demo-video/v2-main-02",
+        "begin": 45.085999965667725,
+        "end": 52.085999965667725,
+        "duration": 7,
+        "zoom": [
+          1.2,
+          1.38
+        ],
+        "focus": [
+          0.63,
+          0.53
+        ],
+        "focus_end": [
+          0.8,
+          0.56
+        ],
+        "badge": "真实会话回放 · 总时长压缩约 ×5.3"
+      },
+      {
+        "source": "out/demo-video/v2-main-02",
+        "begin": 52.085999965667725,
+        "end": 60.085999965667725,
+        "duration": 8,
+        "zoom": [
+          1.38,
+          1.45
+        ],
+        "focus": [
+          0.8,
+          0.56
+        ],
+        "focus_end": [
+          0.84,
+          0.57
+        ],
+        "badge": "真实会话回放 · 总时长压缩约 ×5.3"
+      },
+      {
+        "source": "out/demo-video/v2-main-02",
+        "begin": 60.085999965667725,
+        "end": 67.08699989318848,
+        "duration": 7,
+        "zoom": [
+          1.45,
+          1.14
+        ],
+        "focus": [
+          0.84,
+          0.57
+        ],
+        "focus_end": [
+          0.6,
+          0.51
+        ],
+        "badge": "真实会话回放 · 总时长压缩约 ×5.3"
+      }
+    ],
+    "voice_starts": [
+      0.3,
+      7.5,
+      15.2
+    ]
+  },
+  {
+    "id": 5,
+    "title": "留下可继续编辑的特征",
+    "segments": [
+      {
+        "source": "out/demo-video/final-main-03",
+        "begin": 67.45400004386902,
+        "end": 75.45400004386902,
+        "duration": 8.0,
+        "zoom": [
+          1.5,
+          1.9
+        ],
+        "focus": [
+          0.85,
+          0.36
+        ]
+      },
+      {
+        "source": "out/demo-video/final-main-03",
+        "begin": 83.5350001335144,
+        "end": 91.5350001335144,
+        "duration": 8.0,
+        "zoom": [
+          1.6,
+          1.85
+        ],
+        "focus": [
+          0.5,
+          0.17
+        ]
+      }
+    ],
+    "voice_starts": [
+      0.3,
+      8.2
+    ]
+  },
+  {
+    "id": 6,
+    "title": "检查依赖明确的依据",
+    "segments": [
+      {
+        "source": "out/demo-video/final-check-02",
+        "begin": 0,
+        "end": 4,
+        "duration": 4,
+        "zoom": [
+          1.08,
+          1.2
+        ],
+        "focus": [
+          0.58,
+          0.5
+        ],
+        "badge": "尺寸检查示例 · 确定性工具操作"
+      },
+      {
+        "source": "out/demo-video/final-check-02",
+        "begin": 4,
+        "end": 9,
+        "duration": 5,
+        "zoom": [
+          1.5,
+          1.8
+        ],
+        "focus": [
+          0.84,
+          0.45
+        ],
+        "badge": "尺寸检查示例 · 确定性工具操作"
+      },
+      {
+        "source": "out/demo-video/final-check-02",
+        "begin": 9,
+        "end": 14,
+        "duration": 5,
+        "zoom": [
+          1.3,
+          1.55
+        ],
+        "focus": [
+          0.46,
+          0.58
+        ],
+        "badge": "尺寸检查示例 · 确定性工具操作"
+      },
+      {
+        "source": "out/demo-video/final-check-02",
+        "begin": 14,
+        "end": 20,
+        "duration": 6,
+        "zoom": [
+          1.3,
+          1.1
+        ],
+        "focus": [
+          0.58,
+          0.51
+        ],
+        "badge": "尺寸检查示例 · 确定性工具操作"
+      }
+    ],
+    "voice_starts": [
+      0.3,
+      4.5,
+      14.5
+    ]
+  },
+  {
+    "id": 7,
+    "title": "学生继续掌握设计",
+    "segments": [
+      {
+        "source": "out/demo-video/manual-02",
+        "begin": 97,
+        "end": 101,
+        "duration": 4,
+        "layout": "editor",
+        "badge": "FreeCAD 参数编辑"
+      },
+      {
+        "source": "out/demo-video/manual-02",
+        "begin": 101,
+        "end": 105,
+        "duration": 4,
+        "layout": "editor",
+        "badge": "修改练习 · 非原图尺寸"
+      },
+      {
+        "source": "out/demo-video/manual-02",
+        "begin": 131,
+        "end": 134,
+        "duration": 3,
+        "layout": "editor",
+        "badge": "确认参数"
+      },
+      {
+        "source": "out/demo-video/final-edited-01",
+        "begin": 38,
+        "end": 49,
+        "duration": 11,
+        "zoom": [
+          1.2,
+          1.45
+        ],
+        "focus": [
+          0.62,
+          0.6
+        ],
+        "badge": "工作副本 · 厚度 5 mm"
+      }
+    ],
+    "voice_starts": [
+      0.25,
+      4.6,
+      16
+    ]
+  },
+  {
+    "id": 8,
+    "title": "接入已有智能体",
+    "segments": [
+      {
+        "source": "out/demo-video/final-guide-03",
+        "begin": 11.5,
+        "end": 18.5,
+        "duration": 7.0,
+        "layout": "agent"
+      },
+      {
+        "source": "out/demo-video/final-guide-03",
+        "begin": 21,
+        "end": 28,
+        "duration": 7,
+        "layout": "agent"
+      }
+    ],
+    "voice_starts": [
+      0.3,
+      7.4
+    ]
+  },
+  {
+    "id": 9,
+    "title": "可运行，也可交付",
+    "segments": [
+      {
+        "graphic": "evidence",
+        "duration": 15,
+        "badge": "验收证据摘录 · Windows / macOS 分别标注",
+        "assets": [
+          "out/demo-video/ci-41822011858/installer/result.json",
+          "docs/demo-video/empty-workbench.md"
+        ]
+      }
+    ],
+    "voice_starts": [
+      0.3,
+      7.7
+    ]
+  },
+  {
+    "id": 10,
+    "title": "从图纸，到可理解、可修改的工程成果",
+    "segments": [
+      {
+        "source": "out/demo-video/final-main-03",
+        "begin": 93.77100014686584,
+        "end": 105.77100014686584,
+        "duration": 12,
+        "zoom": [
+          1.25,
+          1.05
+        ],
+        "focus": [
+          0.62,
+          0.55
+        ]
+      }
+    ],
+    "voice_starts": [
+      0.3,
+      6.5
+    ]
+  }
+]
