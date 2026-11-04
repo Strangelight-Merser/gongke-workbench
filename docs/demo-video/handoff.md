@@ -117,3 +117,13 @@ DSH 原始 assistant/message 共 10 条 usage：inputTokens=84285，cacheReadTok
 交付目录 out/demo-video/final-v3/；复现用 timeline-v3.json，其余环境和命令同 v2。生成后运行 verify_v3.py，记录逐镜页面复核与范围一致性。v2 不覆盖。
 
 v3 核验：163秒、1080p/30fps、H.264/AAC，完整解码与来源校验通过；20张逐镜抽帧、逐秒抽帧及第50秒原尺寸图。旁白/SRT与v2字节一致，AAC音频流SHA256也一致；原v2成片哈希不变。逐镜页面复核见 final-v3/revision-checks.json，裁切说明已写入来源清单。
+
+## 2026-11-04：按大纲 v2 完全重做，停在样片审阅
+
+本轮交付 `out/demo-video/rebuild/samples/opening.mp4`（12 秒）、`growth.mp4`（13 秒）、`styleboard.png`。都是 1080p60，暂不配音、不放配乐。来源与逐秒抽帧同目录，旧 final/v2/v3 不覆盖。后续以 `docs/demo-video/remake-samples.md` 为准，其中逐条对应大纲第一部分 13 项验收标准。
+
+已合入独立检查 fe402fa（merge 05485f6），补齐图纸与模型同边定位并通过真实错误模型的界面验收。产品提交 5ecb83a。Python 862 项通过（不含 geometry/fem），桌面构建与 70 项测试通过、1 项跳过。Logo/平台图标独立提交 48e0c5f；macOS 包内图标哈希已核对。没有付费，没有调用 dsh。
+
+第 5 段实际经 MCP 重执行首次成功会话的 10 次工程调用，原几何/尺寸/操作 ID/条件保持不变，只重绑定新宿主及文档运行时身份。正式录屏用 `growth-03`，前两次仅为取景与品牌色试录；原始记录与新回执均保留。没有把预存结果注入界面。
+
+第 6 段的事实依据已具备：第二次 robot4 模型的两条斜边核验为 fail，图纸源为 lines/73 与 lines/101，对应真实原生边。第 7 段 GUI 修正、复查通过、保存重开还未制作。按用户明确流程，到两支样片与风格板即停止，等待审阅后才做全片。

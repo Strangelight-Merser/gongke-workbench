@@ -1,7 +1,7 @@
 // Chrome DevTools 的真实连续帧与输入事件；不注入模型、回执或界面内容。
 const fs = require('node:fs');
 const path = require('node:path');
-exports.startRecording = async function(page, directory) {
+exports.startRecording = async function(page, directory, {width=1920,height=1080}={}) {
   fs.mkdirSync(path.join(directory,'frames'),{recursive:true});
   const cdp=await page.context().newCDPSession(page);
   const frames=[], inputs=[];
@@ -24,7 +24,7 @@ exports.startRecording = async function(page, directory) {
   const initial=await page.screenshot({type:'jpeg',quality:90});
   fs.writeFileSync(path.join(directory,'frames','000000.jpg'),initial);
   frames.push({file:'000000.jpg',timestamp:Date.now()/1000});
-  await cdp.send('Page.startScreencast',{format:'jpeg',quality:90,maxWidth:1920,maxHeight:1080,everyNthFrame:1});
+  await cdp.send('Page.startScreencast',{format:'jpeg',quality:90,maxWidth:width,maxHeight:height,everyNthFrame:1});
   const timer=setInterval(save,2000);
   return {directory,started,mark(name){inputs.push({kind:'mark',name,at:Date.now()});save();},async stop(){
     clearInterval(timer);await cdp.send('Page.stopScreencast');save();
