@@ -118,20 +118,80 @@ def test_last_client_only_and_borrowed_host(bridge):
     assert not scheduled
 
 
-@pytest.mark.parametrize("mode", ["exception", "sigint", "sigterm"])
+# 按操作系统的真实退出方式取值，不把 Windows TerminateProcess 当作可捕获 SIGTERM。
+EXIT_MODES = ["normal", "exception", "keyboard_interrupt", "force"] + (
+    ["ctrl_break"] if os.name == "nt" else ["sigint", "sigterm"])
+
+
+@pytest.mark.parametrize("mode", EXIT_MODES)
 def test_script_cleanup_on_failure(tmp_path, mode):
-    pidfile = tmp_path / "pid"
+    import signal
+    import time
+
+    pidfile = tmp_path / "child.json"
     code = f'''from scripts.owned_processes import OwnedProcesses
-import sys, time, os, signal
+import sys, time, subprocess, json
 from pathlib import Path
+from gongke_core.host_session import process_identity
 owned=OwnedProcesses()
-p=owned.spawn([sys.executable, '-c', 'import time; time.sleep(60)'])
-Path({str(pidfile)!r}).write_text(str(p.pid))
+# 独立子进程组使 Ctrl+Break 只到达所有者，不能靠广播杀死子进程伪装成清理成功。
+p=owned.spawn([sys.executable, '-c', 'import time; time.sleep(60)'],
+              creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0,
+              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+path=Path({str(pidfile)!r})
+path.with_suffix('.tmp').write_text(json.dumps(process_identity(p.pid)))
+path.with_suffix('.tmp').replace(path)
 '''
-    code += 'raise RuntimeError("injected")' if mode == "exception" else f'os.kill(os.getpid(), signal.{"SIGINT" if mode == "sigint" else "SIGTERM"})'
-    result = subprocess.run([sys.executable, "-c", code], capture_output=True, timeout=15)
-    assert result.returncode != 0
-    assert process_identity(int(pidfile.read_text())) is None
+    code += {"normal": "owned.close()", "exception": 'raise RuntimeError("injected")',
+             "keyboard_interrupt": "raise KeyboardInterrupt"}.get(mode, "while True: time.sleep(.05)")
+    console_created = False
+    if mode == "ctrl_break":
+        import ctypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        if kernel.GetConsoleCP() == 0:
+            assert kernel.AllocConsole(), ctypes.get_last_error()
+            console_created = True
+    child_identity = None
+    try:
+        # 输出落盘；强制终止的父进程不能让遗留子进程持有测试的 PIPE。
+        with (tmp_path / "owner.log").open("wb") as log:
+            owner = subprocess.Popen([sys.executable, "-c", code], stdout=log, stderr=log,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0)
+            try:
+                deadline = time.monotonic() + 10
+                while not pidfile.exists() and time.monotonic() < deadline and owner.poll() is None:
+                    time.sleep(.02)
+                assert pidfile.exists(), (tmp_path / "owner.log").read_text(errors="replace")
+                child_identity = json.loads(pidfile.read_text())
+                assert child_identity is not None
+                if mode == "ctrl_break":
+                    owner.send_signal(signal.CTRL_BREAK_EVENT)
+                elif mode in {"sigint", "sigterm"}:
+                    owner.send_signal(signal.SIGINT if mode == "sigint" else signal.SIGTERM)
+                elif mode == "force":
+                    owner.kill()  # Windows TerminateProcess / POSIX SIGKILL，均不运行清理。
+                result = owner.wait(timeout=15)
+                assert (result == 0) == (mode == "normal")
+                actual = process_identity(child_identity["pid"])
+                if mode == "force":
+                    assert actual == child_identity, "强制结束所有者不应被误报为成功清理"
+                else:
+                    assert actual is None, "可处理退出必须回收自己的子进程"
+            finally:
+                if owner.poll() is None:
+                    owner.kill()
+                    owner.wait(timeout=5)
+                if child_identity is None and pidfile.exists():
+                    child_identity = json.loads(pidfile.read_text())
+                if child_identity and process_identity(child_identity["pid"]) == child_identity:
+                    os.kill(child_identity["pid"], signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
+                    deadline = time.monotonic() + 5
+                    while process_identity(child_identity["pid"]) == child_identity and time.monotonic() < deadline:
+                        time.sleep(.02)
+                    assert process_identity(child_identity["pid"]) != child_identity
+    finally:
+        if console_created:
+            kernel.FreeConsole()
 
 
 def test_live_bridge_lock_without_session_blocks_launch(manager):

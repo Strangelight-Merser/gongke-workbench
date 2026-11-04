@@ -1,5 +1,6 @@
 """验收专用进程收尾：只处理本次 Popen 创建的子进程。"""
 import atexit
+import os
 import signal
 import subprocess
 
@@ -8,7 +9,9 @@ class OwnedProcesses:
     def __init__(self):
         self.children = []
         atexit.register(self.close)
-        for sig in (signal.SIGINT, signal.SIGTERM):
+        # Windows SIGTERM/TerminateProcess 无法执行 Python 清理；控制台 Break 映射为 SIGBREAK。
+        signals = (signal.SIGINT, signal.SIGBREAK) if os.name == "nt" else (signal.SIGINT, signal.SIGTERM)
+        for sig in signals:
             signal.signal(sig, self.interrupt)
 
     def interrupt(self, signum, frame):
