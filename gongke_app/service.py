@@ -1,9 +1,6 @@
 """JSON-lines service. Standard output contains protocol messages only."""
 from __future__ import annotations
 
-from gongke_app.startup_trace import start as trace_start, stage as trace_stage
-trace_start(__name__ == "__main__")
-
 import argparse
 import json
 import os
@@ -13,21 +10,11 @@ import threading
 from uuid import uuid4
 
 from gongke_app import __version__
-trace_stage("imports.commands.begin")
 from gongke_app.commands import Commands
-trace_stage("imports.commands.end")
-trace_stage("imports.tools.begin")
 from gongke_app.tools import validate, schema, TEXT, BOOL, TASK
-trace_stage("imports.tools.end")
-trace_stage("imports.hosts.begin")
 from gongke_app.hosts import Hosts, READ_METHODS
-trace_stage("imports.hosts.end")
-trace_stage("imports.project.begin")
 from gongke_app.project import Project
-trace_stage("imports.project.end")
-trace_stage("imports.tasks.begin")
 from gongke_app.tasks import Tasks
-trace_stage("imports.tasks.end")
 
 
 class Application:
@@ -213,20 +200,16 @@ def _private_protocol_input():
 
 
 def main():
-    trace_stage("main.enter")
     if len(sys.argv) > 1 and sys.argv[1] in {"mcp", "call", "workbuddy", "inspect-revision"}:
         from gongke_app.cli import main as client_main
         return client_main(sys.argv[1:])
     # Pipes use the Windows locale by default; the desktop protocol is always UTF-8.
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
-    trace_stage("streams.reconfigured")
     protocol_input = _private_protocol_input()
-    trace_stage("stdin.ready")
     parser = argparse.ArgumentParser()
     parser.add_argument("--state-dir", type=Path, default=Path.home() / ".local/share/gongke/app")
     args = parser.parse_args()
-    trace_stage("arguments.parsed")
     # Legacy libraries may print; isolate their output from the protocol stream.
     protocol = sys.stdout
     sys.stdout = sys.stderr
@@ -252,47 +235,29 @@ def main():
             diagnostic_file = (directory / "python-threads.log").open("a", encoding="utf-8")
             faulthandler.enable(file=diagnostic_file, all_threads=True)
             faulthandler.dump_traceback_later(60, repeat=True, file=diagnostic_file)
-        trace_stage("instance_lock.begin")
         instance = InstanceLock(args.state_dir)
-        trace_stage("instance_lock.end")
-        trace_stage("application.begin")
         app = Application(args.state_dir, emit)
-        trace_stage("application.end")
-        trace_stage("connection.import.begin")
         from gongke_app.connection import ConnectionServer
-        trace_stage("connection.import.end")
-        trace_stage("connection.start.begin")
         connection = ConnectionServer(app, args.state_dir)
-        trace_stage("connection.start.end")
-        trace_stage("stdin.wait")
         for line in protocol_input:
-            trace_stage("stdin.line")
             request_id = None
             try:
                 request = json.loads(line, parse_constant=lambda value: (_ for _ in ()).throw(ValueError("数值必须有限")))
                 if not isinstance(request, dict) or "id" not in request:
                     raise ValueError("请求必须是包含 id 的 JSON 对象")
                 request_id = request["id"]
-                trace_stage("dispatch.begin")
                 result = app.dispatch(request.get("method"), request.get("params", {}))
-                trace_stage("dispatch.end")
                 emit({"id": request_id, "result": result})
-                trace_stage("response.flushed")
             except Exception as exc:
                 emit({"id": request_id, "error": {"message": str(exc)}})
     except Exception as exc:
         emit({"event": "service.error", "error": {"message": str(exc)}})
         return 1
     finally:
-        trace_stage("shutdown.begin")
         if connection:
-            trace_stage("connection.close.begin")
             connection.close()
-            trace_stage("connection.close.end")
         if app:
-            trace_stage("application.close.begin")
             app.close()
-            trace_stage("application.close.end")
         if instance:
             instance.close()
         if diagnostic_file:

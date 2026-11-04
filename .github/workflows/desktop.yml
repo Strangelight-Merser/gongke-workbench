@@ -10,7 +10,6 @@ on:
       - adapters/**
       - packaging/**
       - tools/build_app_service.py
-      - tools/diagnose_service_startup.py
       - scripts/owned_processes.py
       - tools/prepare_windows_runtime.py
       - tools/test_windows_installer.ps1
@@ -31,7 +30,6 @@ on:
       - adapters/**
       - packaging/**
       - tools/build_app_service.py
-      - tools/diagnose_service_startup.py
       - scripts/owned_processes.py
       - tools/prepare_windows_runtime.py
       - tools/test_windows_installer.ps1
@@ -80,22 +78,7 @@ jobs:
       - name: Install application dependencies
         run: python -m pip install ".[desktop]" pytest
       - name: Test application commands and agent protocol
-        env:
-          GONGKE_STARTUP_TRACE_DIR: ${{ github.workspace }}/out/service-startup/tests
         run: python -m pytest -q tests/test_app_service.py tests/test_service_startup.py tests/test_freecad_lifecycle.py tests/test_project_workflow.py tests/test_host_paths.py tests/test_copy_receipt_recovery.py
-      - name: Diagnose macOS service startup after original tests
-        if: always() && runner.os == 'macOS'
-        run: python tools/diagnose_service_startup.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: service-startup-${{ runner.os }}-${{ github.sha }}
-          path: |
-            out/service-startup/**/*.log
-            out/service-startup/probe/result.json
-            out/service-startup/probe/stdout.jsonl
-          if-no-files-found: warn
-          retention-days: 7
       - name: Build and test desktop
         working-directory: desktop
         run: |

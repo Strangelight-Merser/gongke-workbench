@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+from socketserver import TCPServer
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
@@ -72,6 +73,13 @@ def restore_workbuddy(backup, expected_sha256):
     return {"status": "restored", "path": str(path)}
 
 
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # 本机端点只使用数字地址；HTTPServer 的反向 DNS 查询会阻塞离线启动。
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
 class ConnectionServer:
     def __init__(self, app, state_dir):
         self.app = app
@@ -105,7 +113,7 @@ class ConnectionServer:
                 self.end_headers()
                 self.wfile.write(body)
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = LoopbackHTTPServer(("127.0.0.1", 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True, name="gongke-connection")
         self.thread.start()
         private_json(self.path, {"url": f"http://127.0.0.1:{self.server.server_port}", "token": self.token, "pid": os.getpid()})

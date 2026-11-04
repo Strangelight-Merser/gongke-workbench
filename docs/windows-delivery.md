@@ -41,7 +41,8 @@ dsh 引导已编入桌面，按现有流程经用户同意下载原厂安装器�
 ## 三处 CI 失败的处理与证据边界
 
 - run `41769254323` 的实际失败是 `test_connection_auth_and_config_preview:258` 的 `assert not Path(result['path']).exists()`；403 断言已经通过。测试只设置 HOME，而 Windows `Path.home()` 使用 USERPROFILE，导致不同测试共用 runneradmin 配置。测试现在同时隔离两者，不改变鉴权协议。
-- run `41769254469` 的 macOS 两个子进程 15 秒内没有任何输出。服务握手前主动导入 NumPy/SciPy，但握手、建工程和机械计算不需要它们；删去预加载，保留原时限。新增拒绝这些导入的子进程测试验证完整握手/建工程/计算。后续 run `41771770952` 中禁止数值库导入的新测试仍然超时，已否定将数值库预加载视为该失败根因的判断。当前保留无预加载启动，但不能把它算作超时已修复；临时阶段/线程栈诊断见 [第二轮 CI 记录](ci-startup-diagnostics.md)。
+- macOS 启动超时已由 run `41773061261` 的诊断产物定位：`tests/service-16190.log`、`service-16498.log`、`service-18263.log` 在 0.138 / 0.226 / 0.178 秒进入 `connection.start.begin`，第 5、10 秒都停在 `socket.getfqdn → HTTPServer.server_bind → ConnectionServer.__init__`；独立 probe 在 0.141 秒进入同一位置。前轮 NumPy 预加载归因错误。现在本机 HTTP 服务器直接调用 TCPServer 的 bind，并把数字地址、实际端口写入 HTTPServer 属性，不做反向 DNS。[CPython 3.11 源码](https://github.com/python/cpython/blob/3.11/Lib/http/server.py) 显示原 bind 额外调用 getfqdn，仅用于 server_name。回归测试禁止 getfqdn/gethostbyaddr，经过真实服务子进程握手与 EOF 退出；旧实现失败，新实现通过，原 15 秒时限不变。
+- 本轮临时 startup_trace、diagnose 脚本、workflow 诊断步骤及诊断说明已删除。保留原有安装/桌面验收使用的 `GONGKE_TEST_DIAGNOSTICS_DIR`：它为长期运行的打包应用测试提供线程栈，未参与本轮 15 秒启动定位。无数值扩展预加载的行为和测试仍保留，验证握手及机械计算不加载无关宿主依赖，不再将它描述为超时根因。
 - AutoCAD `OperationStore.Get` 原来把文件存在时的所有 IOException 当成活跃锁。Windows `FileShare.None` 与普通文件读者也冲突，不能据此断言操作仍在执行。改为 Windows 字节范围锁，只有 `ERROR_LOCK_VIOLATION` 表示活跃操作；其他 I/O 错误传播。保留永久 ID 占位、崩溃回读和禁止重放。恢复测试增加普通读者持有锁文件的情形，并输出实际恢复状态。原 CI 仅记录断言名，未记录 HResult，不能证明那一次具体由扫描器触发；Windows 重跑仍是必需证据。
 
 冻结服务启动 FreeCAD 前暂时恢复标准 DLL 搜索路径，随后恢复服务的原路径，并从子进程 PATH 移除 `_MEIPASS` 内条目。FreeCAD 不继承服务携带的 Qt/Python/OCCT。

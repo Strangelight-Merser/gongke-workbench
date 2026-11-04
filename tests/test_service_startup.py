@@ -25,3 +25,21 @@ runpy.run_module('gongke_app.service', run_name='__main__')
     assert result.returncode == 0, result.stderr
     replies = {row['id']: row for row in map(json.loads, result.stdout.splitlines()) if 'id' in row}
     assert all('error' not in replies[key] for key in (1, 2, 3)), replies
+
+
+def test_stdio_handshake_without_reverse_dns(tmp_path):
+    bootstrap = """
+import socket, runpy
+def reject_dns(*args, **kwargs):
+    raise AssertionError('本机服务不能依赖反向 DNS')
+socket.getfqdn = reject_dns
+socket.gethostbyaddr = reject_dns
+runpy.run_module('gongke_app.service', run_name='__main__')
+"""
+    result = subprocess.run([sys.executable, '-c', bootstrap, '--state-dir', str(tmp_path / 'state')],
+        input=json.dumps(dict(id=1, method='system.status')) + '\n', capture_output=True,
+        text=True, cwd=Path(__file__).resolve().parents[1], timeout=15)
+    assert result.returncode == 0, result.stderr
+    replies = [json.loads(row) for row in result.stdout.splitlines()]
+    reply = next(row for row in replies if row.get('id') == 1)
+    assert 'result' in reply and 'error' not in reply, replies
