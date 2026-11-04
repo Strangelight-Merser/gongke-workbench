@@ -122,8 +122,10 @@ async function serviceSnapshot(page) {
         filePaths: [path],
       });
     }, project);
-    await page.getByRole("button", { name: "工程操作", exact: true }).click();
-    await page.getByRole("menuitem", { name: "新建工程", exact: true }).click();
+    await page
+      .locator(".start-page")
+      .getByRole("button", { name: "新建工程", exact: true })
+      .click();
     await page.locator("footer").getByTitle(project, { exact: true }).waitFor();
     await page
       .getByLabel("工程树", { exact: true })

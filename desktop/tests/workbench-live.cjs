@@ -35,8 +35,10 @@ const fs = require("node:fs"),
     await app.evaluate(({ dialog }, p) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] });
     }, project);
-    await page.getByRole("button", { name: "工程操作", exact: true }).click();
-    await page.getByRole("menuitem", { name: "新建工程", exact: true }).click();
+    await page
+      .locator(".start-page")
+      .getByRole("button", { name: "新建工程", exact: true })
+      .click();
     await page.getByRole("heading", { name: "project", exact: true }).waitFor();
     await app.evaluate(({ dialog }, p) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] });

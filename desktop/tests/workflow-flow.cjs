@@ -33,20 +33,26 @@ async function launch() {
   page.setDefaultTimeout(15000);
   await page.getByText("就绪", { exact: true }).waitFor();
 }
-async function choose(target, create) {
+async function choose(target, create, fromProject = false) {
   await app.evaluate(({ dialog }, value) => {
     dialog.showOpenDialog = async () => ({
       canceled: false,
       filePaths: [value],
     });
   }, target);
-  await page.getByRole("button", { name: "工程操作", exact: true }).click();
-  await page
-    .getByRole("menuitem", {
-      name: create ? "新建工程" : "打开工程",
-      exact: true,
-    })
-    .click();
+  const name = create ? "新建工程" : "打开工程";
+  if (fromProject) {
+    await page
+      .getByLabel("工程树", { exact: true })
+      .getByRole("button", { name: "工程操作", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name, exact: true }).click();
+  } else {
+    await page
+      .locator(".start-page")
+      .getByRole("button", { name, exact: true })
+      .click();
+  }
   await page.locator("footer").getByTitle(target, { exact: true }).waitFor();
 }
 async function until(read, timeout = 240000) {
@@ -130,7 +136,7 @@ async function settled(kind) {
     );
     assert.equal(reopened.task.conveyor.belt_pull_N, 2600);
     assert.equal(reopened.delivery, null);
-    await choose(other, true);
+    await choose(other, true, true);
     const isolated = await page.evaluate(() =>
       window.gongke.request("project.current"),
     );
