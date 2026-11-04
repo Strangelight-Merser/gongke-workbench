@@ -1,3 +1,4 @@
+const { showProjectTree } = require("./helpers/workspace.cjs");
 // 真实 Electron/Python/文件；Agent 协议和窗口联调见 acp-flow.cjs。
 const { electron } = require("./helpers/owned-electron.cjs");
 const fs = require("node:fs"),
@@ -42,6 +43,7 @@ async function choose(target, create, fromProject = false) {
   }, target);
   const name = create ? "新建工程" : "打开工程";
   if (fromProject) {
+    await showProjectTree(page);
     await page
       .getByLabel("工程树", { exact: true })
       .getByRole("button", { name: "工程操作", exact: true })
@@ -80,6 +82,7 @@ async function settled(kind) {
   try {
     await launch();
     await choose(project, true);
+    await showProjectTree(page);
     await page
       .getByLabel("工程树", { exact: true })
       .getByText("减速器课程设计", { exact: true })

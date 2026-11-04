@@ -34,6 +34,19 @@ exports.electron = {
         children.delete(app);
       }
     })();
-    return app;
+    try {
+      if (process.env.GONGKE_TEST_WINDOW_WIDTH) {
+        const width = Number(process.env.GONGKE_TEST_WINDOW_WIDTH);
+        const page = await app.firstWindow();
+        await app.evaluate(({ BrowserWindow }, width) => {
+          BrowserWindow.getAllWindows()[0].setContentSize(width, 768);
+        }, width);
+        await page.waitForFunction(width => innerWidth === width, width);
+      }
+      return app;
+    } catch (error) {
+      await app.close();
+      throw error;
+    }
   }
 };

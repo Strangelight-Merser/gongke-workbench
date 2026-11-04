@@ -80,3 +80,21 @@ dsh 引导已编入桌面，按现有流程经用户同意下载原厂安装器�
 - [electron-builder NSIS](https://www.electron.build/docs/nsis/)：安装目录、安装范围与产物配置。
 - [SOLIDWORKS 官方 API 入门](https://help.solidworks.com/2023/english/api/sldworksapiprogguide/Welcome.htm)：官方安装提供 primary interop assemblies。
 - [dsh 引导来源和同类实现参考](../desktop/ACP.md)：固定官方安装器、签名验证及账号边界。
+
+
+## 新布局下的打包流程验收
+
+run `41775603833` 的课程设计节点已经被定位，但日志持续显示 element is not visible。`fitLayout` 在中心剩余宽度小于 640 时折叠工程树；这与示例数据、虚拟化无关。流程先从开始页创建工程，需要工程树时读取“资源管理器”的 aria-pressed，通过活动栏展开，再等待工程树可见；不使用强制点击。CI 使用 `GONGKE_TEST_WINDOW_WIDTH=1100` 固定覆盖这一条件。
+
+所有支持 `GONGKE_TEST_EXECUTABLE` 的脚本已清点：
+
+| 脚本 | macOS 打包应用、每次全新用户目录，1100×768 / 1440×768 |
+|---|---|
+| desktop-flow | 两种宽度完整通过：教学计算、生成、成果清单与图纸、断连 Agent、packaged 断言 |
+| workflow-flow | 两种宽度完整通过：空白任务、实际计算和导出、成果过期、重启打开、工程隔离 |
+| freecad-flow | 两种宽度完整通过：独立真实 FreeCAD 的合成教学轴和 TechDraw 页、工作副本、40→38 mm 修改及读回、校核、图纸更新、DXF、源文件哈希不变 |
+| windows-installed | 依赖 Windows、中文账户、NSIS、helper、随包 FreeCAD；本机无法运行，仍由 Windows runner 完整验收 |
+
+FreeCAD 流程现在先通过“连接 FreeCAD”完成生命周期连接，等界面操作完成，再选择特征树对象；切换工作副本和刷新几何后重新选择对象。它不再假定读取工程或切换文档会自动选中教学轴。额外的 workbench-live 源码流程也通过窄窗口进入和后续宽度/主题切换。
+
+本机复跑：设置 `GONGKE_TEST_EXECUTABLE` 为打包可执行文件路径，分别以 `GONGKE_TEST_WINDOW_WIDTH=1100` 和 `1440` 运行 `node desktop/tests/desktop-flow.cjs`、`workflow-flow.cjs`。`freecad-flow.cjs` 还需要 `GONGKE_FREECAD_SESSION` 指向独立测试宿主，里面打开已保存的合成教学轴及关联 TechDraw 页；不要指向用户工程。输出分别在 `out/desktop-validation`、`out/workflow-validation`、`out/freecad-app-validation`，result.json 必须同时包含 ok 和 packaged 为 true。

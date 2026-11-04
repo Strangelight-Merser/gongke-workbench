@@ -1,3 +1,4 @@
+const { showProjectTree } = require("./helpers/workspace.cjs");
 // 真实 Electron + Python 服务，选择目录通过原生 dialog 替身，工程动作不模拟。
 const { electron } = require("./helpers/owned-electron.cjs");
 const {
@@ -127,6 +128,7 @@ async function serviceSnapshot(page) {
       .getByRole("button", { name: "新建工程", exact: true })
       .click();
     await page.locator("footer").getByTitle(project, { exact: true }).waitFor();
+    await showProjectTree(page);
     await page
       .getByLabel("工程树", { exact: true })
       .getByText("减速器课程设计", { exact: true })

@@ -1,3 +1,4 @@
+const { showProjectTree } = require("./helpers/workspace.cjs");
 // 隔离的生产 Electron + Python 服务。仅原生选择框固定到临时测试文件，不连接 Agent。
 const { electron } = require("./helpers/owned-electron.cjs");
 const fs = require("node:fs"),
@@ -43,6 +44,7 @@ const fs = require("node:fs"),
     await app.evaluate(({ dialog }, p) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] });
     }, input);
+    await showProjectTree(page);
     await page.getByRole("button", { name: "导入图纸", exact: true }).click();
     await page.waitForFunction(
       () => document.querySelector("img.drawing")?.naturalWidth > 0,

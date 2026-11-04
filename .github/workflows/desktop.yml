@@ -153,6 +153,8 @@ jobs:
         if: runner.os == 'macOS'
         run: codesign --verify --deep --strict desktop/release/mac*/构想引擎.app
       - name: Exercise packaged desktop with a fresh user directory
+        env:
+          GONGKE_TEST_WINDOW_WIDTH: "1100"
         timeout-minutes: 15
         shell: python
         run: |

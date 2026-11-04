@@ -1,3 +1,4 @@
+const { showProjectTree } = require("./helpers/workspace.cjs");
 // 已打开隔离 FreeCAD 教学轴和关联 TechDraw 页；通过真实桌面控件修订。
 const { electron } = require("./helpers/owned-electron.cjs");
 const fs = require("node:fs"),
@@ -42,6 +43,7 @@ const hash = (file) =>
       .getByRole("button", { name: "新建工程", exact: true })
       .click();
     await page.locator("footer").getByTitle(project, { exact: true }).waitFor();
+    await showProjectTree(page);
     await page
       .getByLabel("工程树", { exact: true })
       .getByText("原生 CAD", { exact: true })
@@ -53,12 +55,26 @@ const hash = (file) =>
     )
       await page.getByRole("button", { name: "工程检查", exact: true }).click();
     await page
+      .getByRole("button", { name: "连接 FreeCAD", exact: true })
+      .click();
+    await page.locator(".statusbar[aria-busy=false]").waitFor();
+    await page
       .getByRole("button", { name: "读取 FreeCAD 工程", exact: true })
       .click();
-    await page.getByLabel("目标直径", { exact: true }).waitFor();
     const original = await page.evaluate(() =>
       window.gongke.request("freecad.context"),
     );
+    // 新布局在切换到工作副本或刷新几何后清空选择，重新通过特征树选中对象。
+    async function selectShaft() {
+      await page.locator(".statusbar[aria-busy=false]").waitFor();
+      const body = page
+        .locator(".native-inspection .properties")
+        .getByRole("button", { name: original.objects[0].label, exact: true });
+      if (!(await body.getAttribute("class")).split(" ").includes("active"))
+        await body.click();
+      await page.getByLabel("目标直径", { exact: true }).waitFor();
+    }
+    await selectShaft();
     const originalHash = hash(original.path);
     const source = await page.evaluate(
       (c) =>
@@ -82,11 +98,13 @@ const hash = (file) =>
           .textContent.includes(p),
       project,
     );
+    await selectShaft();
     await page.getByLabel("目标直径", { exact: true }).fill(String(targetMm));
     await page
       .getByRole("button", { name: "计算修改影响", exact: true })
       .click();
     await page.getByRole("button", { name: "应用修改", exact: true }).click();
+    await selectShaft();
     await page
       .locator(".property")
       .filter({ hasText: "middle" })
