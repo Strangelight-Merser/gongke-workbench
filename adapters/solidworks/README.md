@@ -10,13 +10,13 @@ Windows x64、.NET Framework 4.8 COM add-in。加载到已有 SOLIDWORKS 进程�
 
 ```powershell
 cd adapters\solidworks
-.\scripts\build.ps1 -InteropDirectory 'C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\api\redist'
+powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1 -InteropDirectory 'C:\Program Files\SOLIDWORKS Corp\SOLIDWORKS\api\redist'
 ```
 
 关闭 SOLIDWORKS，再在提升权限的 **64 位 PowerShell** 中运行：
 
 ```powershell
-.\scripts\install.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
 
 安装器只复制本适配器和 Newtonsoft.Json 到 `%ProgramFiles%\Gongke\SolidWorks`，使用 Framework64 RegAsm 注册 COM，写入 SOLIDWORKS Addins 与当前用户 AddInsStartup。重新打开 SOLIDWORKS，必要时在“工具 → 插件”启用 Gongke Workbench。安装不会启动宿主。若用另一管理员账户安装，启动勾选需在实际使用账户设置。

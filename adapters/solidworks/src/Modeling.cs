@@ -484,8 +484,10 @@ namespace Gongke.SolidWorks
                         : Cut((int)swEndConditions_e.swEndCondBlind, reversed, Protocol.Number(data, "length"));
                     break;
                 case "revolve":
+                    // 末三项为 Merge、UseFeatScope、UseAutoSelect。实机上 UseFeatScope/UseAutoSelect 为 false 时返回空（与宏录制一致取 true）；
+                    // Merge 仍只在已有实体时合并。
                     feature = fm.FeatureRevolve2(true, true, false, false, reversed, false, 0, 0, Protocol.Number(data, "angle"), 0,
-                        false, false, 0, 0, 0, 0, 0, body != null, body != null, false);
+                        false, false, 0, 0, 0, 0, 0, body != null, true, true);
                     break;
                 case "fillet": case "chamfer":
                     model.ClearSelection2(true);

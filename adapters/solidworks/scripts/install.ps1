@@ -12,7 +12,10 @@ foreach ($name in @('Gongke.SolidWorks.dll','Newtonsoft.Json.dll')) {
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
 foreach ($name in @('Gongke.SolidWorks.dll','Newtonsoft.Json.dll')) { Copy-Item -LiteralPath (Join-Path $BuildDirectory $name) -Destination $destination -Force }
 $regasm = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\RegAsm.exe'
-& $regasm (Join-Path $destination 'Gongke.SolidWorks.dll') /codebase
+# RegAsm 对未签名程序集向 stderr 输出 RA0000 警告；Stop 会把它当终止错误，这里只按退出码判断。
+$ErrorActionPreference = 'Continue'
+& $regasm (Join-Path $destination 'Gongke.SolidWorks.dll') /codebase 2>&1 | Write-Host
+$ErrorActionPreference = 'Stop'
 if ($LASTEXITCODE -ne 0) { throw 'COM registration failed.' }
 $guid = '{507DA194-5B1B-4B32-B4A8-B3EA18B036FA}'
 $addin = "HKLM:\SOFTWARE\SolidWorks\Addins\$guid"
