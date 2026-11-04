@@ -63,9 +63,40 @@ namespace Gongke.SolidWorks
         private static void ModelingSelect(ModelDoc2 model, object value, int mark = 0, bool append = false)
         {
             if (!append) model.ClearSelection2(true);
+            if (!NativeSelect(model, value, mark, true)) throw new CommandError("selection_failed", "宿主未选中指定原生引用");
+        }
+        // 每类对象用自身的选择方法，不经 MultiSelect2：C# 传入 object[] 时 MultiSelect2 返回 0（实机对基准面、草图已复现，
+        // 社区报告同样现象）。基准面、草图按特征名 SelectByID2 已在 SOLIDWORKS 2023 SP0.1 实机验证。
+        internal static bool NativeSelect(ModelDoc2 model, object value, int mark, bool append)
+        {
             var data = ((SelectionMgr)model.SelectionManager).CreateSelectData(); data.Mark = mark;
-            if (model.Extension.MultiSelect2(new[] { value }, append, data) != 1)
-                throw new CommandError("selection_failed", "宿主未选中指定原生引用");
+            switch (value)
+            {
+                case Feature feature:
+                    var typeName = feature.GetTypeName2();
+                    var selectType = typeName == "RefPlane" ? "PLANE"
+                        : typeName == "ProfileFeature" || typeName == "3DProfileFeature" ? "SKETCH" : null;
+                    return selectType != null
+                        ? model.Extension.SelectByID2(feature.Name, selectType, 0, 0, 0, append, mark, null, 0)
+                        : feature.Select2(append, mark);
+                case SketchSegment segment: return segment.Select4(append, data);
+                case SketchPoint point: return point.Select4(append, data);
+                case Body2 body: return body.Select2(append, data);
+                case Entity entity: return entity.Select4(append, data);
+                default: throw new CommandError("selection_unsupported", "不支持选择此类原生对象");
+            }
+        }
+        // 关系用经典的“选择 + SketchAddConstraints”：AddRelation 传对象数组在实机上使宿主崩溃。该方法无返回值，以关系数量变化确认。
+        private static void AddSketchRelation(ModelDoc2 model, Sketch sketch, object[] entities, string relation)
+        {
+            model.ClearSelection2(true);
+            foreach (var e in entities) ModelingSelect(model, e, 0, true);
+            var manager = sketch.RelationManager;
+            int before = manager.GetRelationsCount((int)swSketchRelationFilterType_e.swAll);
+            model.SketchAddConstraints(relation);
+            model.ClearSelection2(true);
+            if (manager.GetRelationsCount((int)swSketchRelationFilterType_e.swAll) <= before)
+                throw new CommandError("constraint_failed", "宿主未添加草图关系：" + relation);
         }
         private JObject ModelingOperation(JObject p)
         {
@@ -75,13 +106,22 @@ namespace Gongke.SolidWorks
                     ["operation_id"] = row["operation_id"], ["outcome"] = row["outcome"],
                     ["result"] = row["response"]?["result"] ?? new JObject { ["error"] = row["response"]?["error"] } };
         }
+        // 用户配置的默认零件模板优先；未配置时使用 ProgramData 下随 SOLIDWORKS 安装的零件模板。
+        private string PartTemplate()
+        {
+            var configured = app.GetUserPreferenceStringValue((int)swUserPreferenceStringValue_e.swDefaultTemplatePart);
+            if (File.Exists(configured)) return configured;
+            var root = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.CommonApplicationData), "SOLIDWORKS");
+            if (!Directory.Exists(root)) return null;
+            var templates = Directory.GetFiles(root, "*.prtdot", SearchOption.AllDirectories);
+            return templates.FirstOrDefault(t => Path.GetFileName(t).Equals("gb_part.prtdot", StringComparison.OrdinalIgnoreCase)) ?? templates.FirstOrDefault();
+        }
         private JObject ModelNew(JObject p)
         {
             if (Protocol.Required(p, "host_instance") != session) throw new CommandError("stale_session", "宿主实例已改变");
             var path = Protocol.NewOutputPath(new JObject { ["output_path"] = p["path"] }, ".sldprt");
             RequireNewDocumentNames(path);
-            var template = app.GetUserPreferenceStringValue((int)swUserPreferenceStringValue_e.swDefaultTemplatePart);
-            if (!File.Exists(template)) throw new CommandError("template_missing", "请在 SOLIDWORKS 配置默认零件模板");
+            var template = PartTemplate() ?? throw new CommandError("template_missing", "请在 SOLIDWORKS“选项 → 系统选项 → 默认模板”中设置零件模板");
             nativeMutationStarted = true;
             var model = (ModelDoc2)app.NewDocument(template, 0, 0, 0);
             if (model == null) throw new CommandError("new_document_failed", "NewDocument 返回空");
@@ -131,9 +171,10 @@ namespace Gongke.SolidWorks
             }
             // 一个工具一个原生 Undo 对象；失败不伪称回滚，现有 journal 记录 unknown/needs_review。
             model.Extension.StartRecordingUndoObject();
+            JObject result;
+            bool undoRecorded;
             try
             {
-                JObject result;
                 switch (method)
                 {
                     case "model.sketch": result = ModelSketch(model, p); break;
@@ -151,15 +192,16 @@ namespace Gongke.SolidWorks
                 nativeEffectObserved = true;
                 result["diagnostics"] = diagnostics;
                 if (method == "model.feature") { model.ViewZoomtofit2(); model.GraphicsRedraw2(); }
-                result["document"] = InspectionRef(model); result["outcome"] = "committed";
-                return result;
             }
             finally
             {
                 model.ClearSelection2(true);
-                if (!model.Extension.FinishRecordingUndoObject2("构想引擎原生建模", false))
-                    throw new CommandError("undo_finish_failed", "无法结束原生撤销记录；读取当前文档", "needs_review");
+                // SOLIDWORKS 2023 SP0.1 实机上恒返回 false，而几何已正确写入；不作为失败，如实报告撤销分组是否建立。
+                undoRecorded = model.Extension.FinishRecordingUndoObject2("构想引擎原生建模", false);
             }
+            result["undo_recorded"] = undoRecorded;
+            result["document"] = InspectionRef(model); result["outcome"] = "committed";
+            return result;
         }
         private static IEnumerable<Feature> ModelingFeatures(ModelDoc2 model)
         {
@@ -244,20 +286,18 @@ namespace Gongke.SolidWorks
         {
             string kind = Protocol.Required(c, "kind");
             var entities = ((JArray)c["entities"]).OfType<JObject>().Select(e => SketchEntity(segments, e)).ToArray();
-            var geometric = new Dictionary<string, swConstraintType_e> {
-                ["horizontal"] = swConstraintType_e.swConstraintType_HORIZONTAL, ["vertical"] = swConstraintType_e.swConstraintType_VERTICAL,
-                ["coincident"] = swConstraintType_e.swConstraintType_COINCIDENT, ["tangent"] = swConstraintType_e.swConstraintType_TANGENT,
-                ["parallel"] = swConstraintType_e.swConstraintType_PARALLEL, ["perpendicular"] = swConstraintType_e.swConstraintType_PERPENDICULAR,
-                ["equal"] = swConstraintType_e.swConstraintType_SAMELENGTH, ["fixed"] = swConstraintType_e.swConstraintType_FIXED };
+            // SketchAddConstraints 的关系名（SOLIDWORKS 2006 及以后）。
+            var geometric = new Dictionary<string, string> {
+                ["horizontal"] = "sgHORIZONTAL2D", ["vertical"] = "sgVERTICAL2D", ["coincident"] = "sgCOINCIDENT", ["tangent"] = "sgTANGENT",
+                ["parallel"] = "sgPARALLEL", ["perpendicular"] = "sgPERPENDICULAR", ["equal"] = "sgSAMELENGTH", ["fixed"] = "sgFIXED" };
             if (geometric.TryGetValue(kind, out var relation))
             {
                 if (entities.Length == 2 && entities.All(e => e is SketchPoint))
                 {
-                    if (kind == "horizontal") relation = swConstraintType_e.swConstraintType_HORIZPOINTS;
-                    if (kind == "vertical") relation = swConstraintType_e.swConstraintType_VERTPOINTS;
+                    if (kind == "horizontal") relation = "sgHORIZONTALPOINTS2D";
+                    if (kind == "vertical") relation = "sgVERTICALPOINTS2D";
                 }
-                if (sketch.RelationManager.AddRelation(entities, (int)relation) == null)
-                    throw new CommandError("constraint_failed", "AddRelation 返回空："+kind);
+                AddSketchRelation(model, sketch, entities, relation);
                 return;
             }
             model.ClearSelection2(true);
@@ -348,13 +388,8 @@ namespace Gongke.SolidWorks
                         item.ConstructionGeometry = (bool?)g["construction"] ?? false;
                         segments.Add(item);
                     }
-                    if (kind == "rectangle")
-                        for (int i = 0; i < 4; i++)
-                        {
-                            if (sketch.RelationManager.AddRelation(new object[] { created[i] }, (int)(i%2 == 0 ? swConstraintType_e.swConstraintType_HORIZONTAL : swConstraintType_e.swConstraintType_VERTICAL)) == null
-                                || sketch.RelationManager.AddRelation(new[] { ((SketchLine)created[i]).GetEndPoint2(), ((SketchLine)created[(i+1)%4]).GetStartPoint2() }, (int)swConstraintType_e.swConstraintType_COINCIDENT) == null)
-                                throw new CommandError("constraint_failed", "矩形关系创建失败");
-                        }
+                    // 不给矩形自动加关系：SOLIDWORKS 2023 SP0.1 实机上此处 AddRelation 会使宿主崩溃。
+                    // 四条线首尾坐标重合即可拉伸；需要约束时由 constraints 显式添加。
                     addedSegments.Add(created.ToArray());
                 }
                 manager.AddToDB = false;
@@ -411,8 +446,8 @@ namespace Gongke.SolidWorks
                         bool horizontal = (string)data["axis"] == "horizontal";
                         line = model.SketchManager.CreateCenterLine(0, 0, 0, horizontal ? .01 : 0, horizontal ? 0 : .01, 0);
                         if (line == null) throw new CommandError("axis_failed", "CreateCenterLine 返回空");
-                        if (sketch.RelationManager.AddRelation(new object[] { line }, (int)swConstraintType_e.swConstraintType_FIXED) == null)
-                            throw new CommandError("axis_failed", "无法固定旋转轴");
+                        // 不给轴线加固定关系：SOLIDWORKS 2023 SP0.1 实机上旋转在此路径崩溃，AddRelation 是已知的崩溃点。
+                        // 轴线按精确坐标画在草图原点，草图里没有其他关系会移动它。
                     }
                     finally { model.SketchManager.AddToDB = addToDb; model.SketchManager.InsertSketch(true); }
                     ModelingSelect(model, profile);
@@ -422,7 +457,8 @@ namespace Gongke.SolidWorks
             }
             else model.ClearSelection2(true);
             if (body == null && kind != "pad" && kind != "revolve") throw new CommandError("body_required", "先用 pad/revolve 创建实体");
-            if (body != null) ModelingSelect(model, body, 8, true);
+            // 切除不预选实体（mark 8）：实机上预选后 FeatureCut4 返回空，改由 UseAutoSelect 选择实体。
+            if (body != null && kind == "pad") ModelingSelect(model, body, 8, true);
             nativeMutationStarted = true;
             var fm = model.FeatureManager;
             Feature feature;
@@ -440,10 +476,12 @@ namespace Gongke.SolidWorks
                     goto case "pocket";
                 case "pocket":
                     bool throughAll = (bool?)data["through_all"] == true;
-                    feature = fm.FeatureCut4(true, false, reversed,
-                        (int)(throughAll ? swEndConditions_e.swEndCondThroughAll : swEndConditions_e.swEndCondBlind), 0,
-                        throughAll ? 0 : Protocol.Number(data, "length"), 0,
-                        false, false, false, false, 0, 0, false, false, false, false, false, true, false, false, false, false, 0, 0, false, false);
+                    // 贯穿用两侧贯穿，结果与方向无关；实机上仅一个方向参数返回特征，故两个方向各试一次。盲切按给定深度和方向，不改语义。
+                    Feature Cut(int end, bool direction, double depth) => fm.FeatureCut4(true, false, direction, end, 0, depth, 0,
+                        false, false, false, false, 0, 0, false, false, false, false, false, true, true, false, false, false, 0, 0, false, false);
+                    feature = throughAll
+                        ? Cut((int)swEndConditions_e.swEndCondThroughAllBoth, reversed, 0) ?? Cut((int)swEndConditions_e.swEndCondThroughAllBoth, !reversed, 0)
+                        : Cut((int)swEndConditions_e.swEndCondBlind, reversed, Protocol.Number(data, "length"));
                     break;
                 case "revolve":
                     feature = fm.FeatureRevolve2(true, true, false, false, reversed, false, 0, 0, Protocol.Number(data, "angle"), 0,

@@ -335,11 +335,11 @@ namespace Gongke.SolidWorks
             var value = model.Extension.GetObjectByPersistReference3(reference, out var state);
             if (value == null || state != 0) throw new CommandError("selection_missing", "Persistent reference no longer resolves.");
             nativeMutationStarted = true;
-            var selected = model.Extension.MultiSelect2(new[] { value }, false, null);
+            var selected = NativeSelect(model, value, 0, false);
             var selection = Selection(model);
-            var matches = selected == 1 && selection.Count == 1
+            var matches = selected && selection.Count == 1
                 && (string)selection[0]["persistent_reference"] == (string)p["persistent_reference"];
-            nativeEffectObserved = selected > 0;
+            nativeEffectObserved = selected;
             return new JObject { ["selected"] = matches, ["selection"] = selection,
                 ["outcome"] = matches ? "applied" : nativeEffectObserved ? "needs_review" : "unknown" };
         }

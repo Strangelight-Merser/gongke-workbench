@@ -29,10 +29,10 @@ def test_dimensions_and_tolerance(snapshot):
     conditions = [condition("diameter", ["Face1"], 42), condition("axis_distance", ["Face1", "Face2"], 116),
                   condition("plane_distance", ["Face3", "Face4"], 8, .1)]
     result = i.check(snapshot, conditions)
-    assert result["status"] == "pass"
+    assert result["status"] == "unverified"
     assert result["checks"][1]["actual"]["value"] == pytest.approx(.116)
     snapshot["faces"][3]["point"][2] = .0081
-    assert i.check(snapshot, conditions)["status"] == "pass"
+    assert i.check(snapshot, conditions)["status"] == "unverified"
     snapshot["faces"][3]["point"][2] = .00811
     result = i.check(snapshot, conditions)
     assert result["status"] == "fail"
@@ -95,7 +95,7 @@ def test_unified_command_execution(host, snapshot, monkeypatch, tmp_path):
     command = Commands(hosts)
     result = command.call("host.check", {"host_id": host, "document": DOC, "object_ref": "Body",
         "conditions": [condition("diameter", ["Face1"], 42)]}, None, allow_writes=False)
-    assert result["status"] == "pass"
+    assert result["status"] == "unverified"
     assert calls == [("model.inspect", {"document": DOC, "object_ref": "Body"})]
     assert all(not definitions()[name][2] for name in i.definitions())
 
@@ -146,7 +146,7 @@ def test_mcp_and_desktop_share_check_execution(snapshot, tmp_path, monkeypatch):
             response = await client.call_tool("host.check", args)
             assert not response.is_error
             result = response.structured_content
-            assert result["result"]["status"] == "pass"
+            assert result["result"]["status"] == "unverified"
             record = app.tasks.get(result["task_id"])
             assert record["receipts"][0]["command"] == "host.check"
             return result["result"]

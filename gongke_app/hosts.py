@@ -180,7 +180,7 @@ class Hosts:
         if tool == "host.measure":
             return inspection.measure(snapshot, params["measurement"], section)
         if tool == "host.check":
-            return inspection.check(snapshot, params["conditions"], section)
+            return inspection.check(snapshot, params["conditions"], section, project, params.get("drawing"))
         raise ValueError("未知模型检查工具")
 
     def command(self, host_id, method, params, project):

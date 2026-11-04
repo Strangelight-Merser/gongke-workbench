@@ -452,7 +452,12 @@ export function FreeCadInspector({
                 ?.filter((c: Data) => c.status !== "pass")
                 .map((c: Data) => (
                   <div className="error" key={c.id}>
-                    {c.id} · {c.status === "fail" ? "不符" : "待核实"}
+                    {c.id} ·{" "}
+                    {c.status === "fail"
+                      ? "不符"
+                      : c.status === "unverified"
+                        ? "未经独立核对"
+                        : "待核实"}
                     {!c.actual?.locations?.length && " · 无可定位实体"}
                   </div>
                 ))}

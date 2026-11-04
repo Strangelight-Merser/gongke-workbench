@@ -159,6 +159,7 @@
 .agent-tool[data-state="in_progress"] > summary {
   color: var(--colorBrandForeground1, var(--accent));
 }
+.agent-tool[data-state="unverified"] > summary,
 .agent-tool[data-state="unknown"] > summary,
 .agent-tool[data-state="pending"] > summary {
   color: var(--colorPaletteMarigoldForeground1, var(--warning));

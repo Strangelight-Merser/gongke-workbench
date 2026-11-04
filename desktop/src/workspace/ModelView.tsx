@@ -196,7 +196,7 @@ export function ModelView({
     v.camera.far = Math.max(size * 100, v.camera.position.length() * 10);
     v.camera.updateProjectionMatrix();
     for (const check of checks?.checks || []) {
-      if (check.status === "pass") continue;
+      if (check.status !== "fail") continue;
       for (const location of check.actual?.locations || []) {
         const snapshots = scene.snapshots || [];
         const edge = snapshots
@@ -233,7 +233,12 @@ export function ModelView({
           v.overlays.add(marker);
         } else if (location.edges) {
           for (const edge of location.edges)
-            line(edge.samples || [edge.start, edge.end], "#e54b4b");
+            line(
+              edge.samples || [edge.start, edge.end],
+              location.difference === "missing_or_shifted"
+                ? "#ef9b29"
+                : "#e54b4b",
+            );
         } else if (detail?.object_ref === location.native_ref) {
           for (const e of detail?.edges || [])
             line(e.samples || [e.start, e.end], "#e54b4b");
@@ -245,7 +250,9 @@ export function ModelView({
     <div className="model-view" ref={mount}>
       <span className="viewport-hint">
         拖动旋转 · 滚轮缩放 · 点击选择
-        {checks?.status === "fail" ? " · 红色：不符的量测面 / 轴 / 边" : ""}
+        {checks?.status === "fail"
+          ? " · 红色：多出或偏移；橙色：图纸要求的缺失或偏移边"
+          : ""}
       </span>
     </div>
   );
