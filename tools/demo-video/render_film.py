@@ -87,7 +87,31 @@ def main():
     badge=segment.get('badge','')
     if speed>1.001:badge=(badge+'  ·  ' if badge else '')+f'×{speed:g} 加速'
     if badge:draw.text((1760,20),badge,font=font(22),fill='#77d6cd',anchor='ra')
-    if segment.get('layout')=='agent':
+    if segment.get('layout') in ['replay','validation','opening']:
+     w,h=frame.size
+     def panel(box,dest):
+      pic=frame.crop(tuple(round(v*(w if i%2==0 else h)) for i,v in enumerate(box)))
+      x,y,pw,ph=dest;ratio=min(pw/pic.width,ph/pic.height);pic=pic.resize((round(pic.width*ratio),round(pic.height*ratio)),Image.Resampling.LANCZOS)
+      x+=(pw-pic.width)//2;y+=(ph-pic.height)//2;m=Image.new('L',pic.size);ImageDraw.Draw(m).rounded_rectangle((0,0,pic.width-1,pic.height-1),radius=18,fill=255);canvas.paste(pic,(x,y),m)
+     if segment['layout']=='replay':
+      panel((.155,.215,.812,.925),(120,245,900,640))
+      panel((.816,.285,.998,.82),(1100,90,700,840))
+      draw.text((160,115),'首次建模的实际结果',font=font(43,600),fill='#eef5fa')
+      draw.text((164,182),'原会话逐条回放 · 模型未重新生成',font=font(27),fill='#9fb2c6')
+     elif segment['layout']=='validation':
+      panel((0,0,1,1),(870,195,970,650))
+      draw.text((155,180),'可以运行，也可以交付',font=font(45,600),fill='#eef5fa')
+      draw.text((160,310),'Windows 安装验收通过',font=font(35,550),fill='#77d6cd')
+      draw.text((160,375),'中文账户 · CI 41822011858',font=font(25),fill='#d4e2ee')
+      draw.text((160,420),'历史版本 41ec469',font=font(25),fill='#9fb2c6')
+      draw.text((160,550),'本版 macOS 打包验收通过',font=font(34,550),fill='#77d6cd')
+      draw.text((160,615),'两种窗口宽度 · 四轮通用流程',font=font(25),fill='#d4e2ee')
+      draw.text((160,660),'空工程 / 保存重开 / 工程隔离',font=font(25),fill='#9fb2c6')
+     else:
+      panel((.725,.33,.995,.91),(1020,100,720,800))
+      draw.text((170,310),'图纸  ↔  CAD',font=font(64,650),fill='#eef5fa')
+      draw.text((175,430),'来回切换，反复核对',font=font(42),fill='#77d6cd')
+    elif segment.get('layout')=='agent':
      w,h=frame.size;pic=frame.crop((w*.815,h*.04,w*.999,h*.64));pic.thumbnail((690,800),Image.Resampling.LANCZOS)
      # 将真实 Agent 栏单独放大，不让无关的 CI 文档抢占该镜头。
      scale=min(690/pic.width,800/pic.height);pic=pic.resize((round(pic.width*scale),round(pic.height*scale)),Image.Resampling.LANCZOS)

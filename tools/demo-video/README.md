@@ -1,64 +1,33 @@
-# 构想引擎演示视频
+# 最终演示视频工具
 
-当前为逐帧反馈修订阶段：旧 film.mp4 保留；第二次 dsh 尚未授权。详见 docs/demo-video/revision-review.md。不要把当前混有待替换 Agent 片段的 timeline.json 直接发布为最终片。
+交付：`out/demo-video/final/film.mp4`，163 秒、1080p、30fps、H.264/AAC。字幕、旁白、来源清单与每镜抽帧在同目录。当前分镜 `docs/demo-video/storyboard.md`，事件完整性和检查缺陷记录在 handoff.md。本轮没有启动 dsh 推理会话；不要再使用 run_paid.py。
 
-正式片为 `out/demo-video/film.mp4`，184 秒、1920×1080、30 fps、H.264/AAC。中文字幕烧录，另附 `film.srt`、`narration.txt`、`sources.md`、`sources.json`、`validation.json`、`qa/`。大文件不提交；`style-preview.mp4` 是上一阶段截图预览，不是正式片。
+## 原始资料与录制
 
-## 从现有原片重现成片（不启动 Agent）
+媒体和学生图纸只在本地 out，不提交 Git。复现需要首次真实成功会话 `paid-robot4/robot4-1`、用户允许展示的 robot4.pdf、历史真实参数编辑录像 manual-02 及其保存的 5 mm 工作副本。这些不是脚本生成的假数据。
 
-环境：Python 3.13、Pillow 13.0.0、edge-tts 7.3.1、ffmpeg 8.1.1/libx264；Node 使用项目已有环境。字体为 `desktop/src/assets/preview-font.ttf`，OFL。没有配乐。
+- `record-final.cjs OUTPUT`：启动自有 Electron/FreeCAD，展示首次真实模型；仅在工具脚本中替换 ACP 接收通道，封禁 Agent 执行 IPC。71 个原始事件按顺序逐条回放，保留失败；完整 text/rawInput/rawOutput 不改。旧版用户参考全文进入新版已有折叠区，显示前缀等于原始 prompt。`replay-integrity.json` 校验全部事件逐项相等。没有产品回放入口。
+- `record-pdf.cjs OUTPUT`：独立 Electron 原生 PDF 阅读器连续采集，不需要系统屏幕录制权限。
+- `record-guide.cjs OUTPUT`：全新用户目录的开始页、空工程、已有 Agent 入口、安装引导，不连接 Agent。
+- `capture.cjs OUTPUT`：真实 FreeCAD 凸台建模、检查不符、定位和修改；确定性工程工具操作，无模型推理。
+- `session.cjs OUTPUT`：已有模型工作副本的真实 UI 录屏，stdin JSON 动作存档。最终修改后模型的操作在 actions/final-edited-01.jsonl，启动时 GONGKE_DEMO_MODEL 指向 manual-02/robot4-workcopy.FCStd。历史 manual.FCMacro 的 Qt 输入事件记录在 actions/manual.jsonl。
 
-```sh
-/private/tmp/gongke-demo-video-venv/bin/python tools/demo-video/render_film.py
-/private/tmp/gongke-demo-video-venv/bin/python tools/demo-video/validate_film.py
-```
+所有录制入口要求新目录，避免覆盖原片。只关闭自己启动的进程。recorder.cjs 保存真实起始帧并逐重绘采集，避免静止窗口的首帧丢失。重新录制会改变时间，按 recording.json 中 marks 重新选择区间；不能机械套用旧时间。
 
-`timeline.json` 是唯一剪辑时间表：各段指向原片采集目录，begin/end 均相对该目录第一帧时间戳，duration 为成片时长。渲染直接按真实时间戳取帧，播放倍率由区间自动计算；快于原速就烧录倍率。静止画面保留采集器最后一帧，不补造动作。每句旁白的 voice_starts 对准操作，保留实际语速、只插入停顿。字幕位于画面外。
+## 重建最终片
 
-原片帧和 `recording.json` 保存在素材目录。独立 MP4 原片通过以下命令编码，保留实际时间跨度：
-
-```sh
-/private/tmp/gongke-demo-video-venv/bin/python tools/demo-video/encode_recording.py out/demo-video/showcase-01
-```
-
-`validate_film.py` 完整解码成片、检查编码/尺寸/帧率/时长，从最终 MP4 每镜抽帧，写来源表与 SHA256。旁白如需重新生成：`python tools/demo-video/voice.py`，默认保留已生成音频；文本来自已批准分镜。该命令把旁白文本发给微软 Edge 语音服务，不发送工程文件。
-
-## 真实采集
-
-- `recorder.cjs`：Electron CDP 连续帧与真实指针事件。
-- `session.cjs`：启动独立 Electron，stdin 每行 JSON `{mark,code}` 操作真实控件；动作存档于 actions.jsonl，`{stop:true}` 收尾。若设置 `GONGKE_DEMO_MODEL`，启动独立 FreeCAD 并复制该文件；使用独立配置，等待模型加载。只关闭自己持有的进程。
-- `actions/`：本次采用的 UI 动作及 native 参数编辑动作。它们是录制记录，不是产品功能，也没有填充或替换运行结果。重新录制时必须使用新输出目录，原片时序会变化，需重新剪辑。
-- `capture.cjs`：免费确定性凸台检查，真实工程工具，已在 preflight-03 通过。它不是 Agent 自主纠错演示。
-- `manual.FCMacro`：在独立 FreeCAD 的本轮副本上，以 Qt 按键/点击操作真实 Pad 编辑器；记录整个窗口。因 Qt 全窗抓取不能可靠包含 OpenGL 区域，正式片只采用参数面板特写。
-- `check_current.py`：通过绑定工程 MCP 只读核对修改后厚度，不调用模型。
-- `reducer_view.FCMacro`：独立 FreeCAD 导入真实同修订 STEP，持续采集运行中的视口和旋转过程；不是工作台 STEP 预览功能。需设置 GONGKE_VIEW_OUT、GONGKE_VIEW_STEP；另存时间戳及实体/体积记录。
-
-`session.cjs` 使用的图纸导入 dialog 替身只返回本次明确授权的文件路径，实际导入、解析和显示仍由产品完成。没有在测试原件中改写提示词或断言。
-
-## 付费入口：本轮授权已使用完毕
-
-`run_paid.py` / `paid.cjs` 为唯一一次 robot4 的运行与录屏入口。用户已授权的那一次已完成，**不要再次启动**。脚本检查固定输出目录存在即拒绝运行，但这不能替代新一轮的明确授权；也不能删除目录绕过。
-
-本轮 deepseek-flash / low，210.421 秒，passed；完整用量与价格见 `docs/demo-video/handoff.md`。原始会话、独立审计、保存重开、原片都在 `out/demo-video/paid-robot4/`。
-
-## 事实与限制
-
-减速器、凸台检查和 robot4 是三个明确区分的案例。减速器结果取自同一真实修订的工作副本；输入变动后的过期标记是真实 UI。Windows 证据来自指定 GitHub run 的安装工件；片中不宣称 Windows 商业 CAD 真机通过。没有 WorkBuddy 客户端镜头。原生参数编辑自动化展示的是学生可操作的真实入口，不是用户本人操作的实录。
-
-## 本轮修改审阅片（无需 dsh）
+在仓库根目录执行，Python 环境需 Pillow 和 edge-tts，系统需 ffmpeg/ffprobe。当前机器可用 `/private/tmp/gongke-demo-video-venv/bin/python`。
 
 ```sh
-GONGKE_DEMO_VOICE=out/demo-video/voice-revision /private/tmp/gongke-demo-video-venv/bin/python tools/demo-video/voice.py
-GONGKE_DEMO_OUTPUT=out/demo-video/revision-review GONGKE_DEMO_VOICE=out/demo-video/voice-revision GONGKE_DEMO_PLAN=tools/demo-video/revision-timeline.json /private/tmp/gongke-demo-video-venv/bin/python tools/demo-video/render_film.py
-GONGKE_DEMO_OUTPUT=out/demo-video/revision-review /private/tmp/gongke-demo-video-venv/bin/python tools/demo-video/validate_film.py
+GONGKE_DEMO_VOICE=out/demo-video/voice-final python tools/demo-video/voice.py
+# 对 sources.json 中每个原片目录执行一次；manual-02 已有原片。
+python tools/demo-video/encode_recording.py out/demo-video/final-main-03
+GONGKE_DEMO_OUTPUT=out/demo-video/final GONGKE_DEMO_VOICE=out/demo-video/voice-final python tools/demo-video/render_film.py
+GONGKE_DEMO_OUTPUT=out/demo-video/final python tools/demo-video/validate_film.py
 ```
 
-新非付费原片目录：revision-model-01、revision-check-02、revision-ui-02。动作存档在 actions/revision-*.jsonl。再次录制会改变时间戳，须重新选区间，不照搬旧 begin/end。
+最终 timeline.json 仅使用 final-main-03、final-guide-03、final-pdf-02、final-check-02、final-edited-01 和 manual-02；旧版其他原片均不进最终片。会话原运行 210.421 秒，完整回放约 40 秒，角标写总时长压缩约 ×5.3；存档缺少逐 ACP 事件时间戳，回放只保证原文、原序和总时长比例，不伪造逐事件原始延迟。
 
-独立应用开场由 `record-native.py --output out/demo-video/revision-native-02` 启动自有 Preview/FreeCAD/LibreOffice，并用 ScreenCaptureKit 按 PID 录窗口；只终止自有 PID。需要 macOS 已授予当前运行宿主屏幕录制权限。首次因 -3801 被拒，无有效帧。先获得系统权限再执行，不改 TCC 数据库、不录其他窗口。
+`validate_film.py` 验证完整解码、格式、所有区间、71 个事件完整性、失败保留和 Windows 原始 result.json 的 ok=true，并逐镜从最终 MP4 抽取两帧、生成来源哈希。`ocr-qa.swift` 用 macOS Vision 对抽帧辅助扫描路径/调试字段，不控制桌面；OCR 不能替代目视检查。
 
-说明书 PDF 来自已有同修订 DOCX，通过独立 LibreOffice profile 渲染，原 DOCX 不修改：
-
-```sh
-/Applications/LibreOffice.app/Contents/MacOS/soffice -env:UserInstallation=file:///tmp/gongke-demo-report-profile --headless --convert-to pdf --outdir out/demo-video/revision-report out/demo-video/showcase-01/reducer/revisions/6f2c35f49d77/report.docx
-```
+无音乐；使用 Edge zh-CN-XiaoxiaoNeural 和项目 OFL 字体。Windows 历史 CI 41ec469 与本版 macOS 验收严格分开。第二次 Agent 应用检查未发现轮廓偏差，因此最终片只用明确标记的凸台检查示例；该产品缺陷不在本轮修复。

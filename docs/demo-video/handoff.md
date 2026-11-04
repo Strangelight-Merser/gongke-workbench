@@ -1,3 +1,29 @@
+# 最终制作决定与交付（2026-11-04）
+
+本节覆盖下方历史暂停状态。用户授权不再询问视频取舍，不再付费运行 dsh；后端减速器计算和示例保留。本轮只做只读会话回放与本地录制，没有新 dsh 会话。
+
+## 第二次运行检查缺陷
+
+**应用检查未发现截面积偏差 777.5 vs 828.5 mm²。** 会话 b7fd234f-7d1d-4c04-80a7-7a2e86bc3c4d 中，Agent 调用的 host.check 包含 7 项，全部 pass；mid_section_area 的 expected 与 actual 均为 0.0007775 m²。期望值取自错误模型自身面积，缺少独立图纸依据，应用没有拦下这个自证循环。独立审计使用 0.0008285 m² 才报 fail，不能把独立审计的发现包装成 Agent 自检发现。
+
+这是待另行修复的产品缺陷，本次未改检查语义或重跑模型。依据：paid-robot4-02/robot4-1/result.json → audit.agent_self_checks 和 audit.independent_check；精简摘录 final/check-investigation.json。最终检查镜头采用真实、确定性的凸台尺寸检查/定位示例，持续标明“尺寸检查示例 · 确定性工具操作”，旁白不暗示能发现第二次轮廓错误。
+
+## 首次成功会话只读回放
+
+来源 paid-robot4/robot4-1/conversation.json，71 个事件全部原文、原序进入新版 Agent 面板，包含原来的资源枚举失败。原始 text/rawInput/rawOutput 不改；旧版用户输入中的完整 62k 参考文本放进新版已有折叠区域，displayText 仅取 modeling-prompt.txt 的完整原文前缀。project 元数据只改变当前独立播放工程路由。源事件与回放事件逐项相等，校验见 final-main-03/replay-integrity.json。
+
+仅工具脚本 record-final.cjs 在自有 Electron 进程替换 ACP 接收通道；所有 Agent 执行 IPC 拒绝调用，不添加产品入口。旁边模型为首次实际保存的 robot4.FCStd，不按回放进度重建几何。原任务 210.421 秒，事件回放 40.004 秒，成片全程标“真实会话回放 · 总时长压缩约 ×5.3”；存档没有逐 ACP 事件时间戳，因此按原序分配停留时间，不声称恢复原来的逐事件延迟。
+
+## 最终交付
+
+out/demo-video/final/：film.mp4（163 秒，1920×1080，30 fps，H.264/AAC）、film.srt、narration.txt、sources.md/json、source-integrity.json、validation.json、check-investigation.json、qa/。无减速器镜头、预置工程、绝对路径或原始调试 JSON。无系统录屏权限：开场用独立 Electron 原生 PDF 阅读器和已有真实 FreeCAD 参数窗口连续素材；没有截图冒充录屏。素材只在明确的镜头中切换，robot4 工程没有无关文件。
+
+验证：完整 MP4 解码与规格通过，71 个事件与源记录逐项一致，展示模型与首次保存模型 SHA256 一致；每镜两帧目视检查，另对 163 张每秒抽帧做 OCR 扫描，未命中绝对路径、减速器/课程设计、mcp__、工程清单文件名或原始 source JSON。OCR 只是辅助，不声称完成逐帧 OCR。
+
+尚不理想：中文神经配音尚非真人；FreeCAD 参数编辑采用局部窗口素材；会话为明确标注的历史回放；新版 Windows 安装验收尚未重跑，影片标明历史 CI 41ec469 与本版 macOS 验收的区别。检查依据独立性缺陷保留待修。
+
+---
+
 # 当前修订：空工程与通用工作台（2026-11-04）
 
 本节优先于下方历史。用户已批准第二次且仅一次 robot4 dsh 运行；此前“未批准”已失效。2026-11-04 13:23 UTC 开始前核对 dsh 0.2.1-rc.5，deepseek-official/deepseek-flash（DeepSeek-V4.1-Flash-1017），reasoning=low，矢量 PDF；单会话、发送后最多 480 秒、无并行和自动重试，失败保留原片停止。

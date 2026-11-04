@@ -20,7 +20,11 @@ exports.startRecording = async function(page, directory) {
     frames.push({file,timestamp:e.metadata.timestamp});
     cdp.send('Page.screencastFrameAck',{sessionId:e.sessionId}).catch(()=>{});
   });
-  await cdp.send('Page.startScreencast',{format:'jpeg',quality:90,maxWidth:1920,maxHeight:1080,everyNthFrame:2});
+  // CDP 在静止窗口可能直到下一次重绘才给帧，先保留真实起始截图。
+  const initial=await page.screenshot({type:'jpeg',quality:90});
+  fs.writeFileSync(path.join(directory,'frames','000000.jpg'),initial);
+  frames.push({file:'000000.jpg',timestamp:Date.now()/1000});
+  await cdp.send('Page.startScreencast',{format:'jpeg',quality:90,maxWidth:1920,maxHeight:1080,everyNthFrame:1});
   const timer=setInterval(save,2000);
   return {directory,started,mark(name){inputs.push({kind:'mark',name,at:Date.now()});save();},async stop(){
     clearInterval(timer);await cdp.send('Page.stopScreencast');save();

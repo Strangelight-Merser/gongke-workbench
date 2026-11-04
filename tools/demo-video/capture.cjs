@@ -72,7 +72,9 @@ async function main() {
     });
     const started=Date.now();
     await cdp.send('Page.startScreencast',{format:'jpeg',quality:95,maxWidth:1920,maxHeight:1080,everyNthFrame:1});
-    await pause(3500);
+    await pause(4500);
+    await page.getByRole('button',{name:'在模型中定位',exact:true}).click();
+    await pause(4500);
     // 模型检查的不符面来自真实回执；下面是真实特征修改，非 Agent 会话。
     await phase('repaired');
     await pause(3500);

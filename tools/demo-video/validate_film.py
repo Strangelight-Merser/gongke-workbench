@@ -1,8 +1,9 @@
-"""验证已编码交付规格，逐镜从 MP4 抽帧，整理原片与素材来源。"""
-import os,hashlib,json,subprocess
+"""验证最终编码、逐镜抽帧、来源哈希及只读回放的原始事件完整性。"""
+import os,hashlib,json,subprocess,math
 from pathlib import Path
 from PIL import Image,ImageDraw
-ROOT=Path(__file__).resolve().parents[2];OUT=ROOT/os.environ.get('GONGKE_DEMO_OUTPUT','out/demo-video')
+ROOT=Path(__file__).resolve().parents[2]
+OUT=ROOT/os.environ.get('GONGKE_DEMO_OUTPUT','out/demo-video/final')
 def digest(p):
  with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
 def main():
@@ -14,40 +15,43 @@ def main():
  subprocess.run(['ffmpeg','-hide_banner','-v','error','-i',str(film),'-f','null','-'],check=True)
  qa=OUT/'qa';qa.mkdir(exist_ok=True)
  for shot in plan:
-  t=shot['start']+shot['duration']/2
-  subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-ss',str(t),'-i',str(film),'-frames:v','1',str(qa/f"shot-{shot['id']:02}.png")],check=True)
- for shot in plan:
-  offset={7:9,8:4.5,9:10,10:3}.get(shot['id'],3)
-  subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-ss',str(shot['start']+offset),'-i',str(film),'-frames:v','1',str(qa/f"shot-{shot['id']:02}-detail.png")],check=True)
- contact=Image.new('RGB',(1200,4*247),'#101e30');draw=ImageDraw.Draw(contact)
+  for suffix,offset in [('',shot['duration']/2),('-detail',min(3,shot['duration']/3))]:
+   subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-ss',str(shot['start']+offset),'-i',str(film),'-frames:v','1',str(qa/f"shot-{shot['id']:02}{suffix}.png")],check=True)
+ contact=Image.new('RGB',(1200,math.ceil(len(plan)/3)*247),'#101e30');draw=ImageDraw.Draw(contact)
  for i,shot in enumerate(plan):
   im=Image.open(qa/f"shot-{shot['id']:02}.png");im.thumbnail((394,222));x=i%3*400;y=i//3*247;contact.paste(im,(x,y));draw.text((x+8,y+226),f"{shot['id']:02} / {shot['start']:.1f}s",fill='white')
  contact.save(qa/'contact-sheet.jpg')
- lines=['# 素材来源与剪辑清单','',f'成片 {duration:g} 秒，1920×1080，30 fps，H.264 / AAC。无配乐。全片使用真实连续界面或 CAD 视口采集，没有静态截图镜头。','',
- '时间均为相应原片 raw.mp4 起点后的秒数。每一段的画面只做裁剪、缩放、外框、实际光标强调和字幕处理，没有替换界面文本或模型。剪掉的等待不是连续运行耗时；唯一 Agent 任务实际 210.421 秒。','',
- '| 镜头 | 成片起点 | 原片 | 原片区间（秒） | 播放倍率 |','|---|---:|---|---|---:|']
- for s in sources:
-  raw=s['source']+'/raw.mp4'
-  lines.append(f"| {s['shot']:02} | {s['film_start']:.2f} | `{raw}` | {s['begin']:.2f}–{s['end']:.2f} | {s['speed']:g} |")
- lines+=['','## 来源说明','',
- '- paid-robot4/raw：唯一一次付费 DeepSeek Harness 会话；robot4 矢量 PDF 读图，FreeCAD 原生建模。原片及会话用量、工具回执、独立图纸审计、重开结果一起保留。',
- '- showcase-01：本次生成模型的工作副本；特征树点击、真实鼠标旋转、另存工作修订、Agent 配置/引导、减速器已有结果与 CI JSON 文件查看。',
- '- manual-02：独立 FreeCAD Qt 窗口连续采集，以 Qt 输入事件操作实际 Pad 参数编辑器，4→5 mm，保存副本。Qt 全窗抓取不能可靠包含 OpenGL 视口，因此只采用真实参数编辑器特写，没有补造模型图像。',
- '- showcase-02：重新打开手改后副本；厚度 5 mm 的实际只读检查见 manual-check.jsonl。它是修改练习，不是对原图 4 mm 的符合性声明。',
- '- preflight-03：真实凸台模型的确定性 MCP 检查与修正，明确标为尺寸检查示例，不说成 Agent 自主纠错。',
- '- reducer-viewport：FreeCAD 运行中持续采集真实视口；实际导入同修订 reducer_assembly.step，记录每帧时间，缓慢旋转，不生成或替换几何；110 个实体。不是工作台内 STEP 预览功能的演示。',
- '- 减速器来源：out/desktop-validation/1793769105330/传动设计，修订 6f2c35f49d77；三维 STEP、二维 PDF、report.md/report.docx 均来自此修订。操作发生在复制工程。reducer-01 展示将工作拉力从 2500 改为 2600 并计算后真实出现的过期状态。documents-01 展示恢复 2500 后的当前成果 PDF。',
- '- CI 工件原始 result.json：ci-41822011858/installer/result.json，ok=true。影片中的表格来自产品真实 JSON 查看器对该原文件的渲染（ok 显示为“通过：是”）。GitHub run 41822011858 / 41ec469，详情见 handoff.md。',
- '- 图纸：用户已明确批准 robot4 出镜；源 PDF 不提交 Git，不扩展到其他学生资料。',
- '- 声音：Microsoft Edge zh-CN-XiaoxiaoNeural，逐句使用原始时间边界，剪入停顿而非强行变速；旁白另附 narration.txt。没有配乐。',
- '- 字体：项目 Noto Sans SC，OFL；没有使用第三方演示片的图像、声音或音乐。',
- '', '## 原片校验','']
- if os.environ.get('GONGKE_DEMO_OUTPUT'):
-  lines=lines[:lines.index('## 来源说明')]+['## 来源说明','','本次修改片段使用真实产品录屏；revision-check-02 为确定性工程工具演示，不是 Agent 自主纠错。revision-ui-02 的 PDF 来自原生成 report.docx 经 LibreOffice 渲染。配音 zh-CN-XiaoxiaoNeural，无配乐。独立应用开场受 macOS 录屏权限阻挡；新的 Agent 录屏待付费授权。','','## 原片校验','']
+ original=ROOT/'out/demo-video/paid-robot4/robot4-1/conversation.json';replayed=ROOT/'out/demo-video/final-main-03/replayed-events.json'
+ events=json.loads(original.read_text())['events'];assert events==json.loads(replayed.read_text());assert len(events)==71
+ assert any(e.get('update',{}).get('status')=='failed' for e in events)
+ ci=ROOT/'out/demo-video/ci-41822011858/installer/result.json';assert json.loads(ci.read_text())['ok'] is True
  checks={}
  for name in sorted({s['source'] for s in sources}):
-  p=ROOT/name/'raw.mp4';assert p.exists(),p;checks[name]={'raw_sha256':digest(p),'recording_sha256':digest(ROOT/name/'recording.json')};lines.append(f"- `{name}/raw.mp4` SHA256：`{checks[name]['raw_sha256']}`")
- (OUT/'sources.md').write_text('\n'.join(lines)+'\n')
+  folder=ROOT/name;raw=folder/'raw.mp4';assert raw.exists(),raw
+  record=json.loads((folder/'recording.json').read_text());last=record['ended']/1000-record['frames'][0]['timestamp']
+  assert all(s['begin']>=0 and s['end']<=last+.1 for s in sources if s['source']==name),(name,last)
+  checks[name]={'raw_sha256':digest(raw),'recording_sha256':digest(folder/'recording.json')}
+ lines=['# 最终片素材来源', '',f'{duration:g} 秒；1920×1080，30 fps，H.264/AAC；神经中文旁白，烧录字幕，另附 SRT；无配乐。', '',
+ '所有视频素材均为真实应用窗口/视口连续采集。首次 Agent 会话为用户授权的只读回放，全部 71 个事件原文、原序保留，包含失败；旁边模型来自同一次成功运行，不是重新执行建模。没有静态截图镜头，也没有伪造产品界面。验收镜头的文字摘录来自下列真实证据。','',
+ '| 镜头 | 成片起点 | 原片 | 原片区间（秒） | 剪辑播放倍率 |','|---|---:|---|---|---:|']
+ for s in sources:lines.append(f"| {s['shot']:02} | {s['film_start']:.3f} | `{s['source']}/raw.mp4` | {s['begin']:.3f}–{s['end']:.3f} | {s['speed']:.4f} |")
+ lines+=['','## 来源与事实边界','',
+ '- final-pdf-02：独立 Electron 原生 PDF 阅读器中的 robot4.pdf。用户批准图纸出镜；未改图纸，无系统屏幕录制权限。',
+ '- final-main-03：当前工作台展示首次实际生成的 robot4.FCStd、原生树、另存工作修订和真实鼠标旋转；回放源 paid-robot4/robot4-1/conversation.json，71 个事件。用户输入的完整参考原文在已有折叠区保留，displayText 只显示原始 prompt 完整前缀；project 元数据路由到独立播放工程。Agent 执行 IPC 已封禁，未调用 dsh。',
+ '- 回放从原片 13.852 到 53.855 秒，完整进入成片第 3–4 镜，没有再删事件。原任务发送到结束 210.421 秒，回放 40.004 秒，总时长压缩约 ×5.3；原存档没有逐 ACP 事件时间戳，采用原序分配停留时间，不声称恢复逐事件原始延迟。完整事件及校验在 final-main-03/replayed-events.json / replay-integrity.json。',
+ '- final-check-02：真实 FreeCAD 凸台的确定性工具操作。要求与实测不符、定位、修改和检查回执全部来自实际执行；不是 Agent 第二次运行发现轮廓错误。',
+ '- manual-02：历史真实 FreeCAD 参数编辑器连续采集，Qt 输入事件操作原生入口，4→5 mm，未通过模型 API 冒充手改。只用参数窗口局部，因为 Qt 全窗不能可靠抓取 OpenGL 视口。',
+ '- final-edited-01：当前工作台重开 manual-02 的实际修改后副本；是厚度修改练习，不声称满足原图 4 mm。',
+ '- final-guide-03：当前工作台全新用户目录、空工程、已有 Agent 入口和安装引导。未连接或启动 Agent，无无关文件标签。',
+ '- Windows 验收摘录：GitHub run 41822011858 / 41ec469，ci-41822011858/installer/result.json 的 ok=true，中文账户“学生验收”。这是历史 Windows 版本；影片明确区分本版 macOS 打包流程，不将历史结果冒称新版 Windows 验收。',
+ '- 本版 macOS 证据：docs/demo-video/empty-workbench.md 列出的 1366×768、1920×1080 两种宽度四轮打包流程，覆盖空工程、保存重开、工程隔离。',
+ '- 第二次会话 b7fd234f 的应用检查没有发现截面积 777.5 vs 828.5 mm² 偏差；本片不用其错误模型冒充成功，缺陷与依据保存在 handoff.md。',
+ '- 声音：Microsoft Edge zh-CN-XiaoxiaoNeural；原句边界剪入停顿，未强行加快；旁白另附 narration.txt。字体为项目 Noto Sans SC（OFL）。无第三方配乐。',
+ '', '## 原片校验','']
+ for name,c in checks.items():lines.append(f"- `{name}/raw.mp4` SHA256：`{c['raw_sha256']}`")
+ model=ROOT/'out/demo-video/paid-robot4/robot4-1/project/robot4.FCStd';shown=ROOT/'out/demo-video/final-main-03/robot4.FCStd';assert digest(model)==digest(shown)
+ integrity={'model_sha256':digest(model),'displayed_model_equals_first_run':True,'original_conversation_sha256':digest(original),'replayed_events_sha256':digest(replayed),'events_equal':True,'event_count':71,'includes_failure':True,'windows_result_sha256':digest(ci),'sources':checks}
+ (OUT/'sources.md').write_text('\n'.join(lines)+'\n');(OUT/'source-integrity.json').write_text(json.dumps(integrity,ensure_ascii=False,indent=2))
  report={'ok':True,'duration_seconds':duration,'video':v,'audio':a,'full_decode':'passed','qa_frames':len(plan)*2,'film_sha256':digest(film),'sources':checks}
  (OUT/'validation.json').write_text(json.dumps(report,ensure_ascii=False,indent=2));print('validated',duration,'seconds',len(plan),'shots')
 if __name__=='__main__':main()
