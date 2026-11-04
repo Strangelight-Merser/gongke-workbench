@@ -29,6 +29,8 @@ $script = Join-Path $evidence 'run.ps1'
 `$env:USERPROFILE = [Environment]::GetFolderPath('UserProfile')
 `$env:APPDATA = [Environment]::GetFolderPath('ApplicationData')
 `$env:LOCALAPPDATA = [Environment]::GetFolderPath('LocalApplicationData')
+`$env:TEMP = New-Item -ItemType Directory -Force -Path (Join-Path `$env:LOCALAPPDATA 'Temp') | ForEach-Object FullName
+`$env:TMP = `$env:TEMP
 `$env:GONGKE_TEST_EXECUTABLE = '$($exe.Replace("'", "''"))'
 `$env:GONGKE_INSTALL_EVIDENCE = '$($evidence.Replace("'", "''"))'
 & '$($node.Replace("'", "''"))' '$($root.Replace("'", "''"))/desktop/tests/windows-installed.cjs' *> '$($evidence.Replace("'", "''"))/acceptance.log'
