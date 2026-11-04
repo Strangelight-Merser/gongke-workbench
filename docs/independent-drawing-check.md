@@ -127,3 +127,13 @@ git add gongke_app/drawing_check.py gongke_app/inspection.py gongke_app/hosts.py
   tools/check_drawing_regression.py docs/independent-drawing-check.md docs/model-inspection.md
 git commit -m "修复图纸检查自证通过并增加独立矢量轮廓核验"
 ```
+
+## 演示分支：图纸与模型对应定位
+
+`codex/demo-video` 合并 fe402fa 后补充了产品图纸高亮。`drawing_view` 返回原 PDF 页码、页面坐标系和每条不符图纸边的原始端点，同时保留其投影到模型截面的世界坐标；对应原生偏移边以共享端点和既有 0.05 mm 容差关联，不用面积接近度猜位置。无共同端点的多余边仍保留在“全部差异”的模型侧，不声称一定能一一关联。
+
+原生模型页左右显示 PDF 与模型，选择“差异 1/2”同步聚焦对应证据。PDF 的 SVG 覆盖层与 canvas 共用尺寸，缩放不会脱离原图；读取后校验内容 SHA-256，文件变化则拒绝旧定位。模型侧红色为实际不符边，青绿为图纸要求位置。修订匹配沿用原有检查过滤，旧修订不继续显示为当前结论。
+
+本地真实验收：`out/demo-video/rebuild/highlight-07/acceptance.json`。第二次 robot4 模型经工程 MCP 的 `host.check` 返回 fail，定位 `page-1/lines/73` 与 `page-1/lines/101`；已验证分别选择、恢复全部、PDF 放大对齐，以及换图后拒绝旧高亮。原始 PDF/模型不变，测试只读工作副本。对应界面截图在同目录；这些是产品验收记录，不是本轮交付影片镜头。
+
+本轮原生只读回归还确认第一次成功模型、round8 两个 robot4 模型通过；robot13-low 保持 unknown。历史清单的 robot13-off 模型缺失、robot13-high 无采集，不能记作通过；未为这些无关缺档重建素材。

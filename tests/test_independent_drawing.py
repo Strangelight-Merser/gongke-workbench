@@ -144,3 +144,23 @@ def test_thinner_hole_must_not_be_silently_omitted(case):
         if row['source'] in {f'page-1/lines/{i}' for i in range(8, 12)}:
             row['linewidth'] = .4
     assert compare_section(snapshot, section(), modified, request)['status'] == 'unknown'
+
+
+def test_drawing_highlights_share_exact_source_and_world_location(case):
+    project, data, request, snapshot = case
+    row = inspection.check(snapshot, [], lambda p: section(True), project, request)['checks'][0]
+    view = row['drawing_view']
+    assert view['page'] == request['page']
+    assert view['coordinates'] == data['coordinates']
+    assert [s['item'] for s in view['segments']] == row['missing_or_shifted']
+    source = {r['source']: r for r in data['items']}
+    world_edges = {e['drawing_item']: e for location in row['actual']['locations']
+                   if location['difference'] == 'missing_or_shifted' for e in location['edges']}
+    for segment in view['segments']:
+        assert segment['points'] == source[segment['item']]['pts']
+        edge = world_edges[segment['item']]
+        assert segment['world'] == [edge['start'], edge['end']]
+        assert segment['model_edges']
+        assert all(e['native_ref'] in row['extra_or_shifted'] for e in segment['model_edges'])
+    good = inspection.check(snapshot, [], lambda p: section(), project, request)['checks'][0]
+    assert good['drawing_view']['segments'] == []

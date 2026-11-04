@@ -412,7 +412,7 @@ export function AgentPanel({
         aria-label="工程对话"
         aria-live="polite"
       >
-        {conversationVisible && !rows.length && (
+        {conversationVisible && !rows.length && !modeling.steps.length && (
           <div className="agent-welcome">
             <h3>{project ? "从一个具体任务开始" : "先打开工程"}</h3>
             <p>

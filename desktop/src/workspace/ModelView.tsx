@@ -2,6 +2,9 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { Line2 } from "three/addons/lines/Line2.js";
+import { LineGeometry } from "three/addons/lines/LineGeometry.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import type { Data } from "../api";
 
 function dispose(group: THREE.Group) {
@@ -46,7 +49,7 @@ export function ModelView({
     const world = new THREE.Scene(),
       camera = new THREE.PerspectiveCamera(42, 1, 0.001, 1e7);
     camera.up.set(0, 0, 1);
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     element.appendChild(renderer.domElement);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -59,10 +62,14 @@ export function ModelView({
     light.position.set(2, 4, 3);
     world.add(light);
     const theme = () => {
-      world.background = new THREE.Color(
+      const base = new THREE.Color(
         getComputedStyle(element).getPropertyValue("--surface-base").trim() ||
           "#20252b",
       );
+      world.background = null;
+      renderer.setClearColor(0x000000, 0);
+      const top = base.clone().lerp(new THREE.Color("#ffffff"), 0.24);
+      element.style.background = `linear-gradient(145deg, #${top.getHexString()}, #${base.getHexString()})`;
     };
     theme();
     const observer = new MutationObserver(theme);
@@ -78,6 +85,24 @@ export function ModelView({
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      for (const overlay of overlays.children) {
+        if (overlay instanceof Line2)
+          overlay.material.resolution.set(width, height);
+      }
+      const box = new THREE.Box3().setFromObject(models);
+      if (!box.isEmpty()) {
+        const center = box.getCenter(new THREE.Vector3());
+        const direction = camera.position
+          .clone()
+          .sub(controls.target)
+          .normalize();
+        const distance =
+          (box.getSize(new THREE.Vector3()).length() * 1.1) /
+          Math.min(1, camera.aspect);
+        camera.position.copy(center).addScaledVector(direction, distance);
+        controls.target.copy(center);
+        controls.update();
+      }
     });
     resize.observe(element);
     let down = { x: 0, y: 0 };
@@ -133,7 +158,7 @@ export function ModelView({
       const mesh = new THREE.Mesh(
         shaded,
         new THREE.MeshStandardMaterial({
-          color: "#a9b4c0",
+          color: "#768582",
           metalness: 0.32,
           roughness: 0.46,
           side: THREE.DoubleSide,
@@ -148,22 +173,42 @@ export function ModelView({
     dispose(v.overlays);
     for (const object of v.models.children)
       ((object as THREE.Mesh).material as THREE.MeshStandardMaterial).color.set(
-        object.userData.id === selected ? "#0f6cbd" : "#a9b4c0",
+        object.userData.id === selected ? "#24b69c" : "#768582",
       );
-    function line(points: number[][], color: string) {
+    function line(points: number[][], color: string, depthTest = false) {
       if (points.length < 2) return;
+      if (!depthTest) {
+        const geometry = new LineGeometry();
+        geometry.setPositions(
+          points.flatMap((p) => vector(p).multiplyScalar(1000).toArray()),
+        );
+        const material = new LineMaterial({
+          color,
+          linewidth: 4,
+          depthTest: false,
+          depthWrite: false,
+        });
+        material.resolution.set(
+          mount.current!.clientWidth,
+          mount.current!.clientHeight,
+        );
+        const object = new Line2(geometry, material);
+        object.renderOrder = 2;
+        v.overlays.add(object);
+        return;
+      }
       const geometry = new THREE.BufferGeometry().setFromPoints(
         points.map((p) => vector(p).multiplyScalar(1000)),
       );
       const object = new THREE.Line(
         geometry,
-        new THREE.LineBasicMaterial({ color, depthTest: false }),
+        new THREE.LineBasicMaterial({ color, depthTest }),
       );
       object.renderOrder = 2;
       v.overlays.add(object);
     }
     for (const edge of detail?.edges || [])
-      line(edge.samples || [edge.start, edge.end], "#168aeb");
+      line(edge.samples || [edge.start, edge.end], "#24b69c", true);
     const box = new THREE.Box3().setFromObject(v.models);
     box.union(new THREE.Box3().setFromObject(v.overlays));
     const center = box.getCenter(new THREE.Vector3()),
@@ -236,7 +281,7 @@ export function ModelView({
             line(
               edge.samples || [edge.start, edge.end],
               location.difference === "missing_or_shifted"
-                ? "#ef9b29"
+                ? "#24b69c"
                 : "#e54b4b",
             );
         } else if (detail?.object_ref === location.native_ref) {
@@ -251,7 +296,7 @@ export function ModelView({
       <span className="viewport-hint">
         拖动旋转 · 滚轮缩放 · 点击选择
         {checks?.status === "fail"
-          ? " · 红色：多出或偏移；橙色：图纸要求的缺失或偏移边"
+          ? " · 红色：模型不符边；青绿：图纸要求的位置"
           : ""}
       </span>
     </div>

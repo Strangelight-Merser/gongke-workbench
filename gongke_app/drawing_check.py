@@ -331,6 +331,12 @@ def compare_section(snapshot, cut, data, request):
                 "registration": "以完整外包络中心平移对齐；比例仅来自图纸尺寸，不检查模型全局放置",
                 "pt_per_mm": scale, "dimensions": dimensions, "drawing_edge_count": len(rows),
                 "drawing_items": [r["source"] for r in rows],
+                "drawing_view": {"page": request["page"], "coordinates": data["coordinates"],
+                                 "segments": [{"item": rows[j]["source"], "points": rows[j]["pts"],
+                                               "world": [world(expected[j][0]), world(expected[j][1])],
+                                               "model_edges": [edges[k] for k in extra
+                                                               if any(distance(a, b) <= tolerance for a in expected[j] for b in actual[k])]}
+                                              for j in missing]},
                 "missing_or_shifted": [rows[j]["source"] for j in missing],
                 "extra_or_shifted": [edges[j]["native_ref"] for j in extra], "actual": {"locations": locations}}
     except UnknownDrawing as exc:
