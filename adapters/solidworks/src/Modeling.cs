@@ -63,6 +63,14 @@ namespace Gongke.SolidWorks
         private static void ModelingSelect(ModelDoc2 model, object value, int mark = 0, bool append = false)
         {
             if (!append) model.ClearSelection2(true);
+            // SOLIDWORKS 2023 SP0.1 实机：MultiSelect2 对基准面、草图返回 0；按特征实际名称 SelectByID2 可选中。
+            if (value is Feature feature)
+            {
+                var typeName = feature.GetTypeName2();
+                var selectType = typeName == "RefPlane" ? "PLANE"
+                    : typeName == "ProfileFeature" || typeName == "3DProfileFeature" ? "SKETCH" : null;
+                if (selectType != null && model.Extension.SelectByID2(feature.Name, selectType, 0, 0, 0, append, mark, null, 0)) return;
+            }
             var data = ((SelectionMgr)model.SelectionManager).CreateSelectData(); data.Mark = mark;
             if (model.Extension.MultiSelect2(new[] { value }, append, data) != 1)
                 throw new CommandError("selection_failed", "宿主未选中指定原生引用");
@@ -75,13 +83,22 @@ namespace Gongke.SolidWorks
                     ["operation_id"] = row["operation_id"], ["outcome"] = row["outcome"],
                     ["result"] = row["response"]?["result"] ?? new JObject { ["error"] = row["response"]?["error"] } };
         }
+        // 用户配置的默认零件模板优先；未配置时使用 ProgramData 下随 SOLIDWORKS 安装的零件模板。
+        private string PartTemplate()
+        {
+            var configured = app.GetUserPreferenceStringValue((int)swUserPreferenceStringValue_e.swDefaultTemplatePart);
+            if (File.Exists(configured)) return configured;
+            var root = Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.CommonApplicationData), "SOLIDWORKS");
+            if (!Directory.Exists(root)) return null;
+            var templates = Directory.GetFiles(root, "*.prtdot", SearchOption.AllDirectories);
+            return templates.FirstOrDefault(t => Path.GetFileName(t).Equals("gb_part.prtdot", StringComparison.OrdinalIgnoreCase)) ?? templates.FirstOrDefault();
+        }
         private JObject ModelNew(JObject p)
         {
             if (Protocol.Required(p, "host_instance") != session) throw new CommandError("stale_session", "宿主实例已改变");
             var path = Protocol.NewOutputPath(new JObject { ["output_path"] = p["path"] }, ".sldprt");
             RequireNewDocumentNames(path);
-            var template = app.GetUserPreferenceStringValue((int)swUserPreferenceStringValue_e.swDefaultTemplatePart);
-            if (!File.Exists(template)) throw new CommandError("template_missing", "请在 SOLIDWORKS 配置默认零件模板");
+            var template = PartTemplate() ?? throw new CommandError("template_missing", "请在 SOLIDWORKS“选项 → 系统选项 → 默认模板”中设置零件模板");
             nativeMutationStarted = true;
             var model = (ModelDoc2)app.NewDocument(template, 0, 0, 0);
             if (model == null) throw new CommandError("new_document_failed", "NewDocument 返回空");
@@ -131,9 +148,10 @@ namespace Gongke.SolidWorks
             }
             // 一个工具一个原生 Undo 对象；失败不伪称回滚，现有 journal 记录 unknown/needs_review。
             model.Extension.StartRecordingUndoObject();
+            JObject result;
+            bool undoRecorded;
             try
             {
-                JObject result;
                 switch (method)
                 {
                     case "model.sketch": result = ModelSketch(model, p); break;
@@ -151,15 +169,16 @@ namespace Gongke.SolidWorks
                 nativeEffectObserved = true;
                 result["diagnostics"] = diagnostics;
                 if (method == "model.feature") { model.ViewZoomtofit2(); model.GraphicsRedraw2(); }
-                result["document"] = InspectionRef(model); result["outcome"] = "committed";
-                return result;
             }
             finally
             {
                 model.ClearSelection2(true);
-                if (!model.Extension.FinishRecordingUndoObject2("构想引擎原生建模", false))
-                    throw new CommandError("undo_finish_failed", "无法结束原生撤销记录；读取当前文档", "needs_review");
+                // SOLIDWORKS 2023 SP0.1 实机上恒返回 false，而几何已正确写入；不作为失败，如实报告撤销分组是否建立。
+                undoRecorded = model.Extension.FinishRecordingUndoObject2("构想引擎原生建模", false);
             }
+            result["undo_recorded"] = undoRecorded;
+            result["document"] = InspectionRef(model); result["outcome"] = "committed";
+            return result;
         }
         private static IEnumerable<Feature> ModelingFeatures(ModelDoc2 model)
         {
@@ -348,13 +367,8 @@ namespace Gongke.SolidWorks
                         item.ConstructionGeometry = (bool?)g["construction"] ?? false;
                         segments.Add(item);
                     }
-                    if (kind == "rectangle")
-                        for (int i = 0; i < 4; i++)
-                        {
-                            if (sketch.RelationManager.AddRelation(new object[] { created[i] }, (int)(i%2 == 0 ? swConstraintType_e.swConstraintType_HORIZONTAL : swConstraintType_e.swConstraintType_VERTICAL)) == null
-                                || sketch.RelationManager.AddRelation(new[] { ((SketchLine)created[i]).GetEndPoint2(), ((SketchLine)created[(i+1)%4]).GetStartPoint2() }, (int)swConstraintType_e.swConstraintType_COINCIDENT) == null)
-                                throw new CommandError("constraint_failed", "矩形关系创建失败");
-                        }
+                    // 不给矩形自动加关系：SOLIDWORKS 2023 SP0.1 实机上此处 AddRelation 会使宿主崩溃。
+                    // 四条线首尾坐标重合即可拉伸；需要约束时由 constraints 显式添加。
                     addedSegments.Add(created.ToArray());
                 }
                 manager.AddToDB = false;
@@ -422,7 +436,8 @@ namespace Gongke.SolidWorks
             }
             else model.ClearSelection2(true);
             if (body == null && kind != "pad" && kind != "revolve") throw new CommandError("body_required", "先用 pad/revolve 创建实体");
-            if (body != null) ModelingSelect(model, body, 8, true);
+            // 切除不预选实体（mark 8）：实机上预选后 FeatureCut4 返回空，改由 UseAutoSelect 选择实体。
+            if (body != null && kind == "pad") ModelingSelect(model, body, 8, true);
             nativeMutationStarted = true;
             var fm = model.FeatureManager;
             Feature feature;
@@ -440,10 +455,12 @@ namespace Gongke.SolidWorks
                     goto case "pocket";
                 case "pocket":
                     bool throughAll = (bool?)data["through_all"] == true;
-                    feature = fm.FeatureCut4(true, false, reversed,
-                        (int)(throughAll ? swEndConditions_e.swEndCondThroughAll : swEndConditions_e.swEndCondBlind), 0,
-                        throughAll ? 0 : Protocol.Number(data, "length"), 0,
-                        false, false, false, false, 0, 0, false, false, false, false, false, true, false, false, false, false, 0, 0, false, false);
+                    // 贯穿用两侧贯穿，结果与方向无关；实机上仅一个方向参数返回特征，故两个方向各试一次。盲切按给定深度和方向，不改语义。
+                    Feature Cut(int end, bool direction, double depth) => fm.FeatureCut4(true, false, direction, end, 0, depth, 0,
+                        false, false, false, false, 0, 0, false, false, false, false, false, true, true, false, false, false, 0, 0, false, false);
+                    feature = throughAll
+                        ? Cut((int)swEndConditions_e.swEndCondThroughAllBoth, reversed, 0) ?? Cut((int)swEndConditions_e.swEndCondThroughAllBoth, !reversed, 0)
+                        : Cut((int)swEndConditions_e.swEndCondBlind, reversed, Protocol.Number(data, "length"));
                     break;
                 case "revolve":
                     feature = fm.FeatureRevolve2(true, true, false, false, reversed, false, 0, 0, Protocol.Number(data, "angle"), 0,
