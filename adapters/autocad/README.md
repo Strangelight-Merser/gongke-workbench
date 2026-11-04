@@ -64,19 +64,23 @@ python adapters/autocad/scripts/build.py --dotnet dotnet
 
 操作保存在 `%LOCALAPPDATA%\Gongke\hosts\autocad-operations`，同一用户的各 AutoCAD 实例共用：
 
-- `<SHA256(operation_id)>.lock` 是永久 ID 占位；执行者独占打开直至完成或退出。另一进程不能再次执行，也不能把活跃的 queued/running 误判为崩溃。
+- `<SHA256(operation_id)>.lock` 是永久 ID 占位；Windows 执行者持有字节范围锁（共享打开，不设置 Inheritable），其他平台独占打开，直至完成或退出。另一进程不能再次执行，也不能把活跃的 queued/running 误判为崩溃。
 - 同名 `.json` 保存原会话、方法、原始参数、参数 SHA-256、原请求 ID、状态和响应。先写同目录唯一临时文件并 `Flush(true)`，再原子替换状态。`queued` 在入队前落盘，`running` 在任何原生 API 前落盘，完成回执在回复前落盘。
 - 初始记录或 running 屏障写入失败不调用宿主；完成记录失败返回 `operation_store_unavailable/unknown`，不假报成功。状态文件缺失、损坏或存储不可读时不推断未执行；占位仍禁止该 ID 重放。不要把此目录作为缓存删除。
 
 | 查询状态 | outcome | 含义及后续 |
 |---|---|---|
-| `queued` / `running` | `unknown` | 执行者仍持锁；等原操作或取消未开始的操作 |
+| `queued` / `running` | `unknown` | 尚不能取得锁；可能仍执行，也可能退出后的锁释放尚未完成。继续查询原操作，不重放 |
 | `completed` | `committed` | 完成响应已持久化；原响应在 `response`，其 ID 是原请求 ID |
 | `failed` | `unchanged` / `unknown` | 按原生错误返回；事务提交后的 Regen/读回失败为 unknown |
 | `cancelled_before_start` | `unchanged` | 在本实例排队时取消，或插件正常退出前取消 |
 | `interrupted_before_start` | `unchanged` | 执行者已退出，最后持久状态为 queued，确定未进入宿主 |
 | `interrupted` | `unknown` | 执行者已退出，最后持久状态为 running，必须读回 |
 | `unknown` | `unknown` | 没有可信记录；不能解释为“没执行” |
+
+Windows 的进程退出通知不是文件锁释放屏障。[LockFileEx 官方契约](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex) 指出进程终止后 OS 会解锁，但释放时间取决于系统资源。真实 AutoCAD 进程崩溃后，其锁会由 OS 回收；不能承诺 WaitForExit 返回的瞬间已经可用。插件异常但 AutoCAD 进程仍存活不等同于宿主崩溃。状态查询在锁仍冲突时保留原状态/unknown，取得锁后才报告 interrupted，永久 ID 占位始终阻止重放。
+
+契约测试要求被终止 PID 与子进程自报的持锁 PID 一致，再在 10 秒验收上限内等待 Get 的实际恢复状态；不固定 sleep 后假定解锁，不延长产品调用超时，不在产品内重试。run `41775603833` 的 queued 持锁 PID 5224、running 持锁 PID 6272 都与 Kill 目标一致。queued 在退出后首次探测成功；running 的 WaitForExit 返回于 `04:55:27.1680277`，首次 Lock 在 `.1682506` 返回 33，下一次在 `.1799538` 已取得锁（约 12 ms）。这时普通读者和父进程 Process 句柄仍打开；不是关闭它们才恢复。running 在父进程此前的探测中从未取得锁，子进程只有持锁/写回执/等待路径，不创建孙进程，文件共享标志也没有 Inheritable。证据支持退出后异步解锁，不支持启动器漏杀、父进程自持锁或 Defender 的归因。
 
 跨进程事务提交和回执落盘不可能成为同一个事务；本实现不自动重试 interrupted/unknown。运行中退出的内存编辑可能未保存，也可能已被用户另存；使用保存的 params 查目标文件或重新打开图纸读快照。重新打开后必须重新获取 document_id/revision/handle，旧文档会话不能复用。completed 编辑回执证明当时内存操作成功，不保证崩溃后未保存的内存仍存在。旧版 JSONL 不作为恢复依据，无兼容重放路径。
 
@@ -91,7 +95,7 @@ dotnet run --project adapters/autocad/Gongke.AutoCAD.ContractTests -c Release
 python adapters/autocad/scripts/make_fixture.py out/autocad-native-fixture.dxf
 ```
 
-协议检查实际运行本机命名管道和独立子进程：验证 token、参数顺序/Unicode 指纹、去重、取消、跨进程排他、进程强制退出后 queued/running/completed 恢复、坏记录/缺失记录、写入屏障/完成落盘失败，以及不覆盖文件；不使用伪造 Autodesk SDK。应用层恢复检查为 `python -m pytest adapters/autocad/tests/test_hosts_contract.py`。由本项目生成的 DXF 包含 LINE、LWPOLYLINE、ARC、CIRCLE、TEXT、MTEXT 和真实 DIMENSION，仅为合成测试图，不是机械设计依据。
+协议检查实际运行本机命名管道和独立子进程：验证 token、参数顺序/Unicode 指纹、去重、取消、跨进程排他、进程强制退出后 queued/running/completed 恢复、坏记录/缺失记录、写入屏障/完成落盘失败，以及不覆盖文件；不使用伪造 Autodesk SDK。应用层恢复检查为 `python -m pytest tests/test_autocad_recovery_contract.py`。由本项目生成的 DXF 包含 LINE、LWPOLYLINE、ARC、CIRCLE、TEXT、MTEXT 和真实 DIMENSION，仅为合成测试图，不是机械设计依据。
 
 2026-11-03 本机 macOS 验证：
 
@@ -99,7 +103,7 @@ python adapters/autocad/scripts/make_fixture.py out/autocad-native-fixture.dxf
 |---|---|
 | `dotnet run --project adapters/autocad/Gongke.AutoCAD.ContractTests -c Release` | net8.0，70 项通过，包含强制终止子进程和真实文件系统故障 |
 | `dotnet build adapters/autocad/Gongke.AutoCAD.Addin -c Release --no-restore` | net8.0-windows、net10.0-windows 均通过，0 警告、0 错误 |
-| `python -m pytest adapters/autocad/tests/test_hosts_contract.py tests/test_app_service.py -k 'host or copy_registration or solidworks_pair' -q` | 16 passed，15 deselected |
+| `python -m pytest tests/test_autocad_recovery_contract.py tests/test_app_service.py -k 'host or copy_registration or solidworks_pair' -q` | 16 passed，15 deselected |
 
 本轮使用临时目录中的 .NET 8.0.427 / 10.0.403 SDK；NuGet 在线还原遇到本机证书错误后，使用现有官方包缓存完成 locked restore，没有关闭 TLS 校验。以下 Windows 脚本及清单尚未在真实 AutoCAD 执行。
 

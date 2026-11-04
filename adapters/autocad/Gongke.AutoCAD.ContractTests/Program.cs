@@ -129,4 +129,4 @@ try
     Check(persisted.GetProperty("result").GetProperty("response").GetProperty("id").GetString() == "edit", "Original response survives server restart");
     Console.WriteLine($"PASS: {checks} protocol, transport, cancellation, receipt and no-overwrite checks. No AutoCAD host APIs executed.");
 }
-finally { OperationStore.FlushTrace(); Directory.Delete(temporary, true); }
+finally { Directory.Delete(temporary, true); }
