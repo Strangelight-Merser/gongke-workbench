@@ -181,6 +181,10 @@ contextBridge.exposeInMainWorld("gongke", {
     if (method === "hosts.list")
       return [{ host: "freecad", host_id: "fixture", connected: true }];
     if (method === "freecad.context") return modelContext;
+    if (method === "host.context") return {active_document: {
+      host_instance:"fixture", document_id:modelContext.session_id, revision:4, configuration:""
+    }, documents:[]};
+    if (method === "freecad.scene") return {...modelContext, objects:[], pages:[]};
     if (method === "freecad.select") {
       if (
         params.session_id !== modelContext.session_id ||
@@ -306,7 +310,10 @@ contextBridge.exposeInMainWorld("gongke", {
       agent = { ...agent, phase: "disconnected" };
       emit();
     },
-    permission: async () => {},
+    permission: async (id, option) => {
+      agent = { ...agent, events: [...agent.events, { type: "permission-resolved", id, option }] };
+      emit();
+    },
     onState: (f) => {
       agentListeners.push(f);
       return () => {
@@ -348,6 +355,10 @@ contextBridge.exposeInMainWorld("cadEmbed", {
   },
 });
 contextBridge.exposeInMainWorld("visualReview", {
+  conversation: (conversation) => {
+    agent = { ...agent, phase: "prompting", events: conversation };
+    emit();
+  },
   selections: () => selections,
   setScenario: (name) => {
     scenario = name;

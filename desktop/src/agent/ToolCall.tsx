@@ -1,0 +1,182 @@
+import { useState, type ReactNode } from "react";
+import { Button } from "@fluentui/react-components";
+import type { Data } from "../api";
+import { stepTitle } from "./modelingSteps";
+
+// 界面层只挑选信息，不改变宿主回执、单位或操作状态。
+export function toolResult(tool: Data): Data {
+  const output = tool.rawOutput;
+  if (output?.structuredContent)
+    return { ...output.structuredContent, isError: output.isError };
+  if (output != null && typeof output === "object" && !Array.isArray(output.content))
+    return output;
+  const content = output?.content || tool.content;
+  const text =
+    typeof output === "string"
+      ? output
+      : content
+          ?.map((c: Data) =>
+            c.type === "text"
+              ? c.text
+              : c.type === "content" && c.content?.type === "text"
+                ? c.content.text
+                : "",
+          )
+          .filter(Boolean)
+          .join("\n");
+  if (!text) return output || {};
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object"
+      ? { ...parsed, isError: output?.isError }
+      : { message: text, isError: output?.isError };
+  } catch {
+    return { message: text, isError: output?.isError };
+  }
+}
+export function toolState(status: string, result: Data) {
+  if (
+    status === "failed" ||
+    result?.error ||
+    result?.isError ||
+    result?.status === "fail" ||
+    result?.checks?.some((c: Data) => c.status === "fail" || c.ok === false)
+  )
+    return "failed";
+  if (
+    status === "completed" &&
+    (result?.status === "unknown" ||
+      result?.checks?.some((c: Data) => c.status === "unknown") ||
+      (result?.state && result.state !== "finished"))
+  )
+    return "unknown";
+  return status;
+}
+export const toolStates: Record<string, string> = {
+  completed: "完成",
+  failed: "失败",
+  pending: "等待授权",
+  in_progress: "执行中",
+  unknown: "待核实",
+};
+function shortText(value: unknown): string {
+  if (value == null) return "";
+  if (typeof value === "object")
+    return shortText(
+      (value as Data).message ||
+        (value as Data).detail ||
+        JSON.stringify(value),
+    );
+  return String(value);
+}
+function TextPreview({ text }: { text: string }) {
+  const [all, setAll] = useState(false);
+  return (
+    <>
+      <div className="tool-text">
+        {all ? text : text.slice(0, 240)}
+        {!all && text.length > 240 ? "…" : ""}
+      </div>
+      {text.length > 240 && (
+        <Button size="small" appearance="subtle" onClick={() => setAll(!all)}>
+          {all ? "收起" : "显示全部"}
+        </Button>
+      )}
+    </>
+  );
+}
+export function ToolDetails({
+  result = {},
+  raw,
+  children,
+}: {
+  result?: Data;
+  raw: unknown;
+  children?: ReactNode;
+}) {
+  const message = shortText(
+    result?.error ||
+      result?.message ||
+      result?.detail ||
+      (typeof result === "string" ? result : ""),
+  );
+  const checks: Data[] = Array.isArray(result?.checks) ? result.checks : [];
+  return (
+    <div className="tool-details">
+      {message && <TextPreview text={message} />}
+      {result?.native_ref && <p>特征：{result.native_ref}</p>}
+      {result?.deleted_ref && <p>已删除 {result.deleted_ref}</p>}
+      {!!checks.length && (
+        <div className="tool-checks">
+          {checks.map((c, i) => (
+            <p key={i} data-failed={c.status === "fail" || c.ok === false}>
+              {c.item || c.id || c.name} ·{" "}
+              {c.status === "fail" || c.ok === false
+                ? "不符"
+                : c.status === "pass" || c.ok === true
+                  ? "通过"
+                  : "待核实"}
+              {c.expected != null && typeof c.expected !== "object" && (
+                <>
+                  {" "}
+                  · 要求 {shortText(c.expected)} {c.unit}
+                </>
+              )}
+              {c.actual != null && typeof c.actual !== "object" && (
+                <>
+                  {" "}
+                  · 实测 {shortText(c.actual)} {c.unit}
+                </>
+              )}
+              {c.message || c.detail ? (
+                <> · {shortText(c.message || c.detail)}</>
+              ) : null}
+            </p>
+          ))}
+        </div>
+      )}
+      {children}
+      <details className="agent-raw">
+        <summary>原始参数与回执</summary>
+        <pre tabIndex={0}>{JSON.stringify(raw, null, 2)}</pre>
+      </details>
+    </div>
+  );
+}
+export function ToolCall({ tool }: { tool: Data }) {
+  const result = toolResult(tool),
+    state = toolState(tool.status, result);
+  const title = stepTitle(tool.title || "工程操作", tool.rawInput || {});
+  return (
+    <details className="agent-tool" data-state={state}>
+      <summary>
+        <span className="tool-title" title={title}>
+          {title}
+        </span>
+        <span className="tool-status">
+          {state === "failed" &&
+          tool.status !== "failed" &&
+          !result.error &&
+          !result.isError
+            ? "尺寸不符"
+            : toolStates[state] || "等待中"}
+        </span>
+      </summary>
+      <ToolDetails result={result} raw={tool} />
+    </details>
+  );
+}
+export function CompletedTools({
+  count,
+  children,
+}: {
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <details className="agent-tool-group">
+      <summary>已完成 {count} 步</summary>
+      {children}
+    </details>
+  );
+}

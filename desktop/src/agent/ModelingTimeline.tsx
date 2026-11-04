@@ -1,5 +1,6 @@
 import { Button } from "../ui/controls";
-import { DataDetails } from "../ui/DataDetails";
+import { ToolDetails, CompletedTools, toolState, toolStates } from "./ToolCall";
+import { groupCompletedTools } from "./events";
 import { useModelingProgress } from "./ModelingProgress";
 import { modelResult, resultRef, stepInput, stepTitle } from "./modelingSteps";
 export function ModelingSteps({ openModel }: { openModel(): void }) {
@@ -8,52 +9,63 @@ export function ModelingSteps({ openModel }: { openModel(): void }) {
   return (
     <section className="modeling-steps" aria-label="建模步骤">
       {error && <p role="status">读取建模步骤失败：{error}</p>}
-      {steps.map((step) => {
-        const result = modelResult(step),
-          input = stepInput(step.command, step.params);
-        const failed = !!result.error,
-          done = step.phase === "finished";
-        return (
-          <details
-            className="agent-tool"
-            key={`${step.task_id}:${step.at}:${step.command}`}
-          >
-            <summary>
-              {stepTitle(step.command, step.params)}
-              <span>
-                {!done
-                  ? "进行中"
-                  : failed
-                    ? "失败"
-                    : result.state && result.state !== "finished"
-                      ? "结果待确认"
-                      : result.status === "fail"
-                        ? "尺寸不符"
-                        : result.status === "unknown"
-                          ? "待核实"
-                          : "完成"}
-              </span>
-            </summary>
-            {done &&
-              !failed &&
-              result.document &&
-              !result.deleted_ref &&
-              (resultRef(result, input) || result.checks) && (
-                <Button
-                  onClick={() => {
-                    locate(step);
-                    openModel();
-                  }}
-                >
-                  在模型中定位
-                </Button>
-              )}
-            {result.deleted_ref && <p>已删除 {result.deleted_ref}</p>}
-            <DataDetails value={input} />
-            <DataDetails value={step.result} />
-          </details>
-        );
-      })}
+      {groupCompletedTools(
+        steps.map((step) => ({ kind: "tool", tool: step })),
+        (step) =>
+          step.phase === "finished" &&
+          toolState("completed", modelResult(step)) === "completed",
+      ).map((row) =>
+        row.kind === "tool-group" ? (
+          <CompletedTools key={row.tools![0].at} count={row.tools!.length}>
+            {row.tools!.map(renderStep)}
+          </CompletedTools>
+        ) : (
+          renderStep(row.tool)
+        ),
+      )}
     </section>
   );
+  function renderStep(step: import("../api").Data) {
+    const result = modelResult(step),
+      input = stepInput(step.command, step.params);
+    const failed = !!result.error,
+      done = step.phase === "finished";
+    return (
+      <details
+        className="agent-tool"
+        data-state={toolState(done ? "completed" : "in_progress", result)}
+        key={`${step.task_id}:${step.at}:${step.command}`}
+      >
+        <summary>
+          <span className="tool-title">
+            {stepTitle(step.command, step.params)}
+          </span>
+          <span className="tool-status">
+            {toolState(done ? "completed" : "in_progress", result) ===
+              "failed" && !failed
+              ? "尺寸不符"
+              : toolStates[
+                  toolState(done ? "completed" : "in_progress", result)
+                ]}
+          </span>
+        </summary>
+        <ToolDetails result={result} raw={step}>
+          {done &&
+            !failed &&
+            result.document &&
+            !result.deleted_ref &&
+            (resultRef(result, input) || result.checks) && (
+              <Button
+                onClick={() => {
+                  locate(step);
+                  openModel();
+                }}
+              >
+                在模型中定位
+              </Button>
+            )}
+        </ToolDetails>
+      </details>
+    );
+  }
 }
