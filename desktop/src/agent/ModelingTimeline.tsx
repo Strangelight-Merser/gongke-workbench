@@ -1,5 +1,11 @@
 import { Button } from "../ui/controls";
-import { ToolDetails, CompletedTools, toolState, toolStates } from "./ToolCall";
+import {
+  ToolDetails,
+  featureDescription,
+  CompletedTools,
+  toolState,
+  toolStates,
+} from "./ToolCall";
 import { groupCompletedTools } from "./events";
 import { useModelingProgress } from "./ModelingProgress";
 import { modelResult, resultRef, stepInput, stepTitle } from "./modelingSteps";
@@ -49,7 +55,11 @@ export function ModelingSteps({ openModel }: { openModel(): void }) {
                 ]}
           </span>
         </summary>
-        <ToolDetails result={result} raw={step}>
+        <ToolDetails
+          result={result}
+          raw={step}
+          featureLabel={featureDescription(step.command, step.params, result)}
+        >
           {done &&
             !failed &&
             result.document &&

@@ -1,14 +1,18 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "@fluentui/react-components";
 import type { Data } from "../api";
-import { stepTitle } from "./modelingSteps";
+import { stepTitle, stepInput, commandOf } from "./modelingSteps";
 
 // 界面层只挑选信息，不改变宿主回执、单位或操作状态。
 export function toolResult(tool: Data): Data {
   const output = tool.rawOutput;
   if (output?.structuredContent)
     return { ...output.structuredContent, isError: output.isError };
-  if (output != null && typeof output === "object" && !Array.isArray(output.content))
+  if (
+    output != null &&
+    typeof output === "object" &&
+    !Array.isArray(output.content)
+  )
     return output;
   const content = output?.content || tool.content;
   const text =
@@ -85,12 +89,40 @@ function TextPreview({ text }: { text: string }) {
     </>
   );
 }
+// 名称来自回执或本次请求；没有可读名称时只描述已提供的类型和尺寸。
+export function featureDescription(
+  command: string,
+  params: Data = {},
+  result: Data = {},
+) {
+  const input = stepInput(command, params);
+  const label = [
+    result.label,
+    result.name,
+    input.name,
+    input.feature?.name,
+  ].find((value) => typeof value === "string" && /[\u3400-\u9fff]/.test(value));
+  if (label) return label;
+  if (input.feature?.kind)
+    return stepTitle("host.feature", { feature: input.feature });
+  const kind = commandOf(command, params);
+  if (kind === "host.sketch")
+    return stepTitle("host.sketch", {
+      ...input,
+      name: undefined,
+      sketch_ref: undefined,
+    });
+  if (kind === "host.body") return "实体";
+  return "未提供特征名称";
+}
 export function ToolDetails({
   result = {},
   raw,
   children,
+  featureLabel,
 }: {
   result?: Data;
+  featureLabel?: string;
   raw: unknown;
   children?: ReactNode;
 }) {
@@ -104,8 +136,10 @@ export function ToolDetails({
   return (
     <div className="tool-details">
       {message && <TextPreview text={message} />}
-      {result?.native_ref && <p>特征：{result.native_ref}</p>}
-      {result?.deleted_ref && <p>已删除 {result.deleted_ref}</p>}
+      {result?.native_ref && <p>特征：{featureLabel || "未提供特征名称"}</p>}
+      {result?.deleted_ref && (
+        <p>已删除特征：{featureLabel || "未提供特征名称"}</p>
+      )}
       {!!checks.length && (
         <div className="tool-checks">
           {checks.map((c, i) => (
@@ -162,7 +196,15 @@ export function ToolCall({ tool }: { tool: Data }) {
             : toolStates[state] || "等待中"}
         </span>
       </summary>
-      <ToolDetails result={result} raw={tool} />
+      <ToolDetails
+        result={result}
+        raw={tool}
+        featureLabel={featureDescription(
+          tool.title || "",
+          tool.rawInput || {},
+          result,
+        )}
+      />
     </details>
   );
 }

@@ -41,7 +41,7 @@ const records = [],
     const errors = [];
     try {
       app = await electron.launch({
-        args: [path.join(__dirname, "fixtures/visual-main.cjs")],
+        args: [path.join(__dirname, "fixtures/workbench-main.cjs")],
         env,
         timeout: 60000,
       });
@@ -157,8 +157,12 @@ const records = [],
                   0,
                 );
                 // prompting 状态会自动打开模型页，开始页按钮已卸载。
-                await page.getByRole("tab", { name: "模型", exact: true }).waitFor();
-                await page.getByRole("button", { name: "返回 CAD 编辑", exact: true }).click();
+                await page
+                  .getByRole("tab", { name: "模型", exact: true })
+                  .waitFor();
+                await page
+                  .getByRole("button", { name: "返回 CAD 编辑", exact: true })
+                  .click();
                 await page.locator(".cad-surface").waitFor();
                 await page
                   .getByRole("button", { name: "进入 CAD", exact: true })
@@ -171,8 +175,8 @@ const records = [],
               }
               if (name === "checks")
                 await page
-                  .locator("footer")
-                  .getByRole("button", { name: "检查结果", exact: true })
+                  .getByRole("navigation", { name: "活动栏" })
+                  .getByRole("button", { name: "问题", exact: true })
                   .click();
               if (name === "dark")
                 await page
@@ -299,17 +303,32 @@ const records = [],
                 for (const label of [
                   "新建工程",
                   "打开工程",
-                  "打开图纸",
-                  "添加图纸",
+                  "导入图纸",
+                  "新建模型",
                   "Agent 操作",
                   "新会话",
-                  "检查结果",
+                  "问题",
                   "操作记录",
                 ]) {
-                  const button = page.getByRole("button", {
-                    name: label,
-                    exact: true,
-                  });
+                  const menuAction = ["新建工程", "打开工程"].includes(label);
+                  if (menuAction)
+                    await page
+                      .getByRole("button", { name: "工程操作", exact: true })
+                      .click();
+                  const button = menuAction
+                    ? page.getByRole("menuitem", { name: label, exact: true })
+                    : ["问题", "操作记录"].includes(label)
+                      ? page
+                          .getByRole("navigation", { name: "活动栏" })
+                          .getByRole("button", { name: label, exact: true })
+                      : ["新建模型", "导入图纸"].includes(label)
+                        ? page
+                            .getByLabel("工程树", { exact: true })
+                            .getByRole("button", { name: label, exact: true })
+                        : page.getByRole("button", {
+                            name: label,
+                            exact: true,
+                          });
                   assert.equal(
                     await button.isEnabled(),
                     true,
@@ -342,6 +361,7 @@ const records = [],
                       `${label} 图标对比度不足`,
                     );
                   }
+                  if (menuAction) await page.keyboard.press("Escape");
                 }
                 await page.mouse.move(20, 70);
                 const enabled = await page
@@ -393,7 +413,7 @@ const records = [],
             await page
               .getByLabel("工程树", { exact: true })
               .getByText("支架图纸.pdf", { exact: true })
-              .click();
+              .dblclick();
             await page
               .locator('.pdf-document[data-render-state="ready"]')
               .waitFor();
@@ -425,7 +445,7 @@ const records = [],
             await page
               .getByLabel("工程树", { exact: true })
               .getByText("支架图纸.svg", { exact: true })
-              .click();
+              .dblclick();
             await page.waitForFunction(() => {
               const img = document.querySelector("img.drawing");
               return img?.naturalWidth && img.style.visibility !== "hidden";
@@ -453,7 +473,7 @@ const records = [],
             await page
               .getByLabel("工程树", { exact: true })
               .getByText("支架图纸.svg", { exact: true })
-              .click();
+              .dblclick();
             assert.equal(
               await page.locator("img.drawing").getAttribute("style"),
               imageStyle,
@@ -467,8 +487,8 @@ const records = [],
               window.visualReview.setScenario("checks"),
             );
             await page
-              .locator("footer")
-              .getByRole("button", { name: "检查结果", exact: true })
+              .getByRole("navigation", { name: "活动栏" })
+              .getByRole("button", { name: "问题", exact: true })
               .click();
             await page
               .getByRole("button", { name: "定位 安装孔直径", exact: true })

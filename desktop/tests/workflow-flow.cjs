@@ -40,14 +40,14 @@ async function choose(target, create) {
       filePaths: [value],
     });
   }, target);
+  await page.getByRole("button", { name: "工程操作", exact: true }).click();
   await page
-    .getByRole("toolbar", { name: "工程命令" })
-    .getByRole("button", {
+    .getByRole("menuitem", {
       name: create ? "新建工程" : "打开工程",
       exact: true,
     })
     .click();
-  await page.locator("footer").getByText(target, { exact: true }).waitFor();
+  await page.locator("footer").getByTitle(target, { exact: true }).waitFor();
 }
 async function until(read, timeout = 240000) {
   const end = Date.now() + timeout;

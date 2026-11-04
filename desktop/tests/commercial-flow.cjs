@@ -331,6 +331,8 @@ const server = http.createServer((req, res) => {
       };
     });
     await page.goto("http://127.0.0.1:" + server.address().port);
+    // 默认 1280 px 窗口自动收起主侧栏，先从标题栏展开。
+    await page.getByRole("button", { name: "展开工程树", exact: true }).click();
     // 从工程树进入原生文档，原有宿主契约断言不变。
     await page
       .getByLabel("工程树", { exact: true })
@@ -468,6 +470,7 @@ const server = http.createServer((req, res) => {
       .getByRole("button", { name: "读取当前工程", exact: true })
       .click();
     await page
+      .getByRole("tabpanel", { name: "模型", exact: true })
       .getByText("fixture inspection failed", { exact: true })
       .waitFor();
     assert.equal(

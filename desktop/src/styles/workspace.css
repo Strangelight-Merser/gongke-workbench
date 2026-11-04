@@ -630,31 +630,6 @@ p {
 .agent-slot {
   position: relative;
 }
-.agent-history-action.fui-Button {
-  position: absolute;
-  z-index: 2;
-  top: 6px;
-  right: 40px;
-  min-width: 28px;
-  width: 28px;
-}
-/* 标题栏保留原面板的设置与新会话处理器，仅调整入口的位置。 */
-.agent-slot .agent-panel > .panel-heading > .fui-Button {
-  position: absolute;
-  right: 8px;
-  top: 6px;
-}
-.agent-slot .agent-controls button[aria-label="新会话"] {
-  position: absolute;
-  right: 72px;
-  top: 6px;
-  min-width: 28px;
-  width: 28px;
-}
-.agent-slot .agent-panel > .panel-heading {
-  padding-right: 108px;
-}
-
 .editor-group {
   container-type: inline-size;
 }

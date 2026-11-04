@@ -40,7 +40,7 @@ async function recordCase({
           "flex-shrink:0;color:var(--muted);padding:0 8px;border-left:1px solid var(--line)";
         footer.insertBefore(mark, footer.querySelector("button"));
       });
-      await page.screenshot({ path: path.join(output, file) });
+      await page.screenshot({ path: path.join(output, file), scale: "css" });
       record.file = file;
     } catch (error) {
       record.status = "failed";
