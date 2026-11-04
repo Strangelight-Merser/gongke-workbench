@@ -2,7 +2,16 @@
 
 Windows x64、.NET Framework 4.8 COM add-in。加载到已有 SOLIDWORKS 进程，由工作台服务通过本地命名管道调用。原生 API 调用经仅消息窗口统一回到 `ConnectToSW` 所在宿主 STA 线程（SOLIDWORKS 2023 实机上 `OnIdleNotify` 不触发）。不会创建另一个 SOLIDWORKS 进程。
 
-源码已完成真实 Interop 引用编译检查，独立协议测试通过；**尚未在 SOLIDWORKS 实机加载和运行**。读写、Undo、图纸更新、保存重开仍需要宿主验收。当前 `native_validation` 固定为 `unverified`，不把编译通过标成原生验收。
+实机记录（2026-11-04，SOLIDWORKS 2023 SP0.1，队友在 Windows 上用官方 `api/redist` 构建）：插件加载、`host.info`、`document.context`、`parameters.list`、诊断脚本、`selection.set` 点选面通过；建模方面，矩形与圆草图、带长度尺寸的草图、平行/垂直/相等关系、面上草图、拉伸与二次拉伸合并、贯穿孔与 5 mm 盲孔、圆角、倒角、线性阵列通过。
+
+已知问题（暂无实机复验）：
+- 旋转 `FeatureRevolve2` 返回空，与 Merge/UseFeatScope/UseAutoSelect 取值无关；疑与运行时插入的轴线及其选择方式有关。
+- 两个草图点之间加重合关系报 `constraint_failed`（线对线关系正常）。
+- `FinishRecordingUndoObject2` 在该版本恒返回 false，建模结果以 `undo_recorded` 如实报告，Ctrl+Z 整步撤销未确认。
+- 以下修复在最后一轮之后加入，尚未实机复验：水平/竖直尺寸类型判断、镜像后实体判定、`install.ps1` 退出码。
+- 图纸更新、DXF 导出、工作台界面内的 C4–C12 流程未在实机运行。
+
+`native_validation` 仍为 `unverified`。
 
 ## 构建与安装
 

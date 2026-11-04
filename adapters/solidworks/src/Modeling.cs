@@ -320,8 +320,10 @@ namespace Gongke.SolidWorks
                 default: throw new CommandError("unknown_constraint", kind);
             }
             if (display == null) throw new CommandError("dimension_failed", "宿主未生成约束尺寸："+kind);
+            // 实机：AddHorizontalDimension2 / AddVerticalDimension2 返回水平、竖直线性尺寸类型，而非 swLinearDimension。
             var expectedType = kind == "angle" ? swDimensionType_e.swAngularDimension : kind == "diameter" ? swDimensionType_e.swDiameterDimension :
-                kind == "radius" ? swDimensionType_e.swRadialDimension : swDimensionType_e.swLinearDimension;
+                kind == "radius" ? swDimensionType_e.swRadialDimension : kind == "distance_x" ? swDimensionType_e.swHorLinearDimension :
+                kind == "distance_y" ? swDimensionType_e.swVertLinearDimension : swDimensionType_e.swLinearDimension;
             if (display.Type2 != (int)expectedType) throw new CommandError("dimension_type_mismatch", "宿主生成的尺寸类型与请求不符");
             var dimension = (Dimension)display.GetDimension2(0);
             if (c["name"] != null) dimension.Name = Protocol.Required(c, "name");
@@ -547,7 +549,8 @@ namespace Gongke.SolidWorks
             nativeEffectObserved = true;
             feature.Name = name;
             var faces = Items(feature.GetFaces()).Cast<Face2>().ToArray();
-            var outputBody = faces.FirstOrDefault()?.GetBody() as Body2;
+            // 实机：镜像特征 GetFaces 为空，但特征已生成；镜像不改变实体归属，沿用目标实体。
+            var outputBody = faces.FirstOrDefault()?.GetBody() as Body2 ?? (kind == "mirror" ? body : null);
             if (outputBody == null) throw new CommandError("body_unavailable", "新特征未返回实体");
             if (pendingBodies.TryGetValue(bodyRef, out var pending))
             { outputBody.Name = pending.Name; pendingBodies.Remove(bodyRef); }
@@ -571,7 +574,8 @@ namespace Gongke.SolidWorks
                 var value = (Dimension)dim.GetDimension2(0);
                 var type = (swDimensionType_e)dim.Type2;
                 string unit = type == swDimensionType_e.swAngularDimension ? "rad" :
-                    type == swDimensionType_e.swLinearDimension || type == swDimensionType_e.swDiameterDimension || type == swDimensionType_e.swRadialDimension ? "m" : null;
+                    type == swDimensionType_e.swLinearDimension || type == swDimensionType_e.swHorLinearDimension || type == swDimensionType_e.swVertLinearDimension
+                    || type == swDimensionType_e.swDiameterDimension || type == swDimensionType_e.swRadialDimension ? "m" : null;
                 if (value != null && unit != null && ModelingDimensionWritable(model, value))
                     result.Add(new JObject { ["name"] = value.FullName, ["value"] = Value(value, Configuration(model)), ["unit"] = unit });
                 dim = (DisplayDimension)feature.GetNextDisplayDimension(dim);

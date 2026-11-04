@@ -29,3 +29,5 @@ New-Item -Force $startup | Out-Null
 $registration = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("Software\SolidWorks\AddInsStartup\$guid", $true)
 try { $registration.SetValue('', [int](!$NoStartup), [Microsoft.Win32.RegistryValueKind]::DWord) } finally { $registration.Dispose() }
 Write-Host 'Installed. Open SOLIDWORKS and enable Gongke Workbench in Tools > Add-ins if it is not loaded.'
+# RegAsm 的 stderr 会让 -File 运行时以 1 退出；走到这里说明全部步骤已成功。
+exit 0
