@@ -22,7 +22,7 @@ internal static class ReliabilityChecks
             if ((string)request["id"] == "first")
             {
                 second = nested.Submit(new JObject { ["id"] = "second" });
-                nested.OnIdle();
+                nested.Drain();
                 Check(calls == 1 && !second.IsCompleted, "COM 消息泵重入不能执行第二个操作");
             }
             return new JObject { ["result"] = true };
@@ -30,9 +30,9 @@ internal static class ReliabilityChecks
         using (nested)
         {
             var first = nested.Submit(new JObject { ["id"] = "first" });
-            nested.OnIdle();
+            nested.Drain();
             Check(first.GetAwaiter().GetResult() != null && calls == 1, "外层操作完成");
-            nested.OnIdle();
+            nested.Drain();
             Check(second.GetAwaiter().GetResult() != null && calls == 2, "下次 idle 才执行队列请求");
         }
         int failingCalls = 0;
@@ -42,23 +42,23 @@ internal static class ReliabilityChecks
         }))
         {
             var first = dispatcher.Submit(new JObject());
-            dispatcher.OnIdle();
+            dispatcher.Drain();
             Check((string)first.GetAwaiter().GetResult()["error"]["outcome"] == "unknown", "执行异常不能声称未改");
-            var next = dispatcher.Submit(new JObject()); dispatcher.OnIdle();
+            var next = dispatcher.Submit(new JObject()); dispatcher.Drain();
             Check(next.GetAwaiter().GetResult() != null && failingCalls == 2, "异常后释放重入保护");
         }
         int timedCalls = 0;
         using (var dispatcher = new HostDispatcher(_ => { timedCalls++; return new JObject(); }, TimeSpan.FromMilliseconds(10)))
         {
             var timed = dispatcher.Submit(new JObject()).GetAwaiter().GetResult();
-            dispatcher.OnIdle();
+            dispatcher.Drain();
             Check((string)timed["error"]["outcome"] == "not_applied" && timedCalls == 0, "排队超时后绝不执行");
         }
         using (var dispatcher = new HostDispatcher(_ => {
             Thread.Sleep(100); return new JObject { ["result"] = true };
         }, TimeSpan.FromMilliseconds(10)))
         {
-            var timed = dispatcher.Submit(new JObject()); dispatcher.OnIdle();
+            var timed = dispatcher.Submit(new JObject()); dispatcher.Drain();
             Check((string)timed.GetAwaiter().GetResult()["error"]["outcome"] == "unknown", "执行中超时为未知，不能取消已发生的修改");
         }
 

@@ -135,6 +135,8 @@ export function useCommercialDocument(
     if (kind === "solidworks") {
       const c = await invoke("document.context", {}, targetHost);
       if (!c.active_document) throw new Error("SOLIDWORKS 中没有活动文档");
+      if (!c.active_document.path)
+        throw new Error("当前文档尚未保存；请先在 SOLIDWORKS 中另存为原生文档");
       const p = {
         document_path: c.active_document.path,
         configuration: c.active_document.configuration,

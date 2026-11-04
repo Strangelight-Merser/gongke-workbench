@@ -8,13 +8,15 @@ using SolidWorks.Interop.swpublished;
 namespace Gongke.SolidWorks
 {
     [ComVisible(true)]
-    [ClassInterface(ClassInterfaceType.None)]
+    // SetAddinCallbackInfo2 需要 IDispatch；None 在 SOLIDWORKS 2023 实机上加载即 InvalidCastException。
+    [ClassInterface(ClassInterfaceType.AutoDispatch)]
     [Guid("507DA194-5B1B-4B32-B4A8-B3EA18B036FA")]
     [ProgId("Gongke.SolidWorks.Addin")]
     public sealed class Addin : ISwAddin
     {
         private SldWorks app;
         private HostDispatcher dispatcher;
+        private StaPump pump;
         private PipeEndpoint endpoint;
 
         public bool ConnectToSW(object ThisSW, int Cookie)
@@ -29,7 +31,8 @@ namespace Gongke.SolidWorks
                 var sessionId = Guid.NewGuid().ToString("N");
                 var operations = new HostOperations(app, sessionId, new OperationJournal(Path.Combine(root, "receipts", "solidworks", sessionId)));
                 dispatcher = new HostDispatcher(operations.Execute);
-                app.OnIdleNotify += dispatcher.OnIdle;
+                pump = new StaPump(dispatcher.Drain);
+                dispatcher.Notify = pump.Post;
                 endpoint = new PipeEndpoint(dispatcher, sessionId, app.RevisionNumber(), root);
                 return true;
             }
@@ -53,9 +56,10 @@ namespace Gongke.SolidWorks
         {
             endpoint?.Dispose();
             endpoint = null;
-            if (app != null && dispatcher != null) app.OnIdleNotify -= dispatcher.OnIdle;
             dispatcher?.Dispose();
             dispatcher = null;
+            pump?.DestroyHandle();
+            pump = null;
             // SOLIDWORKS owns its application RCW; do not FinalReleaseComObject it.
             app = null;
             return true;

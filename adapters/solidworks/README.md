@@ -1,6 +1,6 @@
 # SOLIDWORKS 原生适配器
 
-Windows x64、.NET Framework 4.8 COM add-in。加载到已有 SOLIDWORKS 进程，由工作台服务通过本地命名管道调用。原生 API 调用统一进入 `OnIdleNotify` 所在宿主线程。不会创建另一个 SOLIDWORKS 进程。
+Windows x64、.NET Framework 4.8 COM add-in。加载到已有 SOLIDWORKS 进程，由工作台服务通过本地命名管道调用。原生 API 调用经仅消息窗口统一回到 `ConnectToSW` 所在宿主 STA 线程（SOLIDWORKS 2023 实机上 `OnIdleNotify` 不触发）。不会创建另一个 SOLIDWORKS 进程。
 
 源码已完成真实 Interop 引用编译检查，独立协议测试通过；**尚未在 SOLIDWORKS 实机加载和运行**。读写、Undo、图纸更新、保存重开仍需要宿主验收。当前 `native_validation` 固定为 `unverified`，不把编译通过标成原生验收。
 
