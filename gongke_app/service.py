@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -237,11 +236,6 @@ def main():
             faulthandler.enable(file=diagnostic_file, all_threads=True)
             faulthandler.dump_traceback_later(60, repeat=True, file=diagnostic_file)
         instance = InstanceLock(args.state_dir)
-        # 协议输入已与标准句柄分离；预先加载数值库仍可缩短首次任务的等待。
-        if importlib.util.find_spec("numpy") is not None:
-            import numpy  # noqa: F401
-        if importlib.util.find_spec("scipy") is not None:
-            from scipy import linalg  # noqa: F401
         app = Application(args.state_dir, emit)
         from gongke_app.connection import ConnectionServer
         connection = ConnectionServer(app, args.state_dir)

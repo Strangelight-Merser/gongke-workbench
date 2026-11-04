@@ -46,7 +46,7 @@ internal sealed class OperationStore
     {
         var id = request.Params.NonEmpty("operation_id");
         FileStream handle;
-        try { handle = new FileStream(LockPath(id), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None); }
+        try { handle = OpenLock(id, FileMode.CreateNew); }
         catch (IOException) when (File.Exists(LockPath(id)))
         {
             existing = Get(id);
@@ -65,9 +65,9 @@ internal sealed class OperationStore
     {
         // 持有锁时再读取，避免把刚入队的活跃操作误判为已退出。
         FileStream? probe = null;
-        try { probe = new FileStream(LockPath(id), FileMode.Open, FileAccess.ReadWrite, FileShare.None); }
+        try { probe = OpenLock(id, FileMode.Open); }
         catch (FileNotFoundException) { return Record.Unknown(id); }
-        catch (IOException) when (File.Exists(LockPath(id))) { return Read(id); }
+        catch (IOException e) when (OperatingSystem.IsWindows() ? (e.HResult & 0xffff) == 33 : File.Exists(LockPath(id))) { return Read(id); }
         using (probe)
         {
             var record = Read(id);
@@ -78,6 +78,20 @@ internal sealed class OperationStore
                 _ => record
             };
         }
+    }
+
+    private FileStream OpenLock(string id, FileMode mode)
+    {
+        // Windows 的独占共享模式会与普通读者（例如文件扫描）冲突，不能证明操作仍在执行。
+        // 用字节范围锁表示操作所有权，只有 ERROR_LOCK_VIOLATION 才表示活跃操作。
+        var stream = new FileStream(LockPath(id), mode, FileAccess.ReadWrite,
+            OperatingSystem.IsWindows() ? FileShare.ReadWrite : FileShare.None);
+        try
+        {
+            if (OperatingSystem.IsWindows()) stream.Lock(0, 1);
+            return stream;
+        }
+        catch { stream.Dispose(); throw; }
     }
 
     private Record Read(string id)
