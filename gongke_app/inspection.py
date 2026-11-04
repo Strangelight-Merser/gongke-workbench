@@ -35,7 +35,7 @@ def definitions():
         "host.inspect": ("只读特征树、参数、草图约束及最终 B-rep 面/边；任意零件，不绑定、不重算。几何为 m/rad、document 坐标。圆柱面不等于通孔。", obj(COMMON), False),
         "host.section": ("按文档坐标的平面读取精确截面；origin 为 m，normal 为非零方向。只在临时几何上计算，不创建文档特征。", obj({**COMMON, "plane": PLANE}), False),
         "host.measure": ("从当前 B-rep 测尺寸；selectors 用实际 native_ref 或几何筛选，多个匹配返回歧义。优先使用 inspect 返回的 native_ref；near 比较返回实体的 point（默认容差 1e-8 m），不是到面上任意点的距离，不能随意取面内坐标。平面可用 kind=plane、direction 和 offset 筛选。plane_distance 是平行面的支撑平面距离，不自动等于局部壁厚；axis_distance 是平行轴距。", obj({**COMMON, "measurement": MEASUREMENT}), False),
-        "host.check": ("按用户已确认且有来源的条件逐项检查；输出 pass/fail/unknown 与定位。缺失、歧义或待重建不判通过，不代做、不自动评分。", obj({**COMMON, "conditions": {"type": "array", "items": CONDITION, "minItems": 1, "maxItems": 100}}), False),
+        "host.check": ("按用户已确认且有来源的条件逐项检查；输出 pass/fail/unknown 与定位。同一修订的尺寸、孔距和截面面积放进一次 conditions，不先逐项 measure 再重复 check。缺失、歧义或待重建不判通过，不代做、不自动评分。", obj({**COMMON, "conditions": {"type": "array", "items": CONDITION, "minItems": 1, "maxItems": 100}}), False),
     }
 
 

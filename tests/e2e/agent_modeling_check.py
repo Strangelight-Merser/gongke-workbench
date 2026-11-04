@@ -112,7 +112,7 @@ async def inspect(args, tasks, evidence):
             evidence["independent_check"] = await call("host.check", document=document, object_ref=body, conditions=conditions)
             evidence["reference_pass"] = (evidence["independent_check"]["status"] == "pass"
                 and abs(evidence["volume_error_mm3"]) <= .1 and max(map(abs, evidence["bbox_error_mm"])) <= .01)
-        elif args.case in {"robot14", "robot13"}:
+        elif args.case in {"robot14", "robot13", "robot4"}:
             from tests.e2e.robot_drawing_check import check_robot
             evidence.update(await check_robot(args.case, snapshot, document, body, call))
         else:
@@ -132,7 +132,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("state-dir", "project", "study", "output"):
         parser.add_argument("--"+name, type=Path, required=True)
-    parser.add_argument("--case", choices=["p6", "p7", "p8", "robot14", "robot13"], required=True)
+    parser.add_argument("--case", choices=["p6", "p7", "p8", "robot14", "robot13", "robot4"], required=True)
     parser.add_argument("--delivery", choices=["attachment", "mcp", "dimensions", "vision", "pdf"], required=True)
     parser.add_argument("--input-sha256", required=True)
     args = parser.parse_args()

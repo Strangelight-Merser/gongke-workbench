@@ -58,7 +58,7 @@ host.model_new 新建零件并保存到工程内新文件；已有原件先 host
 一次 host.sketch 批量几何和约束；rectangle 展开四边并加重合/水平/竖直约束。geometry 索引从 0 开始，按回执映射；point 为 start/end/center，默认 whole；圆弧 start/end 始终对应输入三点顺序，不受顺逆时针影响。回执 geometry 是求解后局部坐标(m)，先对照输入确认未漂移再拉伸；欠约束求解可能改变输入位置。
 创建时可一次提交全部几何和必要约束，不要求拆成创建/追加两次；仅修改已有草图才用 sketch_ref 追加，此时无新增几何也须 geometry=[]。rectangle 已含重合/水平/竖直，不重复添加这些关系。距离/半径/直径约束填 value(m)，angle 填 rad；保留可编辑命名尺寸。
 FreeCAD：fixed 只接受一个实体；whole 固定整个几何，start/end/center 只固定该点的当前位置，不固定半径。固定点在原点用重合，否则用坐标/轴约束，命名展开为 name_X/name_Y，返回全部 added_constraints。圆只能选 whole/center，线段只能选 whole/start/end，圆弧可选三种点。coincident 必须指定两个点；radius/diameter 指定一个整圆或圆弧；horizontal/vertical 指定一条整线或两个点；parallel/equal 指定两个 whole。不要用 whole 代替点。
-约束以必要集合起步，不把所有相切、等半径、端点重合和宽度同时叠加。端点 tangent 已含端点重合语义；固定 whole 后不要再约束同一几何尺寸。出现冗余时根据返回索引去掉重复关系；有效且尺寸正确的欠约束轮廓可继续，不为追求零自由度反复试约束。追加 sketch_ref 仍须 body_ref 和最新 document。
+约束以必要集合起步，不把所有相切、等半径、端点重合和宽度同时叠加。端点 tangent 已含端点重合语义；固定 whole 后不要再约束同一几何尺寸。冲突/冗余索引从0开始，指向原生约束列表，不一定等于请求 constraints 数组下标（fixed 点可展开两项、rectangle 自动加约束）。失败时用 constraint_sources 把 native_indices 映射回 input_index，仅调整对应输入；automatic_constraints 是本次自动生成的约束。出现冗余时去掉对应重复关系；有效且尺寸正确的欠约束轮廓可继续，不为追求零自由度反复试约束。追加 sketch_ref 仍须 body_ref 和最新 document。
 欠约束会明确返回 solver 状态，但可继续建模；冲突、冗余或无效轮廓必须修正后再生成特征。host.feature_edit 可改命名约束或返回的特征尺寸。
 pad 沿草图正法向；pocket/hole 沿负法向，reversed 翻转。孔为直孔，不推断螺纹/公差；SOLIDWORKS 用圆草图+原生切除，圆直径必须等于 diameter。圆角/倒角最后做。
 贯通切除用 pocket 的 through_all=true，不传 length；从切入侧沿切除方向贯穿，底面草图向上切须 reversed=true。固定高度草图加固定切深不会随上游加高自动贯通。

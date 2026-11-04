@@ -109,8 +109,8 @@ def feature_tree(obj):
             row["sketch"] = {"fully_constrained": bool(item.FullyConstrained),
                              "degrees_of_freedom": int(item.DoF), "valid": bool(item.isValid()),
                              "geometry_count": item.GeometryCount, "constraints": constraints,
-                             "conflicting_constraints": list(item.ConflictingConstraints),
-                             "redundant_constraints": list(item.RedundantConstraints),
+                             "conflicting_constraints": [i-1 for i in item.ConflictingConstraints],
+                             "redundant_constraints": [i-1 for i in item.RedundantConstraints],
                              "status": "conflicting" if item.ConflictingConstraints else "redundant" if item.RedundantConstraints else "invalid" if not item.isValid() else "fully_constrained" if item.FullyConstrained else "under_constrained"}
         result.append(row)
         for child in getattr(item, "Group", []):

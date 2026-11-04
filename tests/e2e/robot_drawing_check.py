@@ -3,14 +3,14 @@ import math
 
 
 async def check_robot(case, snapshot, document, body, call):
-    page = 14 if case == "robot14" else 13
+    page = {"robot14":14, "robot13":13, "robot4":4}[case]
     source = f"quadruped-robot-drawings.pdf 原第{page}页，人工复核标注及投影关系"
     conditions = []
     def condition(name, measurement, expected, unit):
         conditions.append({"id": name, "source": source, "measurement": measurement,
                            "expected": expected, "unit": unit, "tolerance": .01})
     bounds = [(b-a)*1000 for a,b in zip(snapshot["bounds"]["min"], snapshot["bounds"]["max"])]
-    expected_bounds = [23,18,7] if case == "robot14" else [18,20,20]
+    expected_bounds = {"robot14":[23,18,7], "robot13":[18,20,20], "robot4":[45,27,4]}[case]
     extra = {}
     cylinders = [f for f in snapshot["faces"] if f["kind"] == "cylinder"]
     if case == "robot14":
@@ -23,6 +23,26 @@ async def check_robot(case, snapshot, document, body, call):
         volume = (23*18-18)*3 + math.pi*9*4
         extra = {"volume_expected_mm3":volume,"volume_error_mm3":snapshot["volume"]*1e9-volume}
         topology = len(cylinders)==1 and not cylinders[0].get("inward")
+    elif case == "robot4":
+        # 来源：第4页45/36/17/5/4/3与2×45°标注，镜像关系经人工查看原投影确认。
+        # 这是审计截面边界，不向 Agent 提供这些坐标或建模顺序。
+        outer = [(-16,13.5),(16,13.5),(18,11.5),(18,8.5),(20.5,8.5),(22.5,6.5),
+                 (22.5,-6.5),(20.5,-8.5),(18,-8.5),(18,-11.5),(16,-13.5),(-16,-13.5),
+                 (-18,-11.5),(-18,-8.5),(-20.5,-8.5),(-22.5,-6.5),(-22.5,6.5),(-20.5,8.5),(-18,8.5),(-18,11.5)]
+        arrow = [(13,6.5),(13,3.5),(18,3.5),(18,-3.5),(13,-3.5),(13,-6.5),(4,0)]
+        triangle = [(-8.5,8.5),(8.5,8.5),(0,3)]
+        loops = [outer, arrow, [(-x,y) for x,y in arrow], triangle, [(x,-y) for x,y in triangle]]
+        condition("plate_section", {"kind":"section_area", "plane":{"origin":[0,0,.002],"normal":[0,0,1]}}, 828.5, "mm^2")
+        section = await call("host.section", document=document, object_ref=body, plane={"origin":[0,0,.002],"normal":[0,0,1]})
+        expected_edges = [(a,b) for loop in loops for a,b in zip(loop,loop[1:]+loop[:1])]
+        actual_edges = [(e["start"],e["end"]) for e in section.get("edges",[]) if e["kind"]=="line"]
+        def close(a,b):
+            return math.dist(a, [b[0]*1000,b[1]*1000]) < .01
+        topology = section.get("wire_count")==5 and len(actual_edges)==len(expected_edges) and all(
+            sum((close(a,c) and close(b,d)) or (close(a,d) and close(b,c)) for c,d in actual_edges)==1
+            for a,b in expected_edges)
+        extra.update(volume_expected_mm3=3314, volume_error_mm3=snapshot["volume"]*1e9-3314,
+                     outline_source="45×27、中心宽36、厚4、8处2×45°；两箭头与两三角透孔的投影边界", section=section)
     else:
         holes = [f for f in cylinders if f.get("inward")]
         crowns = [f for f in cylinders if not f.get("inward")]

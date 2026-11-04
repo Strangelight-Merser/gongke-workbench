@@ -311,7 +311,7 @@ def test_named_constraint_creation_and_duplicate_rejection(native):
     module.Sketcher.Constraint = lambda kind, *args: SimpleNamespace(Name="", Type=kind, Args=args)
     sketch = Sketch()
     constraint = {"kind": "diameter", "entities": [{"geometry": 0}], "value": .008, "name": "Diameter"}
-    assert module._constraints(sketch, [constraint]) == [0]
+    assert module._constraints(sketch, [constraint]) == ([0], [{"input_index": 0, "native_indices": [0]}])
     assert sketch.Constraints[0].Name == "Diameter" and sketch.Constraints[0].Args == (0, 8)
     with pytest.raises(ValueError, match="名称重复"):
         module._constraints(sketch, [constraint])

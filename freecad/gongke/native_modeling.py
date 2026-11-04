@@ -100,8 +100,8 @@ def _frame(sketch):
 
 def _sketch_status(sketch):
     return {"native_ref": sketch.Name, "fully_constrained": bool(sketch.FullyConstrained),
-            "degrees_of_freedom": int(sketch.DoF), "conflicting_constraints": list(sketch.ConflictingConstraints),
-            "redundant_constraints": list(sketch.RedundantConstraints), "valid": bool(sketch.isValid()),
+            "degrees_of_freedom": int(sketch.DoF), "conflicting_constraints": [i-1 for i in sketch.ConflictingConstraints],
+            "redundant_constraints": [i-1 for i in sketch.RedundantConstraints], "valid": bool(sketch.isValid()),
             "status": "conflicting" if sketch.ConflictingConstraints else "redundant" if sketch.RedundantConstraints else
                       "invalid" if not sketch.isValid() else "fully_constrained" if sketch.FullyConstrained else "under_constrained"}
 
@@ -201,7 +201,8 @@ def _constraint_specs(sketch, data):
 
 
 def _constraints(sketch, data):
-    specs = [spec for item in data for spec in _constraint_specs(sketch, item)]
+    groups = [_constraint_specs(sketch, item) for item in data]
+    specs = [spec for group in groups for spec in group]
     names = [c.Name for c in sketch.Constraints if c.Name]
     for _, name in specs:
         if name:
@@ -209,12 +210,16 @@ def _constraints(sketch, data):
                 raise ValueError("草图约束名称重复：" + name)
             names.append(name)
     if not specs:
-        return []
+        return [], []
     indices = list(sketch.addConstraint([Sketcher.Constraint(*args) for args, _ in specs]))
     for index, (_, name) in zip(indices, specs):
         if name:
             sketch.renameConstraint(index, name)
-    return indices
+    sources, offset = [], 0
+    for input_index, group in enumerate(groups):
+        sources.append({"input_index": input_index, "native_indices": indices[offset:offset+len(group)]})
+        offset += len(group)
+    return indices, sources
 
 
 def _solved_geometry(sketch):
@@ -274,13 +279,16 @@ def _sketch(doc, p):
                         Part.Arc(_vector(g["start"]), _vector(g["mid"]), _vector(g["end"])))
             ids = [sketch.addGeometry(geometry, construction)]
         added.append(ids)
-    constraints.extend(_constraints(sketch, p["constraints"]))
+    automatic = list(constraints)
+    user_constraints, sources = _constraints(sketch, p["constraints"])
+    constraints.extend(user_constraints)
     code = sketch.solve()
     if code != 0:
-        raise ValueError(json.dumps({"solve_code": code, **_sketch_status(sketch)}, ensure_ascii=False))
+        raise ValueError(json.dumps({"solve_code": code, **_sketch_status(sketch), "constraint_index_base": 0,
+                               "constraint_sources": sources, "automatic_constraints": automatic}, ensure_ascii=False))
     return {"native_ref": sketch.Name, "sketch_ref": sketch.Name, "body_ref": body.Name, "added_geometry": added,
             "geometry": _solved_geometry(sketch),
-            "added_constraints": constraints, "solver": _sketch_status(sketch), "editable_parameters": _editable(sketch)}
+            "added_constraints": constraints, "constraint_sources": sources, "constraint_index_base": 0, "solver": _sketch_status(sketch), "editable_parameters": _editable(sketch)}
 
 
 def _origin(body, kind):
