@@ -20,17 +20,20 @@ type Context = {
     ) => Promise<Decision>,
   ): unknown;
 };
+// 目录枚举不执行工程操作；保留上游拒绝，不放行 shell 或任意资源读取。
+const isResourceListing = (name: string) => name === "list_mcp_resources";
 export const inject = ["tools"];
 export function apply(ctx: Context) {
   ctx.on("agent/created", ({ agent }) => {
     agent.ctx.tools.restrict({ allow: [] });
   });
   ctx.tools.guard((exec) =>
-    exec.name.startsWith("mcp__gongke__")
+    exec.name.startsWith("mcp__gongke__") || isResourceListing(exec.name)
       ? undefined
       : "工程操作只能通过构想引擎 MCP 执行",
   );
   ctx.on("tools/pre-execute", async (exec, next) => {
+    if (isResourceListing(exec.name)) return next();
     if (!exec.name.startsWith("mcp__gongke__"))
       return { kind: "deny", reason: "工程操作只能通过构想引擎 MCP 执行" };
     const decision = await next();

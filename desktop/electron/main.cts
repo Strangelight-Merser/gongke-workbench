@@ -261,7 +261,7 @@ else {
       const input = await preparePrompt(root, text, referencePaths,
         (method, params) => service.request(method, params));
       if (root !== projectRoot) throw new Error("工程已切换，请重新选择图纸");
-      await agent.prompt(input.text, input.images);
+      await agent.prompt(input.text, input.images, text);
     });
     handle("cancel", () => agent.cancel());
     handle("disconnect", () => agent.disconnect());

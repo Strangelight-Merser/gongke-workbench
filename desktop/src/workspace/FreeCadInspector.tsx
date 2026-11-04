@@ -1,3 +1,4 @@
+import { displayPath } from "../project/displayPath";
 import { useModelingProgress } from "../agent/ModelingProgress";
 import {
   commandOf,
@@ -309,7 +310,7 @@ export function FreeCadInspector({
             </Button>
           </>
         )}
-        <span>{context.path || ""}</span>
+        <span>{displayPath(context.path || "", project?.path)}</span>
       </div>
       {pendingOperation && (
         <div className="error">

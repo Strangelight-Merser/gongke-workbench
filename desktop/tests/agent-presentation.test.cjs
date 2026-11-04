@@ -160,3 +160,53 @@ test("特征详情优先中文名称，无名称使用类型和 SI 换算尺寸�
   assert.doesNotMatch(html, /特征：Feature0/);
   assert.match(html, /Feature0/);
 });
+
+test("用户请求与图纸参考分开，跨工具的思考按轮次收拢", () => {
+  const update = (sessionUpdate, extra) => ({
+    type: "update",
+    update: { sessionUpdate, ...extra },
+  });
+  const events = [
+    { type: "user", text: '建模\n{"items":[1]}', displayText: "建模" },
+    update("agent_thought_chunk", {
+      content: { type: "text", text: "读图。" },
+    }),
+    update("tool_call", {
+      toolCallId: "one",
+      title: "host.sketch",
+      status: "completed",
+    }),
+    update("agent_thought_chunk", {
+      content: { type: "text", text: "建模。" },
+    }),
+    { type: "user", text: "检查" },
+    update("agent_thought_chunk", {
+      content: { type: "text", text: "核对。" },
+    }),
+  ];
+  const rows = rowsOf(events);
+  assert.equal(rows[0].text, "建模");
+  assert.match(rows[0].reference, /items/);
+  assert.deepEqual(
+    rows.filter((r) => r.kind === "thought").map((r) => r.text),
+    ["读图。建模。", "核对。"],
+  );
+});
+test("真实 dsh 带哈希工具名与人工操作共用工程名称和尺寸", () => {
+  const { stepTitle } = load("modelingSteps.ts");
+  for (const [command, params] of [
+    ["host.sketch", { name: "轮廓" }],
+    ["host.feature", { feature: { kind: "pad", length: 0.004 } }],
+    ["host.model_new", {}],
+    ["project.read_drawing", {}],
+    ["host.check", {}],
+  ]) {
+    assert.equal(
+      stepTitle(
+        "mcp__gongke__" + command.replace(".", "_") + "_b5d6e9ebda25",
+        params,
+      ),
+      stepTitle(command, params),
+    );
+  }
+});

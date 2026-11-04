@@ -21,6 +21,7 @@ export type AgentEvent =
   | {
       type: "user";
       text: string;
+      displayText?: string;
       images?: { path: string; mimeType: string; sha256: string }[];
     }
   | { type: "request"; method: string; params: Record<string, unknown> }

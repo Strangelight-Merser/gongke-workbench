@@ -262,3 +262,29 @@ test("首次对话保留 ACP 错误、stderr 和 MCP 原因，日志与界面详
     await client.disconnect();
   }
 });
+
+test("dsh 只读目录枚举不被工程工具策略误拒，仍尊重上游拒绝", async () => {
+  const { apply } = require("../dist-electron/acp/deepseek-policy.cjs");
+  let guard;
+  const events = {};
+  apply({
+    tools: { guard: (fn) => (guard = fn) },
+    on: (name, fn) => (events[name] = fn),
+  });
+  for (const name of ["list_mcp_resources"]) {
+    assert.equal(guard({ name }), undefined);
+    for (const kind of ["allow", "deny"])
+      assert.equal(
+        (await events["tools/pre-execute"]({ name }, async () => ({ kind })))
+          .kind,
+        kind,
+      );
+  }
+  for (const name of [
+    "bash",
+    "read_file",
+    "read_mcp_resource",
+    "list_mcp_resource_templates",
+  ])
+    assert.match(guard({ name }), /MCP/);
+});

@@ -1,14 +1,30 @@
 import type { AgentEvent } from "../../electron/acp/types.cjs";
-type Row = { kind: string; text?: string; tool?: any; tools?: any[] };
+type Row = {
+  kind: string;
+  text?: string;
+  reference?: string;
+  tool?: any;
+  tools?: any[];
+};
 export function rowsOf(events: AgentEvent[]): Row[] {
   const rows: Row[] = [];
+  let thought: Row | undefined;
   const tools = new Map<string, Row>();
   for (const event of events) {
     if (event.type === "user" || event.type === "notice") {
+      thought = undefined;
       rows.push({
         kind: event.type,
+        reference:
+          event.type === "user" &&
+          event.displayText !== undefined &&
+          event.displayText !== event.text
+            ? event.text
+            : undefined,
         text:
-          event.text +
+          (event.type === "user"
+            ? (event.displayText ?? event.text)
+            : event.text) +
           (event.type === "user" && event.images?.length
             ? "\n图片：" + event.images.map((image) => image.path).join("、")
             : ""),
@@ -32,6 +48,14 @@ export function rowsOf(events: AgentEvent[]): Row[] {
           : content.type === "resource_link"
             ? `${content.name}: ${content.uri}`
             : `[${content.type}]`;
+      if (kind === "thought") {
+        if (!thought) {
+          thought = { kind, text: "" };
+          rows.push(thought);
+        }
+        thought.text += text;
+        continue;
+      }
       const last = rows.at(-1);
       if (last?.kind === kind) last.text += text;
       else rows.push({ kind, text });

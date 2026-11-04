@@ -53,7 +53,7 @@ test("步骤以真实参数标注单位，不从轮廓猜设计意图", () => {
       name: "底板草图",
       geometry: [{ kind: "circle", radius: 0.007 }],
     }),
-    "画底板草图：圆 φ14 mm",
+    "绘制草图 · 底板草图：圆 φ14 mm",
   );
   assert.equal(
     commandOf("host.write", { method: "model.feature_edit" }),
@@ -178,4 +178,27 @@ test("查询原操作的确定结果可用于刷新，未知结果不冒充成�
     }).outcome,
     undefined,
   );
+});
+
+test("文档栏显示工程相对路径，工程外不泄露用户目录", () => {
+  const { displayPath } = load("project/displayPath.ts");
+  assert.equal(
+    displayPath(
+      "/Users/person/project/models/a.FCStd",
+      "/Users/person/project",
+    ),
+    "models/a.FCStd",
+  );
+  assert.equal(
+    displayPath(
+      "C:\\Users\\person\\工程\\a.FCStd",
+      "c:\\users\\person\\工程\\",
+    ),
+    "a.FCStd",
+  );
+  assert.equal(
+    displayPath("/Users/person/project-old/a.FCStd", "/Users/person/project"),
+    "a.FCStd",
+  );
+  assert.equal(displayPath("inputs/a.pdf", "/root"), "inputs/a.pdf");
 });

@@ -439,6 +439,7 @@ export class AgentClient {
   async prompt(
     text: string,
     images: { path: string; mimeType: string; data: string }[] = [],
+    displayText = text,
   ) {
     if (this.state.phase !== "ready" || !text.trim())
       throw new Error("请先建立会话并输入任务");
@@ -451,6 +452,7 @@ export class AgentClient {
     this.state.events.push({
       type: "user",
       text,
+      displayText,
       ...(images.length
         ? {
             images: images.map(({ path, mimeType, data }) => ({

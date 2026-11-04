@@ -38,6 +38,7 @@ import type {
 import type { Step } from "../../electron/onboarding/types.cjs";
 import { AgentOnboarding } from "./AgentOnboarding";
 import { AgentSettings } from "./AgentSettings";
+import { stepTitle } from "./modelingSteps";
 import { rowsOf, groupCompletedTools } from "./events";
 import { errorText } from "../api";
 const phases = {
@@ -472,6 +473,12 @@ export function AgentPanel({
                     : ""}
               </div>
               <div>{row.text}</div>
+              {row.reference && (
+                <details className="agent-raw">
+                  <summary>图纸参考原文</summary>
+                  <pre>{row.reference}</pre>
+                </details>
+              )}
             </article>
           ),
         )}
@@ -487,7 +494,12 @@ export function AgentPanel({
               data-permission-id={event.id}
               key={event.id}
             >
-              <strong>{event.request.toolCall.title || "工程操作"}</strong>
+              <strong>
+                {stepTitle(
+                  event.request.toolCall.title || "工程操作",
+                  event.request.toolCall.rawInput || {},
+                )}
+              </strong>
               <ToolDetails raw={event.request.toolCall.rawInput} />
               <div className="permission-actions">
                 {event.request.options

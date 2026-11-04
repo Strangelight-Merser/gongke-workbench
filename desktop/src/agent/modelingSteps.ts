@@ -15,7 +15,10 @@ export function commandOf(command: string, params: Data = {}) {
         .replaceAll(".", "_")
     }`;
   }
-  return command.replace(/^.*host_/, "host.");
+  return command
+    .replace(/^mcp__gongke__/, "")
+    .replace(/_[a-f0-9]{12}$/, "")
+    .replace(/^(host|hosts|project)_/, "$1.");
 }
 export function stepInput(command: string, params: Data = {}) {
   return command === "host.write" || command === "host.read"
@@ -57,7 +60,7 @@ export function stepTitle(command: string, params: Data = {}) {
     const dimensions = circles
       .map((g: Data) => `φ${mm(g.radius * 2)}`)
       .join("、");
-    return `${p.sketch_ref ? "修改" : "画"}${p.name || p.sketch_ref || "草图"}${dimensions ? `：圆 ${dimensions}` : ""}`;
+    return `${p.sketch_ref ? "修改草图" : "绘制草图"}${p.name || p.sketch_ref ? ` · ${p.name || p.sketch_ref}` : ""}${dimensions ? `：圆 ${dimensions}` : ""}`;
   }
   if (c === "host.feature") {
     const names: Data = {
@@ -81,11 +84,18 @@ export function stepTitle(command: string, params: Data = {}) {
       {
         "host.model_new": "新建零件",
         "host.model_copy": "另存工作副本",
-        "host.body": "创建 Body",
+        "host.body": "创建实体",
+        "project.read_drawing": "读取图纸",
+        "project.read_file": "读取工程文件",
+        "project.current": "读取当前工程",
+        "project.list_files": "查看工程文件",
+        list_mcp_resources: "查看资源目录",
+        list_mcp_resource_templates: "查看资源模板",
         "host.rebuild": "重建模型",
         "host.model_save": "保存模型",
         "host.model_operation": "查询建模结果",
         "host.check": "核对图纸尺寸",
+        "hosts.list": "查看可用 CAD",
         "host.context": "读取当前工程",
         "host.inspect": "读取特征与几何",
         "host.measure": "量测模型",
