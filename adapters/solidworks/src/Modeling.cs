@@ -63,17 +63,40 @@ namespace Gongke.SolidWorks
         private static void ModelingSelect(ModelDoc2 model, object value, int mark = 0, bool append = false)
         {
             if (!append) model.ClearSelection2(true);
-            // SOLIDWORKS 2023 SP0.1 实机：MultiSelect2 对基准面、草图返回 0；按特征实际名称 SelectByID2 可选中。
-            if (value is Feature feature)
-            {
-                var typeName = feature.GetTypeName2();
-                var selectType = typeName == "RefPlane" ? "PLANE"
-                    : typeName == "ProfileFeature" || typeName == "3DProfileFeature" ? "SKETCH" : null;
-                if (selectType != null && model.Extension.SelectByID2(feature.Name, selectType, 0, 0, 0, append, mark, null, 0)) return;
-            }
+            if (!NativeSelect(model, value, mark, true)) throw new CommandError("selection_failed", "宿主未选中指定原生引用");
+        }
+        // 每类对象用自身的选择方法，不经 MultiSelect2：C# 传入 object[] 时 MultiSelect2 返回 0（实机对基准面、草图已复现，
+        // 社区报告同样现象）。基准面、草图按特征名 SelectByID2 已在 SOLIDWORKS 2023 SP0.1 实机验证。
+        internal static bool NativeSelect(ModelDoc2 model, object value, int mark, bool append)
+        {
             var data = ((SelectionMgr)model.SelectionManager).CreateSelectData(); data.Mark = mark;
-            if (model.Extension.MultiSelect2(new[] { value }, append, data) != 1)
-                throw new CommandError("selection_failed", "宿主未选中指定原生引用");
+            switch (value)
+            {
+                case Feature feature:
+                    var typeName = feature.GetTypeName2();
+                    var selectType = typeName == "RefPlane" ? "PLANE"
+                        : typeName == "ProfileFeature" || typeName == "3DProfileFeature" ? "SKETCH" : null;
+                    return selectType != null
+                        ? model.Extension.SelectByID2(feature.Name, selectType, 0, 0, 0, append, mark, null, 0)
+                        : feature.Select2(append, mark);
+                case SketchSegment segment: return segment.Select4(append, data);
+                case SketchPoint point: return point.Select4(append, data);
+                case Body2 body: return body.Select2(append, data);
+                case Entity entity: return entity.Select4(append, data);
+                default: throw new CommandError("selection_unsupported", "不支持选择此类原生对象");
+            }
+        }
+        // 关系用经典的“选择 + SketchAddConstraints”：AddRelation 传对象数组在实机上使宿主崩溃。该方法无返回值，以关系数量变化确认。
+        private static void AddSketchRelation(ModelDoc2 model, Sketch sketch, object[] entities, string relation)
+        {
+            model.ClearSelection2(true);
+            foreach (var e in entities) ModelingSelect(model, e, 0, true);
+            var manager = sketch.RelationManager;
+            int before = manager.GetRelationsCount((int)swSketchRelationFilterType_e.swAll);
+            model.SketchAddConstraints(relation);
+            model.ClearSelection2(true);
+            if (manager.GetRelationsCount((int)swSketchRelationFilterType_e.swAll) <= before)
+                throw new CommandError("constraint_failed", "宿主未添加草图关系：" + relation);
         }
         private JObject ModelingOperation(JObject p)
         {
@@ -263,20 +286,18 @@ namespace Gongke.SolidWorks
         {
             string kind = Protocol.Required(c, "kind");
             var entities = ((JArray)c["entities"]).OfType<JObject>().Select(e => SketchEntity(segments, e)).ToArray();
-            var geometric = new Dictionary<string, swConstraintType_e> {
-                ["horizontal"] = swConstraintType_e.swConstraintType_HORIZONTAL, ["vertical"] = swConstraintType_e.swConstraintType_VERTICAL,
-                ["coincident"] = swConstraintType_e.swConstraintType_COINCIDENT, ["tangent"] = swConstraintType_e.swConstraintType_TANGENT,
-                ["parallel"] = swConstraintType_e.swConstraintType_PARALLEL, ["perpendicular"] = swConstraintType_e.swConstraintType_PERPENDICULAR,
-                ["equal"] = swConstraintType_e.swConstraintType_SAMELENGTH, ["fixed"] = swConstraintType_e.swConstraintType_FIXED };
+            // SketchAddConstraints 的关系名（SOLIDWORKS 2006 及以后）。
+            var geometric = new Dictionary<string, string> {
+                ["horizontal"] = "sgHORIZONTAL2D", ["vertical"] = "sgVERTICAL2D", ["coincident"] = "sgCOINCIDENT", ["tangent"] = "sgTANGENT",
+                ["parallel"] = "sgPARALLEL", ["perpendicular"] = "sgPERPENDICULAR", ["equal"] = "sgSAMELENGTH", ["fixed"] = "sgFIXED" };
             if (geometric.TryGetValue(kind, out var relation))
             {
                 if (entities.Length == 2 && entities.All(e => e is SketchPoint))
                 {
-                    if (kind == "horizontal") relation = swConstraintType_e.swConstraintType_HORIZPOINTS;
-                    if (kind == "vertical") relation = swConstraintType_e.swConstraintType_VERTPOINTS;
+                    if (kind == "horizontal") relation = "sgHORIZONTALPOINTS2D";
+                    if (kind == "vertical") relation = "sgVERTICALPOINTS2D";
                 }
-                if (sketch.RelationManager.AddRelation(entities, (int)relation) == null)
-                    throw new CommandError("constraint_failed", "AddRelation 返回空："+kind);
+                AddSketchRelation(model, sketch, entities, relation);
                 return;
             }
             model.ClearSelection2(true);
@@ -425,8 +446,7 @@ namespace Gongke.SolidWorks
                         bool horizontal = (string)data["axis"] == "horizontal";
                         line = model.SketchManager.CreateCenterLine(0, 0, 0, horizontal ? .01 : 0, horizontal ? 0 : .01, 0);
                         if (line == null) throw new CommandError("axis_failed", "CreateCenterLine 返回空");
-                        if (sketch.RelationManager.AddRelation(new object[] { line }, (int)swConstraintType_e.swConstraintType_FIXED) == null)
-                            throw new CommandError("axis_failed", "无法固定旋转轴");
+                        AddSketchRelation(model, sketch, new object[] { line }, "sgFIXED");
                     }
                     finally { model.SketchManager.AddToDB = addToDb; model.SketchManager.InsertSketch(true); }
                     ModelingSelect(model, profile);
