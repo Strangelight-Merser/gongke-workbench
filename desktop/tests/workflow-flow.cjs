@@ -14,7 +14,15 @@ const project = path.join(output, "我的课程工程"),
   other = path.join(output, "另一个工程");
 fs.mkdirSync(project);
 fs.mkdirSync(other);
+// 临时定位 Windows Inspector 的 Promise collected；拿到失败现场后删除。
+const lifecycle = [];
+function record(stage, details = {}) {
+  lifecycle.push({ time: new Date().toISOString(), stage, ...details });
+  fs.writeFileSync(path.join(output, "lifecycle.json"), JSON.stringify(lifecycle, null, 2));
+}
 let app, page;
+let launchNumber = 0;
+let choiceNumber = 0;
 async function launch() {
   const env = {
     ...process.env,
@@ -30,17 +38,40 @@ async function launch() {
     cwd: output,
     env,
   });
+  const launchId = ++launchNumber;
+  const child = app.process();
+  record("launched", { launchId, launcherPid: child.pid });
+  child.once("exit", (code, signal) => record("process-exit", { launchId, code, signal }));
+  app.on("close", () => record("application-close", { launchId }));
+  app.on("console", message => {
+    const prefix = "GONGKE_WORKFLOW_DIAGNOSTIC ";
+    if (message.text().startsWith(prefix))
+      record("main", { launchId, ...JSON.parse(message.text().slice(prefix.length)) });
+  });
   page = await app.firstWindow();
+  page.on("close", () => record("page-close", { launchId }));
+  page.on("crash", () => record("page-crash", { launchId }));
+  const mainFrame = page.mainFrame();
+  page.on("framenavigated", frame => {
+    if (frame === mainFrame) record("main-frame-navigation", { launchId });
+  });
   page.setDefaultTimeout(15000);
   await page.getByText("就绪", { exact: true }).waitFor();
 }
 async function choose(target, create, fromProject = false) {
-  await app.evaluate(({ dialog }, value) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [value],
-    });
-  }, target);
+  const choiceId = ++choiceNumber;
+  record("install-dialog-stub", { choiceId, target, create, fromProject });
+  await app.evaluate(({ dialog, BrowserWindow }, { target, choiceId }) => {
+    const key = Symbol.for("gongke.workflow.context");
+    globalThis[key] ||= `${process.pid}:${process.uptime()}`;
+    const state = { choiceId, pid: process.pid, context: globalThis[key],
+      windows: BrowserWindow.getAllWindows().map(window => ({ id: window.id, webContentsId: window.webContents.id })) };
+    console.log("GONGKE_WORKFLOW_DIAGNOSTIC " + JSON.stringify({ ...state, stage: "callback-enter" }));
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [target] });
+    console.log("GONGKE_WORKFLOW_DIAGNOSTIC " + JSON.stringify({ ...state, stage: "callback-return" }));
+  }, { target, choiceId });
+  record("dialog-stub-acknowledged", { choiceId });
+  record("choose-ui", { choiceId });
   const name = create ? "新建工程" : "打开工程";
   if (fromProject) {
     await showProjectTree(page);
@@ -130,6 +161,7 @@ async function settled(kind) {
     await page.getByRole("button", { name: /^图纸/ }).click();
     await page.getByRole("heading", { name: /已过期/ }).waitFor();
     await page.screenshot({ path: path.join(output, "stale-revision.png") });
+    record("close-requested", { reason: "relaunch" });
     await app.close();
     app = null;
     await launch();
@@ -165,6 +197,21 @@ async function settled(kind) {
     );
     console.log(JSON.stringify({ ok: true, output }));
   } catch (error) {
+    record("failure", { error: String(error), launcherPid: app?.process().pid,
+      exitCode: app?.process().exitCode, signalCode: app?.process().signalCode,
+      pageClosed: page?.isClosed() });
+    if (page && !page.isClosed()) {
+      let timer;
+      try {
+        const current = await Promise.race([
+          page.evaluate(async () => ({ path: (await window.gongke.request("project.current")).path })),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("诊断读回超时")), 5000); }),
+        ]);
+        record("project-readback-after-failure", current);
+      } catch (probeError) {
+        record("project-readback-failed", { error: String(probeError) });
+      } finally { clearTimeout(timer); }
+    }
     if (page)
       await page
         .screenshot({ path: path.join(output, "failure.png") })
@@ -175,7 +222,10 @@ async function settled(kind) {
     );
     throw error;
   } finally {
-    if (app) await app.close();
+    if (app) {
+      record("close-requested", { reason: "cleanup" });
+      await app.close();
+    }
   }
 })().catch((error) => {
   console.error(error);
