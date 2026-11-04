@@ -129,18 +129,28 @@ def test_script_cleanup_on_failure(tmp_path, mode):
     import time
 
     pidfile = tmp_path / "child.json"
-    code = f'''from scripts.owned_processes import OwnedProcesses
-import sys, time, subprocess, json
+    # 由子进程自身报告就绪，避开 macOS Python 启动器 exec 前的临时身份。
+    child_code = f"""import os, time, json
 from pathlib import Path
 from gongke_core.host_session import process_identity
+path = Path({str(pidfile)!r})
+path.with_suffix('.tmp').write_text(json.dumps(process_identity(os.getpid())))
+path.with_suffix('.tmp').replace(path)
+time.sleep(60)
+"""
+    code = f'''from scripts.owned_processes import OwnedProcesses
+import sys, time, subprocess
+from pathlib import Path
 owned=OwnedProcesses()
 # 独立子进程组使 Ctrl+Break 只到达所有者，不能靠广播杀死子进程伪装成清理成功。
-p=owned.spawn([sys.executable, '-c', 'import time; time.sleep(60)'],
+p=owned.spawn([sys.executable, '-c', {child_code!r}],
               creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == 'win32' else 0,
               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 path=Path({str(pidfile)!r})
-path.with_suffix('.tmp').write_text(json.dumps(process_identity(p.pid)))
-path.with_suffix('.tmp').replace(path)
+deadline=time.monotonic()+10
+while not path.exists() and time.monotonic()<deadline and p.poll() is None:
+    time.sleep(.02)
+assert path.exists(), '子进程未就绪'
 '''
     code += {"normal": "owned.close()", "exception": 'raise RuntimeError("injected")',
              "keyboard_interrupt": "raise KeyboardInterrupt"}.get(mode, "while True: time.sleep(.05)")
@@ -184,11 +194,29 @@ path.with_suffix('.tmp').replace(path)
                 if child_identity is None and pidfile.exists():
                     child_identity = json.loads(pidfile.read_text())
                 if child_identity and process_identity(child_identity["pid"]) == child_identity:
-                    os.kill(child_identity["pid"], signal.SIGTERM if os.name == "nt" else signal.SIGKILL)
-                    deadline = time.monotonic() + 5
-                    while process_identity(child_identity["pid"]) == child_identity and time.monotonic() < deadline:
-                        time.sleep(.02)
-                    assert process_identity(child_identity["pid"]) != child_identity
+                    if os.name == "nt":
+                        # 持有同一内核对象并等待终止完成，不在销毁映像期间反复查询身份。
+                        import ctypes
+                        from ctypes import wintypes
+                        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+                        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+                        kernel.OpenProcess.restype = wintypes.HANDLE
+                        kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+                        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+                        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+                        handle = kernel.OpenProcess(0x100000 | 0x0001, False, child_identity["pid"])
+                        assert handle, ctypes.get_last_error()
+                        try:
+                            assert kernel.TerminateProcess(handle, 1), ctypes.get_last_error()
+                            assert kernel.WaitForSingleObject(handle, 5000) == 0
+                        finally:
+                            kernel.CloseHandle(handle)
+                    else:
+                        os.kill(child_identity["pid"], signal.SIGKILL)
+                        deadline = time.monotonic() + 5
+                        while process_identity(child_identity["pid"]) == child_identity and time.monotonic() < deadline:
+                            time.sleep(.02)
+                        assert process_identity(child_identity["pid"]) != child_identity
     finally:
         if console_created:
             kernel.FreeConsole()
