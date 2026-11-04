@@ -122,11 +122,9 @@ async function serviceSnapshot(page) {
         filePaths: [path],
       });
     }, project);
-    await page
-      .getByRole("toolbar", { name: "工程命令" })
-      .getByRole("button", { name: "新建工程", exact: true })
-      .click();
-    await page.locator("footer").getByText(project, { exact: true }).waitFor();
+    await page.getByRole("button", { name: "工程操作", exact: true }).click();
+    await page.getByRole("menuitem", { name: "新建工程", exact: true }).click();
+    await page.locator("footer").getByTitle(project, { exact: true }).waitFor();
     await page
       .getByLabel("工程树", { exact: true })
       .getByText("减速器课程设计", { exact: true })
@@ -152,8 +150,8 @@ async function serviceSnapshot(page) {
     await page.getByRole("button", { name: /^任务书/ }).click();
     await page.getByRole("button", { name: "生成模型、图纸与说明书" }).click();
     await page
-      .locator("footer")
-      .getByRole("button", { name: /操作记录|项执行中/ })
+      .getByRole("navigation", { name: "活动栏" })
+      .getByRole("button", { name: "操作记录", exact: true })
       .click();
     await page
       .locator(
@@ -187,6 +185,13 @@ async function serviceSnapshot(page) {
     await svg.click();
     await page.locator("img.drawing").waitFor();
     await page.screenshot({ path: join(output, "desktop-drawing.png") });
+    // 引导页没有输入框；通过现有配置入口检查断连时仍不可发送，不连接 Agent。
+    await page
+      .getByRole("button", { name: "Agent 连接设置", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "使用已配置的 Agent", exact: true })
+      .click();
     assert.equal(
       await page.getByRole("button", { name: "发送" }).isDisabled(),
       true,

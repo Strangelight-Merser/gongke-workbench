@@ -49,7 +49,7 @@ exports.conversation = () => {
             ? { diameter: 0.014, through_all: true }
             : { length: 0.008 }),
         },
-        name: "支架特征 " + i,
+        ...(i === 1 ? {} : { name: i === 0 ? "底板拉伸" : "支架特征 " + i }),
         geometry: Array.from({ length: 80 }, (_, n) => ({
           kind: "line",
           start: [n, 0],

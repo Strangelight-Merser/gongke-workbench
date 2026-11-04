@@ -747,16 +747,17 @@ export function AppShell() {
               aria-label="辅助侧栏"
               hidden={!layout.agentOpen}
             >
-              <Button
-                className="agent-history-action"
-                appearance="subtle"
-                size="small"
-                icon={<HistoryRegular />}
-                aria-label="对话历史"
-                title="对话历史"
-                onClick={() => setHistoryOpen(true)}
-              />
               <AgentPanel
+                headerActions={
+                  <Button
+                    appearance="subtle"
+                    size="small"
+                    icon={<HistoryRegular />}
+                    aria-label="对话历史"
+                    title="对话历史"
+                    onClick={() => setHistoryOpen(true)}
+                  />
+                }
                 project={project?.path}
                 context={excluded !== selection ? selection : undefined}
                 referencePath={

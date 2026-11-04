@@ -37,11 +37,9 @@ const hash = (file) =>
     await app.evaluate(({ dialog }, p) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] });
     }, project);
-    await page
-      .getByRole("toolbar", { name: "工程命令" })
-      .getByRole("button", { name: "新建工程", exact: true })
-      .click();
-    await page.locator("footer").getByText(project, { exact: true }).waitFor();
+    await page.getByRole("button", { name: "工程操作", exact: true }).click();
+    await page.getByRole("menuitem", { name: "新建工程", exact: true }).click();
+    await page.locator("footer").getByTitle(project, { exact: true }).waitFor();
     await page
       .getByLabel("工程树", { exact: true })
       .getByText("原生 CAD", { exact: true })

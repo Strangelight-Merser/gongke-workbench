@@ -8,7 +8,7 @@ import {
   toolState,
 } from "./ToolCall";
 import { AgentErrorDetails } from "./AgentErrorDetails";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Button,
   Select,
@@ -58,7 +58,9 @@ export function AgentPanel({
   onMode,
   onTurnEnd,
   openModel,
+  headerActions,
 }: {
+  headerActions?: ReactNode;
   project?: string;
   context?: string;
   referencePath?: string;
@@ -211,6 +213,17 @@ export function AgentPanel({
           <i className={"led " + (ready ? "on" : "")} />
           {phases[active ? state.phase : "disconnected"]}
         </span>
+        <Tooltip content="新会话" relationship="label">
+          <Button
+            size="small"
+            appearance="subtle"
+            icon={<AddRegular />}
+            aria-label="新会话"
+            disabled={!ready}
+            onClick={() => perform(() => window.gongke.agent.newSession())}
+          />
+        </Tooltip>
+        {headerActions}
         <Menu>
           <MenuTrigger disableButtonEnhancement>
             <Button
@@ -292,16 +305,6 @@ export function AgentPanel({
             </MenuList>
           </MenuPopover>
         </Menu>
-        <Tooltip content="新会话" relationship="label">
-          <Button
-            size="small"
-            appearance="subtle"
-            icon={<AddRegular />}
-            aria-label="新会话"
-            disabled={!ready}
-            onClick={() => perform(() => window.gongke.agent.newSession())}
-          />
-        </Tooltip>
       </div>
       <TabList
         className="agent-modes"

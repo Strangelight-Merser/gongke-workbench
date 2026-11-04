@@ -176,17 +176,28 @@ async function trial(caseName, repetition) {
         filePaths: [image],
       });
     }, manifest.crops[caseName].path);
-    await page.getByRole("toolbar", { name: "工程命令", exact: true }).getByRole("button", { name: "打开图纸", exact: true }).click();
+    await page.getByRole("button", { name: "导入图纸", exact: true }).click();
     if (manifest.delivery === "pdf") {
-      await page.getByLabel("PDF 图纸", {exact:true}).locator("canvas").waitFor();
+      await page
+        .getByLabel("PDF 图纸", { exact: true })
+        .locator("canvas")
+        .waitFor();
     } else {
-      await page.waitForFunction(() => [...document.images].some(im => im.src.startsWith("data:image/") && im.complete && im.naturalWidth > 0));
+      await page.waitForFunction(() =>
+        [...document.images].some(
+          (im) =>
+            im.src.startsWith("data:image/") &&
+            im.complete &&
+            im.naturalWidth > 0,
+        ),
+      );
     }
     const current = await page.evaluate(() =>
       window.gongke.request("project.current"),
     );
     const drawing = current.files.find(
-      (f) => f.name === `${caseName}.${manifest.delivery === "pdf" ? "pdf" : "png"}`,
+      (f) =>
+        f.name === `${caseName}.${manifest.delivery === "pdf" ? "pdf" : "png"}`,
     ).path;
     evidence.drawing = drawing;
     await page.screenshot({ path: path.join(directory, "drawing.png") });
@@ -199,7 +210,7 @@ async function trial(caseName, repetition) {
           filePaths: [file],
         });
       }, manifest.structured[caseName].path);
-      await page.getByRole("toolbar", { name: "工程命令", exact: true }).getByRole("button", { name: "打开图纸", exact: true }).click();
+      await page.getByRole("button", { name: "导入图纸", exact: true }).click();
       await page
         .locator(".file-path", { hasText: `${caseName}-dimensions.json` })
         .waitFor();
@@ -255,14 +266,24 @@ async function trial(caseName, repetition) {
         state.initialization?.agentCapabilities?.promptCapabilities?.image;
     }
     if (manifest.reasoning) {
-      const option = state.session.configOptions.find(c => c.id === "reasoning_effort");
-      if (!option || !option.options.some(o => o.value === manifest.reasoning))
+      const option = state.session.configOptions.find(
+        (c) => c.id === "reasoning_effort",
+      );
+      if (
+        !option ||
+        !option.options.some((o) => o.value === manifest.reasoning)
+      )
         throw Error("Agent 未提供所选推理强度：" + manifest.reasoning);
-      await page.evaluate(({id, value}) => window.gongke.agent.setConfigOption(id, value),
-        {id: option.id, value: manifest.reasoning});
+      await page.evaluate(
+        ({ id, value }) => window.gongke.agent.setConfigOption(id, value),
+        { id: option.id, value: manifest.reasoning },
+      );
       state = await readState();
       write(path.join(directory, "reasoning-selection-result.json"), state);
-      if (state.session.configOptions.find(c => c.id === option.id)?.currentValue !== manifest.reasoning)
+      if (
+        state.session.configOptions.find((c) => c.id === option.id)
+          ?.currentValue !== manifest.reasoning
+      )
         throw Error("Agent 未确认推理强度");
       evidence.reasoning = manifest.reasoning;
     }
@@ -270,9 +291,12 @@ async function trial(caseName, repetition) {
       p7: "为便于复核，以槽左端圆心为 XY 原点，X 指向右侧圆筒，底面 z=0。",
       p8: "为便于复核，以鼻端底孔圆心为 XY 原点，X 指向后立板，底面 z=0。",
       p6: "以底板左前下角为原点，X 向右、Y 向后、Z 向上。",
-      robot4: "以主视图水平和竖直中心线交点为 XY 原点，轮廓置于 XY 面，X 向右、Y 向图上方，底面 Z=0，厚度沿 +Z。",
-      robot14: "以大平板左前下角为原点，主视图轮廓放在 XY 面，X 向右、Y 向图上方，凸柱沿 +Z。",
-      robot13: "以主视图左右中心为 X=0、底面为 Z=0、前端为 Y=0；主视图轮廓置于 XZ 面，Y 向后。",
+      robot4:
+        "以主视图水平和竖直中心线交点为 XY 原点，轮廓置于 XY 面，X 向右、Y 向图上方，底面 Z=0，厚度沿 +Z。",
+      robot14:
+        "以大平板左前下角为原点，主视图轮廓放在 XY 面，X 向右、Y 向图上方，凸柱沿 +Z。",
+      robot13:
+        "以主视图左右中心为 X=0、底面为 Z=0、前端为 Y=0；主视图轮廓置于 XZ 面，Y 向后。",
     }[caseName];
     let prompt =
       `根据${manifest.delivery === "dimensions" ? "这份从图纸人工提取的尺寸说明" : "这张图"}建模。只做这个零件，在 FreeCAD 中建立可编辑的原生草图和特征树，保存到当前工程 ${caseName}.FCStd。\n` +
@@ -284,10 +308,12 @@ async function trial(caseName, repetition) {
           ? `\n图纸位于 ${drawing}，请先用 project.read_image 读取图片。`
           : "");
     if (manifest.delivery === "pdf") {
-      prompt = `根据当前矢量 PDF 的这一个零件建模，保存到当前工程 ${caseName}.FCStd。原始图纸第 ${manifest.crops[caseName].source_page} 页已在本地摘为单页，文件 ${drawing}。` +
+      prompt =
+        `根据当前矢量 PDF 的这一个零件建模，保存到当前工程 ${caseName}.FCStd。原始图纸第 ${manifest.crops[caseName].source_page} 页已在本地摘为单页，文件 ${drawing}。` +
         "只使用 project.read_drawing 的矢量几何、尺寸文字与位置理解图纸；不使用图片/截图/OCR，不读其他工程或参考模型。当前参考已包含解析结果，按 next_offset 补齐该页即可，不重复读同一批。" +
         "页面坐标 pt 不等于 mm。标注文字可能含旋转、由矢量绘制的符号；结合视图边线、引线与投影关系，先列各正投影视图在页面的位置、对应的模型平面及尺寸链，再简要列关键尺寸和不确定项，自行规划原生特征。不要默认左上就是主视图，不得擅自交换指定模型轴；小尺寸与凹口不能因难解释而省略后声称完成。" +
-        coordinate + "使用构想引擎 MCP 创建草图/特征，长度传 m。一次草图提交完整轮廓和必要约束，不追求全约束；检查依据图纸，合并 host.check 条件，最后保存并简短列结果和推断。";
+        coordinate +
+        "使用构想引擎 MCP 创建草图/特征，长度传 m。一次草图提交完整轮廓和必要约束，不追求全约束；检查依据图纸，合并 host.check 条件，最后保存并简短列结果和推断。";
     }
     if (manifest.delivery === "mcp") {
       // 切离图纸，明确测试 MCP 图片工具；不同时偷偷附上 ACP 图片。

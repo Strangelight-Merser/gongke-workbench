@@ -23,7 +23,8 @@ function load(file) {
   return m.exports;
 }
 const { rowsOf, groupCompletedTools } = load("events.ts");
-const { toolState, toolResult } = load("ToolCall.tsx");
+const { toolState, toolResult, featureDescription, ToolDetails } =
+  load("ToolCall.tsx");
 const { conversation } = require("./fixtures/long-conversation.cjs");
 test("长对话成功组不吞掉失败重试、检查不符与授权", () => {
   const rows = rowsOf(conversation()),
@@ -64,10 +65,18 @@ test("MCP 文本/结构化回执与 ACP 失败状态均保留；未知不冒充�
     ),
     "unknown",
   );
-  assert.equal(toolState("completed", toolResult({
-    rawOutput: {checks:[{status:"fail"}]},
-    content:[{type:"content",content:{type:"text",text:"检查已完成"}}]
-  })), "failed");
+  assert.equal(
+    toolState(
+      "completed",
+      toolResult({
+        rawOutput: { checks: [{ status: "fail" }] },
+        content: [
+          { type: "content", content: { type: "text", text: "检查已完成" } },
+        ],
+      }),
+    ),
+    "failed",
+  );
   assert.equal(toolState("failed", {}), "failed");
   assert.equal(toolState("completed", { state: "pending" }), "unknown");
   assert.equal(toolState("in_progress", {}), "in_progress");
@@ -98,4 +107,56 @@ test("同一调用更新原行；正文和思考切断成功分组", () => {
     ),
     ["tool-group", "assistant", "thought", "tool"],
   );
+});
+
+test("特征详情优先中文名称，无名称使用类型和 SI 换算尺寸，编号仅留在原始回执", () => {
+  assert.equal(
+    featureDescription(
+      "host.feature",
+      { name: "底板拉伸", feature: { kind: "pad", length: 0.008 } },
+      { native_ref: "Feature0" },
+    ),
+    "底板拉伸",
+  );
+  assert.equal(
+    featureDescription(
+      "host.feature",
+      { name: "Feature0", feature: { kind: "pad", length: 0.008 } },
+      { native_ref: "Feature0" },
+    ),
+    "拉伸 8 mm",
+  );
+  assert.equal(
+    featureDescription("host.write", {
+      method: "model.feature",
+      params: { feature: { kind: "hole", diameter: 0.014, through_all: true } },
+    }),
+    "贯穿切孔 φ14 mm",
+  );
+  assert.equal(
+    featureDescription(
+      "host.feature",
+      { name: "旧名称" },
+      { label: "安装孔", native_ref: "Feature1" },
+    ),
+    "安装孔",
+  );
+  assert.equal(
+    featureDescription(
+      "host.feature_delete",
+      { feature_ref: "Feature0" },
+      { deleted_ref: "Feature0" },
+    ),
+    "未提供特征名称",
+  );
+  const html = require("react-dom/server").renderToStaticMarkup(
+    require("react").createElement(ToolDetails, {
+      result: { native_ref: "Feature0" },
+      raw: { native_ref: "Feature0" },
+      featureLabel: "底板拉伸",
+    }),
+  );
+  assert.match(html, /特征：底板拉伸/);
+  assert.doesNotMatch(html, /特征：Feature0/);
+  assert.match(html, /Feature0/);
 });
