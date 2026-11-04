@@ -19,8 +19,9 @@ export type Project = {
 export type DocumentRef = {
   id: string;
   title: string;
-  type: "home" | "cad" | "file" | "reducer" | "checks" | "tasks";
+  type: "home" | "cad" | "file" | "reducer";
   file?: ProjectFile;
+  preview?: boolean;
 };
 export const homeDocument: DocumentRef = {
   id: "home",
