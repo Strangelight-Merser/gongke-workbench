@@ -12,6 +12,9 @@ root = Path(os.environ["GONGKE_MODELING_ROOT"]).resolve()
 endpoint = Path(os.environ["GONGKE_FREECAD_SESSION"]).resolve()
 sys.path.insert(0, str(root))
 freecad.__path__ = [str(root / "freecad"), *freecad.__path__]
+loaded_bridge = sys.modules.get('freecad.gongke.bridge')
+if loaded_bridge and getattr(loaded_bridge, '_bridge', None):
+    loaded_bridge._bridge.close()
 for name in list(sys.modules):
     if name == "freecad.gongke" or name.startswith("freecad.gongke."):
         del sys.modules[name]
@@ -30,13 +33,3 @@ App.Console.PrintMessage("原生建模验收桥接已启动："+str(endpoint)+"\
 
 if os.environ.get("GONGKE_TRIAL_BACKGROUND") == "1":
     Gui.getMainWindow().hide()
-if os.environ.get("GONGKE_TRIAL_EXIT"):
-    from PySide import QtCore
-    def finish_trial():
-        if Path(os.environ["GONGKE_TRIAL_EXIT"]).exists():
-            for name in list(App.listDocuments()):
-                App.closeDocument(name)
-            QtCore.QCoreApplication.instance().quit()
-    GONGKE_TRIAL_TIMER = QtCore.QTimer()
-    GONGKE_TRIAL_TIMER.timeout.connect(finish_trial)
-    GONGKE_TRIAL_TIMER.start(250)

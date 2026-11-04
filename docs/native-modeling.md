@@ -36,28 +36,20 @@ pocket 切除范围二选一：`length` 表示定深；`through_all: true` 表�
 
 ## FreeCAD 沙箱外验收
 
-不在 Codex 沙箱中启动 FreeCAD（此机器 Qt 的 CPU 检测被沙箱拒绝）。在独立 FreeCAD GUI 进程使用当前 checkout。以下变量不是产品配置，只供验收隔离：
+从当前 checkout 运行，默认创建并回收独立宿主；不需要另开一个长期保留的 FreeCAD 终端：
 
 ```sh
-cd /Users/huaiyi/.codex/worktrees/model-build/gongke-workbench
-export GONGKE_MODELING_ROOT="$PWD"
-export GONGKE_FREECAD_SESSION="$(mktemp -d /tmp/gongke-native-host.XXXXXX)/session.json"
-/Applications/FreeCAD.app/Contents/MacOS/FreeCAD "$PWD/tests/e2e/native_modeling_host.FCMacro"
-```
-
-等控制台出现“原生建模验收桥接已启动”，在另一终端设置同一个 `GONGKE_FREECAD_SESSION`（用上一终端的完整路径），然后：
-
-```sh
-cd /Users/huaiyi/.codex/worktrees/model-build/gongke-workbench
-/private/tmp/gongke-modeling-venv/bin/python tests/e2e/native_modeling_freecad.py \
-  --endpoint "$GONGKE_FREECAD_SESSION" \
+python tests/e2e/native_modeling_freecad.py \
+  --freecad /Applications/FreeCAD.app/Contents/MacOS/FreeCAD \
   --study /Users/huaiyi/Documents/gongke-workbench/out/drawing-to-model-study \
   --output "out/native-modeling-$(date +%Y%m%d-%H%M%S)"
 ```
 
+`--endpoint` 仅用于明确借用已有隔离桥接，此时脚本不关闭借来的宿主。省略时，本轮 `host/process.json` 记录真实 PID；成功、异常和 Ctrl-C 都回收本轮进程，保留日志和文件。不要用 `open -n` 或进程名批量清理。
+
 Python 环境需要项目 `[dev]` 依赖；也可用另一个已安装依赖的 Python。脚本创建自己的应用服务、工程与 MCP 写绑定，不改其他桌面工程。宿主启动记录实际模块路径、hash 和版本；源码改变后必须重启验收宿主。每步通过真实 SDK、绑定 MCP、应用服务、HTTP 和 GUI 主线程执行，**不会导入参考 STEP 作为模型**。
 
-产物：`project/p7.FCStd`、`project/p8.FCStd`、`acceptance.json`、逐次 `calls.jsonl`、`service.log` 及应用任务收据。断言失败返回非零并保留现场。
+产物：`project/p7.FCStd`、`project/p8.FCStd`、`acceptance.json`、逐次 `calls.jsonl`、`service.log` 及应用任务收据。断言失败返回非零并保留文件证据；本轮宿主仍会关闭。
 
 验收包括：
 

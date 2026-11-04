@@ -20,6 +20,7 @@ let agent: AgentClient;
 let agentMode: "model" | "practice" = "model";
 const allowed = new Set([
   "system.status",
+  "freecad.connect",
   "tools.list",
   "mcp.configure",
   "project.create",
@@ -74,6 +75,8 @@ function startService() {
     {
       ...process.env,
       PYTHONUNBUFFERED: "1",
+      ...(app.isPackaged ? { GONGKE_FREECAD_MODULE_ROOT: join(process.resourcesPath, "host-module") } : {}),
+      ...(app.isPackaged && existsSync(join(process.resourcesPath, "freecad", "bin", "FreeCAD.exe")) ? { GONGKE_FREECAD_EXE: join(process.resourcesPath, "freecad", "bin", "FreeCAD.exe") } : {}),
       ...(app.isPackaged ? {} : { PYTHONPATH: root }),
     },
   );
@@ -121,7 +124,10 @@ else {
         backgroundThrottling: process.env.GONGKE_TRIAL_BACKGROUND !== "1",
       },
     });
-    installCadEmbedding(window);
+    installCadEmbedding(window, (executable) => service.request("freecad.connect", { executable }), () => { quitting = false; });
+    window.on("close", (event) => {
+      if (!quitting) { event.preventDefault(); app.quit(); }
+    });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => event.preventDefault());
     ipcMain.handle("command", async (event, method, params = {}) => {
@@ -282,13 +288,34 @@ else {
     await window.loadFile(join(__dirname, "../dist/index.html"));
   });
   app.on("window-all-closed", () => app.quit());
+  let serviceStopped = false;
+  app.on("will-quit", (event) => {
+    if (serviceStopped) return;
+    event.preventDefault();
+    void service.stop().then(() => { serviceStopped = true; app.quit(); });
+  });
   let quitting = false;
+  let preparingQuit = false;
   app.on("before-quit", (event) => {
     if (quitting) return;
     event.preventDefault();
-    quitting = true;
-    Promise.allSettled([agent?.disconnect(), service?.stop()]).then(() =>
-      app.quit(),
-    );
+    if (preparingQuit) return;
+    preparingQuit = true;
+    void (async () => {
+      try {
+        const result = await service.request("system.prepare_close");
+        if (result.documents?.length) {
+          await dialog.showMessageBox(window, { type: "warning", message: "FreeCAD 中有未保存的文档",
+            detail: result.documents.join("\n") + "\n请在 FreeCAD 中保存或关闭这些文档，然后再退出。", buttons: ["返回工作台"] });
+          return;
+        }
+        await agent?.disconnect();
+        quitting = true;
+        // 窗口嵌入模块可能仍在处理原生关闭，服务在窗口关闭后结束。
+        app.quit();
+      } catch (error) {
+        await dialog.showMessageBox({ type: "warning", message: "无法确认 FreeCAD 退出状态", detail: String(error), buttons: ["返回工作台"] });
+      } finally { preparingQuit = false; }
+    })();
   });
 }

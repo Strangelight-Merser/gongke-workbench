@@ -37,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File desktop/native/embed/run-prototype.ps1
 
 源码脚本发布自包含辅助进程、构建桌面代码，再打开独立 Electron 原型，不需要 Python 服务或 Agent。首次没有 `node_modules` 时执行 `npm ci`。发布目录 `publish/` 中的文件要整体携带；“单文件”主程序仍可能伴随 Windows Desktop 原生依赖，不能只拷贝 EXE。
 
-1. 默认先选择 FreeCAD 安装。检测随包 `resources/freecad/bin/FreeCAD.exe`、开发环境 `GONGKE_FREECAD_EXE`、注册表 App Paths/卸载项和常见安装目录。未检测到时点“选择程序”，只能选择 `FreeCAD.exe` 或 `SLDWORKS.exe`。
+1. FreeCAD 必须从完整构想引擎启动与嵌入，走桥接单实例管理；独立窗口原型只验证 SOLIDWORKS/合成窗口路径。完整应用中选择 FreeCAD 安装。检测随包 `resources/freecad/bin/FreeCAD.exe`、开发环境 `GONGKE_FREECAD_EXE`、注册表 App Paths/卸载项和常见安装目录。未检测到时点“选择程序”，只能选择 `FreeCAD.exe` 或 `SLDWORKS.exe`。
 2. 点“启动”，等 CAD 启动完毕，点“刷新窗口”。也可直接选择已运行的 CAD 主窗口。窗口列表显示标题和 PID，供与桥的发现记录比对。
 3. 选择“嵌入”或“自动停靠”，点“进入建模”。人工自由建模完全在原生 CAD 中进行。
 4. `Ctrl+Alt+F6` 在 CAD 与工作台间切换；也可点击外围输入区或“返回 CAD”。快捷键仅在本工作流处于前台时注册；占用情况见 `shortcut` 状态。
@@ -51,7 +51,7 @@ powershell -ExecutionPolicy Bypass -File desktop/native/embed/test-windows.ps1
 powershell -ExecutionPolicy Bypass -File desktop/native/embed/run-prototype.ps1 -Fixture
 ```
 
-合成程序名为 `fixture/publish/FreeCAD.exe`，标题明确写着 `synthetic fixture (not FreeCAD)`，不要安装到真实 CAD 目录。自动冒烟检查实际 HWND parent/style、窗口移动缩放、最小化隐藏、释放与进程退出，输出 `out/embed-fixture/result.json`；不把截图或协议替身写成 FreeCAD/SOLIDWORKS 通过。
+合成程序名为 `fixture/publish/SLDWORKS.exe`，标题明确写着 `synthetic fixture (not FreeCAD)`，不要安装到真实 CAD 目录。自动冒烟检查实际 HWND parent/style、窗口移动缩放、最小化隐藏、释放与进程退出，输出 `out/embed-fixture/result.json`；不把截图或协议替身写成 FreeCAD/SOLIDWORKS 通过。
 
 ## 窗口契约
 

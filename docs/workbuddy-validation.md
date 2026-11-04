@@ -8,7 +8,7 @@
 
 始终使用当前 checkout；不要直接复制其他验收文档中的旧 worktree 路径。三个终端使用同一组变量。`RUN` 必须是新目录；修改源码后停止本轮独立进程，换新 `RUN` 重启，保留旧证据。
 
-终端 A，准备工程并启动独立 FreeCAD：
+终端 A，准备工程并启动本轮 FreeCAD 与 Electron：
 
 ```sh
 cd /Users/huaiyi/.codex/worktrees/7658/gongke-workbench
@@ -16,31 +16,25 @@ export ROOT="$PWD"
 export RUN="$ROOT/out/workbuddy-$(date +%Y%m%d-%H%M%S)"
 export GONGKE_PYTHON=/private/tmp/gongke-modeling-venv/bin/python
 export GONGKE_MODELING_ROOT="$ROOT"
-export GONGKE_FREECAD_SESSION="$RUN/host/session.json"
-export GONGKE_DESKTOP_USER_DATA="$RUN/desktop"
+export GONGKE_FREECAD_SESSION="$RUN/runtime/host/session.json"
+export GONGKE_DESKTOP_USER_DATA="$RUN/runtime/desktop"
 "$GONGKE_PYTHON" tests/e2e/workbuddy_prepare.py \
   --study /Users/huaiyi/Documents/gongke-workbench/out/drawing-to-model-study \
   --output "$RUN"
-mkdir -p "$RUN/host" "$RUN/screenshots"
-/Applications/FreeCAD.app/Contents/MacOS/FreeCAD \
-  "$ROOT/tests/e2e/native_modeling_host.FCMacro" > "$RUN/freecad.log" 2>&1
+mkdir -p "$RUN/screenshots"
+(cd desktop && npm run build) > "$RUN/desktop-build.log" 2>&1
+"$GONGKE_PYTHON" scripts/run_desktop_acceptance.py --output "$RUN/runtime" --timeout 7200
 ```
 
 `GONGKE_PYTHON` 必须指向已经安装当前项目依赖的 Python 3.11+ 虚拟环境；不存在时先在沙箱外创建独立环境并安装 `.[desktop]`。保留虚拟环境解释器路径，不把它替换成符号链接最终指向的系统解释器。准备脚本把尺寸、检查条件和原图逐字节复制到 `project/references/`，原材料保持不变，`preparation.json` 保存来源与哈希。
 
-FreeCAD 菜单“视图 → 面板 → 报告视图”中应出现“原生建模验收桥接已启动”。检查 `$RUN/host/bootstrap.json` 的 `root` 为当前 checkout，三个源码路径也在当前 checkout。桥接文件不存在或加载了旧安装工作台就停止本轮，回传日志；不要改个人工作台配置。截图 `00-freecad-host.png` 保留 FreeCAD 窗口和启动信息。
+FreeCAD 菜单“视图 → 面板 → 报告视图”中应出现“原生建模验收桥接已启动”。检查 `$RUN/runtime/host/bootstrap.json` 的 `root` 为当前 checkout，三个源码路径也在当前 checkout。桥接文件不存在或加载了旧安装工作台就停止本轮，回传日志；不要改个人工作台配置。截图 `00-freecad-host.png` 保留 FreeCAD 窗口和启动信息。
 
-终端 B，复制终端 A 已展开的 `ROOT`、`RUN` 及四个环境变量，再运行：
+启动器使用全新 userData 与桥接端点，不需要关闭其他窗口。关闭本轮桌面、Ctrl-C 或达到 `--timeout` 后，只按启动句柄回收本轮进程；验收文档应在结束前保存，文件证据保留。首次安装依赖才需要 `npm ci`。
 
-```sh
-cd "$ROOT/desktop"
-npm run build > "$RUN/desktop-build.log" 2>&1
-npm start > "$RUN/desktop.log" 2>&1
-```
+启动后在构想引擎顶部点击“打开工程”，选择 **`$RUN/project` 目录**。底栏应显示同一绝对路径、“就绪”和“FreeCAD”。保持此工程打开，不另起 `native_modeling_freecad.py`：后者会启动自己的服务和工程，不能证明 WorkBuddy 操作了桌面当前工程。
 
-首次安装依赖才需要 `npm ci`。启动前保存并退出其他构想引擎窗口，避免单实例锁把本次启动转交给旧进程；不要终止其他正在运行的工程任务。启动后在构想引擎顶部点击“打开工程”，选择 **`$RUN/project` 目录**。底栏应显示同一绝对路径、“就绪”和“FreeCAD”。保持此工程打开，不另起 `native_modeling_freecad.py`：后者会启动自己的服务和工程，不能证明 WorkBuddy 操作了桌面当前工程。
-
-终端 C 同样复制变量，用来运行下面的配置、探针和回执命令。桌面服务状态目录固定为 `$RUN/desktop/state`；`GONGKE_FREECAD_SESSION` 必须在启动 Electron 前设置，不能只设置给 MCP 客户端。
+终端 C 同样复制变量，用来运行下面的配置、探针和回执命令。桌面服务状态目录固定为 `$RUN/runtime/desktop/state`；`GONGKE_FREECAD_SESSION` 必须在启动 Electron 前设置，不能只设置给 MCP 客户端。
 
 ## 第一轮：默认只读接入
 
@@ -93,7 +87,7 @@ cd /private/tmp
 ```sh
 cd "$ROOT"
 "$GONGKE_PYTHON" -m gongke_app workbuddy \
-  --state-dir "$RUN/desktop/state" --project "$RUN/project" \
+  --state-dir "$RUN/runtime/desktop/state" --project "$RUN/project" \
   --allow-writes --confirm-user-config > "$RUN/configure-write.json"
 cd /private/tmp
 "$GONGKE_PYTHON" "$ROOT/tests/e2e/workbuddy_acceptance.py" probe \
@@ -169,7 +163,7 @@ cd "$ROOT"
 
 ## 失败回传与验收记录
 
-每轮回传 `$RUN` 的绝对路径、当前 checkout/提交、WorkBuddy 实际版本、完成到哪一步、第一处失败。附 `preparation.json`、`host/bootstrap.json`、两个 probe JSON 和 stderr、`workbuddy-receipts.json`（已生成时）、FreeCAD/Electron 日志、对应截图以及模型文件。共享前遮盖 WorkBuddy 账号信息；不要回传 `$RUN/desktop/state/service.json` 中的服务令牌。
+每轮回传 `$RUN` 的绝对路径、当前 checkout/提交、WorkBuddy 实际版本、完成到哪一步、第一处失败。附 `preparation.json`、`host/bootstrap.json`、两个 probe JSON 和 stderr、`workbuddy-receipts.json`（已生成时）、FreeCAD/Electron 日志、对应截图以及模型文件。共享前遮盖 WorkBuddy 账号信息；不要回传 `$RUN/runtime/desktop/state/service.json` 中的服务令牌。
 
 针对故障补充：
 

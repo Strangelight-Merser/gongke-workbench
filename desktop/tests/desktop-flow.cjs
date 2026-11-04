@@ -1,5 +1,5 @@
 // 真实 Electron + Python 服务，选择目录通过原生 dialog 替身，工程动作不模拟。
-const { _electron: electron } = require("playwright");
+const { electron } = require("./helpers/owned-electron.cjs");
 const {
   mkdirSync,
   writeFileSync,

@@ -1,5 +1,5 @@
 // 沙箱外真实桌面验收。工程写入只由真实 dsh 发起；自动点击授权仅用于隔离工程试验。
-const { _electron: electron } = require("playwright");
+const { electron } = require("./helpers/owned-electron.cjs");
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");

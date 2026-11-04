@@ -1,5 +1,5 @@
 // 已打开隔离 FreeCAD 教学轴和关联 TechDraw 页；通过真实桌面控件修订。
-const { _electron: electron } = require("playwright");
+const { electron } = require("./helpers/owned-electron.cjs");
 const fs = require("node:fs"),
   path = require("node:path"),
   crypto = require("node:crypto"),

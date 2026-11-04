@@ -1,5 +1,5 @@
 // 仅用于合成窗口；真实 CAD 菜单、草图与文档保存另按 README 操作。
-const { _electron: electron } = require('playwright');
+const { electron } = require('../../tests/helpers/owned-electron.cjs');
 const { readFileSync, mkdirSync, writeFileSync } = require('node:fs');
 const { resolve, join } = require('node:path');
 const assert = require('node:assert/strict');
@@ -7,9 +7,9 @@ if (process.platform !== 'win32') throw new Error('此脚本必须在 Windows �
 const root = resolve(__dirname, '../..');
 const output = join(root, '../out/embed-fixture');
 mkdirSync(output, { recursive: true });
-const fixture = join(__dirname, 'fixture/publish/FreeCAD.exe');
+const fixture = join(__dirname, 'fixture/publish/SLDWORKS.exe');
 const observations = [];
-let application;
+let application, launchedPid;
 (async () => {
   application = await electron.launch({ args: [join(root, 'dist-electron/embed/prototype.cjs')], env: {
     ...process.env, GONGKE_EMBED_TEST_DATA: output, GONGKE_FREECAD_EXE: fixture,
@@ -20,6 +20,7 @@ let application;
   assert(discovered.installations.some(i => i.path.toLowerCase() === fixture.toLowerCase()));
   const install = discovered.installations.find(i => i.path.toLowerCase() === fixture.toLowerCase());
   const launched = await call('launch', install.id);
+  launchedPid = launched.pid;
   let target;
   for (let i = 0; i < 100 && !target; i++) {
     target = (await call('discover')).windows.find(w => w.pid === launched.pid);
@@ -61,7 +62,8 @@ let application;
   console.log(`合成窗口嵌入/停靠、移动缩放、最小化、释放、关闭通过：${output}`);
 })().catch(async error => {
   writeFileSync(join(output,'result.json'),JSON.stringify({scope:'synthetic-window-only',passed:false,error:String(error),observations},null,2));
-  // 不强杀 CAD；失败时保留可见原生窗口，便于诊断与关闭。
-  if(application) { try { const page=await application.firstWindow(); await page.evaluate(()=>window.cadEmbed.detach()); } catch {} }
+  // 仅关闭本轮 helper 返回的合成窗口 PID，不处理任何实际 CAD。
+  if (launchedPid) { try { process.kill(launchedPid, 'SIGTERM'); } catch (e) { if (e.code !== 'ESRCH') console.error(e); } }
+  if (application) await application.close().catch(e => console.error(e));
   console.error(error); process.exitCode=1;
 });

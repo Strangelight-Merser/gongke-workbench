@@ -19,6 +19,7 @@ import FreeCADGui as Gui
 from PySide import QtCore
 
 from freecad.gongke import native_shaft
+from gongke_core.host_session import FileLock, endpoint_path, process_identity, remove_session
 
 
 # 校核方法或条件结论改变时递增；模型未变不代表旧方法的结果仍然适用。
@@ -41,6 +42,15 @@ def _same_values(actual, expected):
 
 class DocumentState:
     """会话版本单调增加，包括手改和 Undo；不写入会污染撤销栈的缓存属性。"""
+
+    def close_managed_host(self):
+        documents = [doc.Label for doc in App.listDocuments().values()
+                     if not doc.FileName or Gui.getDocument(doc.Name).Modified]
+        if documents:
+            return {"closed": False, "documents": documents}
+        # 先回复 HTTP，再让 Qt 执行原生退出（仍保留原生保存检查）。
+        QtCore.QTimer.singleShot(200, Gui.getMainWindow().close)
+        return {"closed": True, "documents": []}
 
     def __init__(self, results_dir):
         self.host_instance = str(uuid.uuid4())
@@ -511,8 +521,13 @@ class Bridge:
         self.token = secrets.token_urlsafe(32)
         self.jobs = None
         self.jobs_lock = threading.Lock()
-        self.endpoint = Path(endpoint or os.environ.get("GONGKE_FREECAD_SESSION",
-                              "~/.local/share/gongke/freecad-session.json")).expanduser()
+        self.endpoint = Path(endpoint).expanduser() if endpoint else endpoint_path()
+        self.instance_lock = FileLock(self.endpoint.with_suffix(".bridge.lock"))
+        self.instance = os.environ.get("GONGKE_FREECAD_INSTANCE") or uuid.uuid4().hex
+        self.managed = os.environ.get("GONGKE_FREECAD_MANAGED") == "1"
+        self.clients = {}
+        self.lifecycle_lock = threading.Lock()
+        self.closing = False
         self.state = DocumentState(self.endpoint.parent / "results")
         bridge = self
 
@@ -546,11 +561,13 @@ class Bridge:
         self.timer.start(20)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.endpoint.parent.mkdir(parents=True, exist_ok=True)
-        data = {"url": f"http://127.0.0.1:{self.server.server_port}", "token": self.token, "pid": os.getpid()}
-        fd = os.open(self.endpoint, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
-        os.chmod(self.endpoint, 0o600)
+        data = {"url": f"http://127.0.0.1:{self.server.server_port}", "token": self.token, "pid": os.getpid(),
+                "process": process_identity(os.getpid()), "instance": self.instance, "managed": self.managed}
+        temporary = self.endpoint.with_name("." + self.endpoint.name + "-" + self.instance)
+        fd = os.open(temporary, os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as handle:
             json.dump(data, handle)
+        temporary.replace(self.endpoint)
 
     def main_call(self, method, **params):
         reply = queue.Queue(maxsize=1)
@@ -589,6 +606,33 @@ class Bridge:
             self._draining = False
 
     def dispatch(self, method, params):
+        if method.startswith("lifecycle."):
+            with self.lifecycle_lock:
+                if method == "lifecycle.identity":
+                    return {"pid": os.getpid(), "instance": self.instance}
+                if method == "lifecycle.acquire":
+                    if self.closing:
+                        raise ValueError("FreeCAD 正在退出，请稍后连接")
+                    identity = params["process"]
+                    if process_identity(identity["pid"]) != identity:
+                        raise ValueError("连接方进程身份已变化")
+                    self.clients[params["client"]] = identity
+                    return {"connected": True}
+                if method == "lifecycle.release":
+                    client = params["client"]
+                    if client not in self.clients:
+                        return {"closed": False, "documents": []}
+                    self.clients = {key: value for key, value in self.clients.items()
+                                    if process_identity(value["pid"]) == value}
+                    if not self.managed or any(key != client for key in self.clients):
+                        self.clients.pop(client, None)
+                        return {"closed": False, "documents": []}
+                    result = self.main_call("close_managed_host")
+                    if result["closed"]:
+                        self.closing = True
+                        self.clients.pop(client, None)
+                    return result
+                raise ValueError("未知宿主生命周期命令")
         if method == "inspect_host":
             return self.main_call("inspect_host", **params)
         if method in ("run_analysis", "get_job", "cancel_job"):
@@ -641,8 +685,8 @@ class Bridge:
         self.server.shutdown()
         self.server.server_close()
         App.removeDocumentObserver(self.state)
-        if self.endpoint.exists() and json.loads(self.endpoint.read_text()).get("token") == self.token:
-            self.endpoint.unlink()
+        remove_session(self.endpoint, self.token)
+        self.instance_lock.close()
 
 
 _bridge = None

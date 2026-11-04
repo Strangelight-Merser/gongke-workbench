@@ -1,5 +1,5 @@
 // 真实 Electron/Python/文件；Agent 协议和窗口联调见 acp-flow.cjs。
-const { _electron: electron } = require("playwright");
+const { electron } = require("./helpers/owned-electron.cjs");
 const fs = require("node:fs"),
   path = require("node:path");
 const assert = require("node:assert/strict");

@@ -61,3 +61,5 @@ Agent 接入由 Electron 的 ACP 客户端负责；Python 服务不再接收模�
 完整参数、CLI 迁移、协议取舍与官方资料见 [Agent 接口](../docs/agent-api.md) 和 [绑定决定](../docs/project-bound-mcp.md)。
 
 任意零件的只读建模自查使用统一 `host.context`、`host.inspect`、`host.section`、`host.measure`、`host.check`；FreeCAD 与 SolidWorks 共用文档/对象/单位/结果契约，工具通过现有桌面服务和绑定工程的 MCP 提供。详见 [模型检查契约与复跑](../docs/model-inspection.md)。
+
+FreeCAD 的 `freecad.connect` 与 `system.prepare_close` 由同一个宿主管理器执行；会话发现、单实例锁、进程归属、未保存文档和验收清理契约见 [FreeCAD 生命周期](../docs/freecad-lifecycle.md)。

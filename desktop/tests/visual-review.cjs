@@ -1,6 +1,6 @@
 // npm run build && node tests/visual-review.cjs [输出目录]
 // 本脚本隔离 Electron userData；生产界面 + 明确标记的模拟服务/CAD，仅供视觉评审。
-const { _electron: electron } = require("playwright");
+const { electron } = require("./helpers/owned-electron.cjs");
 const fs = require("node:fs"),
   path = require("node:path"),
   os = require("node:os"),

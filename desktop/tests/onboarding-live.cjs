@@ -1,6 +1,6 @@
 // 真实 Electron + 已安装 dsh + 真实模型；独立教学工程，只批准一次只读工程调用。
 // 会产生模型 API 用量，不在 npm test 中自动运行。
-const { _electron: electron } = require("playwright");
+const { electron } = require("./helpers/owned-electron.cjs");
 const { mkdirSync, writeFileSync } = require("node:fs");
 const { resolve, join } = require("node:path");
 const assert = require("node:assert/strict");
@@ -17,11 +17,12 @@ mkdirSync(output, { recursive: true });
       GONGKE_AGENT_CONFIG: "",
     },
   });
-  const page = await app.firstWindow();
-  page.setDefaultTimeout(30000);
+  let page;
   const errors = [];
-  page.on("pageerror", (e) => errors.push(e.message));
   try {
+    page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    page.on("pageerror", (e) => errors.push(e.message));
     await page.waitForFunction(() => !!window.gongke?.onboarding);
     await page.evaluate(
       async (path) => {

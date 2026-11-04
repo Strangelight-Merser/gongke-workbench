@@ -6,7 +6,7 @@ import { contentRect } from "./geometry.cjs";
 import type { Bounds, EmbedState } from "./types.js";
 
 const empty: EmbedState = { supported: false, attached: null, pendingPids: [] };
-export function installCadEmbedding(window: BrowserWindow) {
+export function installCadEmbedding(window: BrowserWindow, connectFreeCAD: (executable: string) => Promise<{ pid: number }>, cancelQuit: () => void) {
   let transport: EmbedTransport | undefined;
   let bounds: Bounds = { x: 0, y: 0, width: 0, height: 0, visible: false };
   let failed = false, allowClose = false, preparingClose = false, closing = false;
@@ -67,6 +67,18 @@ export function installCadEmbedding(window: BrowserWindow) {
       } finally { nativeDialog = false; await sync(); }
     }
     if (!["status", "discover", "launch", "attach", "focus", "detach", "closeCad", "diagnose"].includes(method)) throw new Error("不支持的窗口操作");
+    if (method === "launch") {
+      const found = await helper().request<{ installations: { id: string; kind: string; path: string }[] }>("discover");
+      const installation = found.installations.find(item => item.id === params.id);
+      if (installation?.kind === "freecad") return connectFreeCAD(installation.path);
+    }
+    if (method === "attach") {
+      const found = await helper().request<{ windows: { pid: number; kind: string }[] }>("discover");
+      if (found.windows.find(item => item.pid === params.pid)?.kind === "freecad") {
+        const managed = await connectFreeCAD("");
+        if (managed.pid !== params.pid) throw new Error("只能嵌入已连接的 FreeCAD 桥接实例");
+      }
+    }
     const value = await helper().request(method, params);
     if (method === "attach") await sync();
     return value;
@@ -96,6 +108,7 @@ export function installCadEmbedding(window: BrowserWindow) {
       } catch (error) {
         const result = await dialog.showMessageBox(window, { type: "warning", message: "窗口组件未响应，请先确认 CAD 已恢复为独立窗口。", detail: String(error), buttons: ["返回工作台", "CAD 已恢复，退出工作台"], defaultId: 0, cancelId: 0 });
         if (result.response === 1) { allowClose = true; window.close(); }
+        else cancelQuit();
       } finally { preparingClose = false; }
     })();
   });
@@ -112,6 +125,7 @@ export function installCadEmbedding(window: BrowserWindow) {
   const cancelClosing = (_event: Electron.IpcMainEvent) => {
     if (_event.senderFrame === window.webContents.mainFrame) {
       closing = false;
+      cancelQuit();
       transport?.request("cancelClose").catch(error => send({ event: "failure", message: String(error) }));
     }
   };

@@ -129,3 +129,5 @@ powershell -ExecutionPolicy Bypass -File desktop/native/embed/test-windows.ps1
 原型提供“嵌入”和“自动停靠”对比。完整主窗口重挂在本机已实现并编译，但菜单、模态、焦点、混合 DPI 和异常恢复尚需真实 Windows CAD 验证。具体架构、来源、逐项操作与诊断回传见 [Windows CAD 编辑区说明](native/embed/README.md)。
 
 正常关闭走 CAD 自己的保存提示；取消后点击“取消退出”继续。异常退出优先恢复可见的 CAD 独立窗口，保留未保存文档，不强杀。`Ctrl+Alt+F6` 切换焦点。“保存诊断”记录窗口状态；它不包含模型数据，也不证明原生桥已连接。
+
+FreeCAD 连接、Windows 嵌入和应用退出共用 Python 宿主管理器。新增桥接源码随包放在 `host-module/`；验收入口及未完成的 Windows 真机检查见 [FreeCAD 生命周期](../docs/freecad-lifecycle.md)。
