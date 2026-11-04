@@ -45,14 +45,6 @@ export function FreeCadInspector({
     [page, setPage] = useState(""),
     [operation, setOperation] = useState(""),
     [connectionError, setConnectionError] = useState("");
-  useEffect(() => {
-    onContext({
-      ...context,
-      modified:
-        scene?.revision === context.revision ? scene?.modified : undefined,
-      selected_object: selected,
-    });
-  }, [context, scene, selected, onContext]);
   const [locateRequest, setLocateRequest] = useState(0);
   const select = useCallback(
     (id: string) => {
@@ -76,6 +68,26 @@ export function FreeCadInspector({
   const locatedRequest = useRef<number | undefined>(undefined);
   const [features, setFeatures] = useState<Data[]>([]),
     [detail, setDetail] = useState<Data | null>(null);
+  useEffect(() => {
+    const chain: string[] = [];
+    let ref = selected.split(".")[0];
+    const seen = new Set<string>();
+    while (ref && !seen.has(ref)) {
+      seen.add(ref);
+      const feature = features.find((f) => f.native_ref === ref);
+      chain.unshift(feature?.label || ref);
+      ref = feature?.parent || "";
+    }
+    onContext({
+      ...context,
+      modified:
+        scene?.revision === context.revision ? scene?.modified : undefined,
+      selected_object: selected,
+      object_path: chain,
+      unit: scene?.revision === context.revision ? scene?.unit : undefined,
+    });
+  }, [context, scene, selected, features, onContext]);
+
   const focus = useRef("");
   const focusDocument = useRef<Data | undefined>(undefined);
   const live = useRef<ReturnType<typeof serialRefresh> | null>(null);

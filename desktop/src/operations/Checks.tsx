@@ -15,8 +15,10 @@ export function Checks({
   tasks,
   openCad,
   locate,
+  problemsOnly = false,
 }: {
   tasks: Data[];
+  problemsOnly?: boolean;
   openCad(): void;
   locate(target: ModelTarget): Promise<void>;
 }) {
@@ -25,7 +27,14 @@ export function Checks({
   const reviews = tasks.filter(
     (t) => t.result && /review|inspect|check/.test(t.kind || t.title || ""),
   );
-  const checks: ModelCheck[] = reviews.flatMap((t) => t.result.checks || []);
+  const allChecks: ModelCheck[] = reviews.flatMap((t) => t.result.checks || []);
+  const checks = problemsOnly
+    ? allChecks.filter((c) => c.ok !== true)
+    : allChecks;
+  if (problemsOnly && allChecks.length && !checks.length)
+    return (
+      <p className="pane-empty">没有检查不符项 · {allChecks.length} 项已通过</p>
+    );
   if (!checks.length && !reviews.length)
     return (
       <Empty

@@ -91,6 +91,8 @@
   padding: 4px;
 }
 .zoom-bar .fui-Button {
+  white-space: nowrap;
+  flex-shrink: 0;
   min-width: 32px;
 }
 .cad-editor {

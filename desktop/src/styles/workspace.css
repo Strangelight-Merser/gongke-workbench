@@ -34,56 +34,8 @@ textarea {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-.app-title {
-  height: 36px;
-  min-height: 36px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 0 16px 0 84px;
-  -webkit-app-region: drag;
-  border-bottom: 1px solid var(--line);
-  font-size: var(--text-small);
-}
-.app-title strong {
-  font-size: var(--text-ui);
-  font-weight: 600;
-}
-.app-title span {
-  color: var(--muted);
-}
-.app-toolbar {
-  min-height: 42px;
-  padding: 4px 12px !important;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
-}
 .toolbar-space {
   flex: 1;
-}
-.toolbar-project {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  min-width: 0;
-  max-width: 36%;
-  padding: 0 8px;
-}
-.toolbar-project strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.toolbar-project > span {
-  flex-shrink: 0;
-  font-size: var(--text-small);
-  color: var(--muted);
-}
-.toolbar-divider {
-  height: 20px;
-  width: 1px;
-  background: var(--line);
-  margin: 0 8px;
 }
 .workspace-grid {
   flex: 1;
@@ -422,4 +374,309 @@ p {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* Workbench: 固定外框，内容区独立滚动。 */
+.workbench-titlebar {
+  height: 40px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+}
+.mac-titlebar {
+  padding-left: 84px;
+}
+.workbench-titlebar button,
+.workbench-titlebar [role="toolbar"] {
+  -webkit-app-region: no-drag;
+}
+.app-brand {
+  flex: 1;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.workbench-titlebar .command-center {
+  width: min(40vw, 560px);
+  min-height: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  justify-content: flex-start;
+  color: var(--muted);
+}
+.workbench-titlebar > [role="toolbar"] {
+  flex: 1;
+  justify-content: flex-end;
+  padding: 0;
+}
+.workbench-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.activity-bar {
+  width: 48px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  border-right: 1px solid var(--line);
+  padding-block: 4px;
+}
+.activity-bar > .fui-Button {
+  height: 46px;
+  min-width: 0;
+  border-radius: 0;
+  border-left: 2px solid transparent;
+}
+.activity-bar > .fui-Button[aria-pressed="true"] {
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+.activity-bar .fui-Button__icon {
+  font-size: 24px;
+}
+.workspace-grid {
+  min-width: 0;
+}
+.explorer-heading {
+  padding: 0 8px 0 12px;
+  gap: 4px;
+}
+.explorer-heading strong {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.view-actions {
+  display: flex;
+}
+.view-actions .fui-Button {
+  min-width: 24px;
+  width: 24px;
+  height: 26px;
+  padding: 0;
+}
+.project-name {
+  padding: 8px 12px;
+}
+.revision-mark {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.editor-groups {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+}
+.editor-groups.is-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.editor-group {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.editor-group + .editor-group {
+  border-left: 1px solid var(--line);
+}
+.editor-heading {
+  display: flex;
+  min-width: 0;
+  height: 38px;
+  background: var(--frame);
+  border-bottom: 1px solid var(--line);
+}
+.editor-heading .document-tabs {
+  flex: 1;
+  min-width: 0;
+}
+.editor-heading > .fui-Button {
+  min-width: 30px;
+  width: 30px;
+  border-radius: 0;
+}
+.document-tab.preview .fui-Tab__content {
+  font-style: italic;
+}
+.breadcrumbs {
+  height: 27px;
+  min-height: 27px;
+  padding: 2px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.breadcrumbs span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bottom-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+.panel-tabs {
+  display: flex;
+  align-items: center;
+  height: 35px;
+  min-height: 35px;
+  padding: 0 8px;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.panel-tabs .fui-Tab {
+  height: 34px;
+  padding: 0 6px;
+}
+.panel-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.panel-content .checks-page {
+  padding: 12px 16px;
+}
+.panel-content .section-bar {
+  margin-bottom: 8px;
+}
+.panel-content .section-bar h2 {
+  display: none;
+}
+.panel-content .empty {
+  padding: 16px;
+}
+.panel-content .empty h2 {
+  font-size: 14px;
+}
+.output-log {
+  white-space: pre-wrap;
+  padding: 12px 16px;
+  font:
+    12px/1.7 ui-monospace,
+    monospace;
+}
+.resize-handle.horizontal {
+  height: 5px;
+  min-height: 5px;
+  cursor: row-resize;
+  border-inline: 0;
+  border-top: 1px solid var(--line);
+}
+.status-agent {
+  border: 0;
+  background: none;
+  color: var(--ink);
+  padding: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+.quick-picker.fui-DialogSurface {
+  position: fixed;
+  top: 48px;
+  margin: 0 auto;
+  padding: 8px;
+  width: 560px;
+  max-width: 90vw;
+  border-radius: 6px;
+}
+.quick-picker .fui-DialogBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.quick-picker .fui-Input {
+  width: 100%;
+}
+.quick-results {
+  overflow: auto;
+  max-height: 360px;
+}
+.quick-results [role="option"] {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.quick-results [aria-selected="true"] {
+  background: var(--colorNeutralBackground1Selected);
+}
+.quick-results small {
+  display: block;
+  color: var(--colorNeutralForeground3);
+  overflow-wrap: anywhere;
+}
+.quick-results kbd {
+  color: var(--colorNeutralForeground3);
+  white-space: nowrap;
+  font-size: 11px;
+}
+.agent-slot {
+  position: relative;
+}
+.agent-history-action.fui-Button {
+  position: absolute;
+  z-index: 2;
+  top: 6px;
+  right: 40px;
+  min-width: 28px;
+  width: 28px;
+}
+/* 标题栏保留原面板的设置与新会话处理器，仅调整入口的位置。 */
+.agent-slot .agent-panel > .panel-heading > .fui-Button {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+}
+.agent-slot .agent-controls button[aria-label="新会话"] {
+  position: absolute;
+  right: 72px;
+  top: 6px;
+  min-width: 28px;
+  width: 28px;
+}
+.agent-slot .agent-panel > .panel-heading {
+  padding-right: 108px;
+}
+
+.editor-group {
+  container-type: inline-size;
+}
+@container (max-width: 480px) {
+  .file-document > .toolbar .file-action-label {
+    display: none;
+  }
+  .file-document > .toolbar > .fui-Button {
+    min-width: 30px;
+    padding: 4px;
+  }
+  .file-document > .toolbar .file-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .file-document > .toolbar .toolbar-space {
+    display: none;
+  }
+  .file-document > .toolbar {
+    flex-wrap: nowrap;
+  }
 }

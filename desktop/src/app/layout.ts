@@ -21,6 +21,8 @@ export function panelWidth(value: number, panel: "tree" | "agent") {
 // 窄窗口保留中心编辑空间，用户再次展开时立即生效。
 export function fitLayout(layout: Layout, width: number): Layout {
   return width -
+    48 -
+    10 -
     (layout.treeOpen ? layout.tree : 0) -
     (layout.agentOpen ? layout.agent : 0) <
     640

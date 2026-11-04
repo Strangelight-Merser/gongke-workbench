@@ -1,4 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from "react";
+import { FolderOpenRegular, CubeRegular } from "@fluentui/react-icons";
 import { Button, Spinner } from "@fluentui/react-components";
 import { Project, ProjectFile, revisionOf } from "../project/types";
 import { DrawingViewer } from "./DrawingViewer";
@@ -71,15 +72,25 @@ export function FileDocument({
         )}
         <span className="toolbar-space" />
         <Button
+          icon={<FolderOpenRegular />}
+          aria-label="在文件夹中显示"
+          title="在文件夹中显示"
           onClick={() => run("定位文件", () => window.gongke.reveal(file.path))}
         >
-          在文件夹中显示
+          <span className="file-action-label">在文件夹中显示</span>
         </Button>
         {file.kind === "dxf" &&
           hosts.some((h) => h.host === "autocad" && h.connected) && (
             <Button onClick={importDxf}>导入 AutoCAD 工作修订</Button>
           )}
-        <Button onClick={openCad}>进入建模</Button>
+        <Button
+          icon={<CubeRegular />}
+          aria-label="进入建模"
+          title="进入建模"
+          onClick={openCad}
+        >
+          <span className="file-action-label">进入建模</span>
+        </Button>
       </div>
       {error ? (
         <Empty title="无法预览图纸" body={error} />
