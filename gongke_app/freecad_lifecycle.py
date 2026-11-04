@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
+from contextlib import contextmanager
 import time
 from uuid import uuid4
 from urllib.request import Request, build_opener, ProxyHandler
@@ -11,6 +13,29 @@ from urllib.parse import urlsplit
 
 from gongke_core.host_session import FileLock, endpoint_path, process_identity, remove_session
 from gongke_core.native_client import _NoRedirect
+
+
+@contextmanager
+def external_dll_search():
+    """FreeCAD 使用自己的 Python/Qt/OCCT，不继承冻结服务的 DLL 目录。"""
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        yield
+        return
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetDllDirectoryW.argtypes = [wintypes.DWORD, wintypes.LPWSTR]
+    kernel.SetDllDirectoryW.argtypes = [wintypes.LPCWSTR]
+    length = kernel.GetDllDirectoryW(0, None)
+    previous = ctypes.create_unicode_buffer(length + 1)
+    kernel.GetDllDirectoryW(len(previous), previous)
+    if not kernel.SetDllDirectoryW(None):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        yield
+    finally:
+        if not kernel.SetDllDirectoryW(previous.value or None):
+            raise ctypes.WinError(ctypes.get_last_error())
 
 
 def request(session, method, **params):
@@ -80,8 +105,10 @@ class FreeCADLifecycle:
                                  "if hasattr(freecad, 'gongke'): del freecad.gongke\n"
                                  "from freecad.gongke.bridge import start\nstart()\n", encoding="utf-8")
                 instance = uuid4().hex
-                with (self.path.parent / "freecad.log").open("a") as log:
+                with (self.path.parent / "freecad.log").open("a") as log, external_dll_search():
                     self.process = subprocess.Popen([str(executable), str(macro)], env={**{key: value for key, value in os.environ.items() if key.upper() in {"HOME", "PATH", "TMPDIR", "USER", "LOGNAME", "LANG", "LC_ALL", "DISPLAY", "XAUTHORITY", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "APPDATA", "LOCALAPPDATA", "USERPROFILE"}},
+                        "PATH": os.pathsep.join(item for item in os.environ.get("PATH", "").split(os.pathsep)
+                            if not (getattr(sys, "frozen", False) and Path(item).is_relative_to(Path(sys._MEIPASS)))),
                         "GONGKE_FREECAD_SESSION": str(self.path), "GONGKE_FREECAD_MANAGED": "1", "GONGKE_FREECAD_INSTANCE": instance}, stdout=log, stderr=log)
                 deadline = time.monotonic() + 45
                 try:
