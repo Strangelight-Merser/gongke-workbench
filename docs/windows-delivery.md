@@ -41,7 +41,7 @@ dsh 引导已编入桌面，按现有流程经用户同意下载原厂安装器�
 ## 三处 CI 失败的处理与证据边界
 
 - run `41769254323` 的实际失败是 `test_connection_auth_and_config_preview:258` 的 `assert not Path(result['path']).exists()`；403 断言已经通过。测试只设置 HOME，而 Windows `Path.home()` 使用 USERPROFILE，导致不同测试共用 runneradmin 配置。测试现在同时隔离两者，不改变鉴权协议。
-- run `41769254469` 的 macOS 两个子进程 15 秒内没有任何输出。服务握手前主动导入 NumPy/SciPy，但握手、建工程和机械计算不需要它们；删去预加载，保留原时限。新增拒绝这些导入的子进程测试验证完整握手/建工程/计算。日志没有线程栈，原失败是否完全由冷加载造成仍待同一 CI 环境确认。
+- run `41769254469` 的 macOS 两个子进程 15 秒内没有任何输出。服务握手前主动导入 NumPy/SciPy，但握手、建工程和机械计算不需要它们；删去预加载，保留原时限。新增拒绝这些导入的子进程测试验证完整握手/建工程/计算。后续 run `41771770952` 中禁止数值库导入的新测试仍然超时，已否定将数值库预加载视为该失败根因的判断。当前保留无预加载启动，但不能把它算作超时已修复；临时阶段/线程栈诊断见 [第二轮 CI 记录](ci-startup-diagnostics.md)。
 - AutoCAD `OperationStore.Get` 原来把文件存在时的所有 IOException 当成活跃锁。Windows `FileShare.None` 与普通文件读者也冲突，不能据此断言操作仍在执行。改为 Windows 字节范围锁，只有 `ERROR_LOCK_VIOLATION` 表示活跃操作；其他 I/O 错误传播。保留永久 ID 占位、崩溃回读和禁止重放。恢复测试增加普通读者持有锁文件的情形，并输出实际恢复状态。原 CI 仅记录断言名，未记录 HResult，不能证明那一次具体由扫描器触发；Windows 重跑仍是必需证据。
 
 冻结服务启动 FreeCAD 前暂时恢复标准 DLL 搜索路径，随后恢复服务的原路径，并从子进程 PATH 移除 `_MEIPASS` 内条目。FreeCAD 不继承服务携带的 Qt/Python/OCCT。
