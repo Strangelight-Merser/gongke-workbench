@@ -1,0 +1,479 @@
+[
+  {
+    "id": 1,
+    "title": "一张图纸，多个软件",
+    "segments": [
+      {
+        "source": "out/demo-video/showcase-02",
+        "begin": 78,
+        "end": 81,
+        "duration": 3,
+        "zoom": [
+          1.1,
+          1.22
+        ],
+        "focus": [
+          0.49,
+          0.4
+        ]
+      },
+      {
+        "source": "out/demo-video/paid-robot4/raw",
+        "begin": 203,
+        "end": 206,
+        "duration": 3
+      },
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 214,
+        "end": 217,
+        "duration": 3,
+        "zoom": [
+          1.15,
+          1.22
+        ]
+      },
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 253,
+        "end": 256,
+        "duration": 3,
+        "zoom": [
+          1.15,
+          1.23
+        ]
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "title": "工程工具与自己的智能体",
+    "segments": [
+      {
+        "source": "out/demo-video/paid-robot4/raw",
+        "begin": 202,
+        "end": 214,
+        "duration": 12,
+        "zoom": [
+          1.1,
+          1
+        ],
+        "focus": [
+          0.61,
+          0.52
+        ]
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "title": "从图纸开始",
+    "segments": [
+      {
+        "source": "out/demo-video/paid-robot4/raw",
+        "begin": 1,
+        "end": 7,
+        "duration": 6,
+        "zoom": [
+          1,
+          1.1
+        ],
+        "focus": [
+          0.65,
+          0.45
+        ]
+      },
+      {
+        "source": "out/demo-video/showcase-02",
+        "begin": 78,
+        "end": 84,
+        "duration": 6,
+        "zoom": [
+          1.18,
+          1.38
+        ],
+        "focus": [
+          0.42,
+          0.38
+        ]
+      },
+      {
+        "source": "out/demo-video/paid-robot4/raw",
+        "begin": 160,
+        "end": 166,
+        "duration": 6,
+        "zoom": [
+          1.2,
+          1.5
+        ],
+        "focus": [
+          0.86,
+          0.53
+        ],
+        "badge": "矢量 PDF 读图"
+      }
+    ],
+    "voice_starts": [
+      0.35,
+      5,
+      12
+    ]
+  },
+  {
+    "id": 4,
+    "title": "智能体调用真实 CAD",
+    "segments": [
+      {
+        "source": "out/demo-video/paid-robot4/raw",
+        "begin": 176,
+        "end": 188,
+        "duration": 6,
+        "zoom": [
+          1,
+          1.2
+        ],
+        "focus": [
+          0.65,
+          0.55
+        ],
+        "badge": "建模片段"
+      },
+      {
+        "source": "out/demo-video/paid-robot4/raw",
+        "begin": 188,
+        "end": 204,
+        "duration": 16,
+        "zoom": [
+          1.2,
+          1.05
+        ],
+        "focus": [
+          0.6,
+          0.57
+        ]
+      }
+    ],
+    "voice_starts": [
+      0.35,
+      5,
+      15
+    ]
+  },
+  {
+    "id": 5,
+    "title": "留下可继续编辑的特征",
+    "segments": [
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 52,
+        "end": 60,
+        "duration": 8,
+        "zoom": [
+          1.1,
+          1.35
+        ],
+        "focus": [
+          0.7,
+          0.49
+        ]
+      },
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 89,
+        "end": 97,
+        "duration": 8,
+        "zoom": [
+          1.15,
+          1
+        ],
+        "badge": "原生文件 · 工作修订"
+      }
+    ],
+    "voice_starts": [
+      0.35,
+      8
+    ]
+  },
+  {
+    "id": 6,
+    "title": "对照图纸，检查实际模型",
+    "segments": [
+      {
+        "source": "out/demo-video/paid-robot4/raw",
+        "begin": 199,
+        "end": 207,
+        "duration": 8,
+        "zoom": [
+          1.15,
+          1.35
+        ],
+        "focus": [
+          0.79,
+          0.65
+        ]
+      },
+      {
+        "source": "out/demo-video/preflight-03",
+        "begin": 0,
+        "end": 12,
+        "duration": 12,
+        "zoom": [
+          1.18,
+          1.32
+        ],
+        "focus": [
+          0.58,
+          0.56
+        ],
+        "badge": "尺寸检查示例 · 确定性工具操作"
+      }
+    ],
+    "voice_starts": [
+      0.35,
+      5,
+      10
+    ]
+  },
+  {
+    "id": 7,
+    "title": "学生继续掌握设计",
+    "segments": [
+      {
+        "source": "out/demo-video/manual-02",
+        "begin": 97,
+        "end": 101,
+        "duration": 4,
+        "layout": "editor",
+        "badge": "FreeCAD 参数编辑"
+      },
+      {
+        "source": "out/demo-video/manual-02",
+        "begin": 101,
+        "end": 105,
+        "duration": 4,
+        "layout": "editor",
+        "badge": "修改练习 · 非原图尺寸"
+      },
+      {
+        "source": "out/demo-video/manual-02",
+        "begin": 131,
+        "end": 134,
+        "duration": 3,
+        "layout": "editor",
+        "badge": "确认参数"
+      },
+      {
+        "source": "out/demo-video/showcase-02",
+        "begin": 68,
+        "end": 71,
+        "duration": 3,
+        "zoom": [
+          1.1,
+          1.2
+        ],
+        "focus": [
+          0.55,
+          0.55
+        ],
+        "badge": "工作副本 · 厚度 5 mm"
+      },
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 89,
+        "end": 97,
+        "duration": 8,
+        "zoom": [
+          1,
+          1.2
+        ],
+        "focus": [
+          0.44,
+          0.25
+        ],
+        "badge": "保留原件 · 另存工作修订"
+      }
+    ],
+    "voice_starts": [
+      0.35,
+      5,
+      14
+    ]
+  },
+  {
+    "id": 8,
+    "title": "减速器课程设计",
+    "segments": [
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 214,
+        "end": 217,
+        "duration": 3,
+        "zoom": [
+          1.1,
+          1.22
+        ]
+      },
+      {
+        "source": "out/demo-video/reducer-viewport",
+        "begin": 3,
+        "end": 6,
+        "duration": 3,
+        "zoom": [
+          1,
+          1.04
+        ],
+        "badge": "FreeCAD 视口 · 同修订 STEP"
+      },
+      {
+        "source": "out/demo-video/documents-01",
+        "begin": 4,
+        "end": 7,
+        "duration": 3,
+        "zoom": [
+          1,
+          1.12
+        ],
+        "focus": [
+          0.57,
+          0.55
+        ]
+      },
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 252,
+        "end": 256,
+        "duration": 4,
+        "zoom": [
+          1.12,
+          1.28
+        ],
+        "focus": [
+          0.48,
+          0.45
+        ],
+        "badge": "同修订说明书"
+      },
+      {
+        "source": "out/demo-video/reducer-01",
+        "begin": 150,
+        "end": 158,
+        "duration": 8,
+        "zoom": [
+          1,
+          1.18
+        ],
+        "focus": [
+          0.25,
+          0.3
+        ],
+        "badge": "修改输入后 · 历史成果已过期"
+      }
+    ],
+    "voice_starts": [
+      0.35,
+      13.5
+    ]
+  },
+  {
+    "id": 9,
+    "title": "接入已有智能体",
+    "segments": [
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 361,
+        "end": 368,
+        "duration": 7,
+        "zoom": [
+          1.25,
+          1.6
+        ],
+        "focus": [
+          0.9,
+          0.4
+        ],
+        "badge": "DeepSeek Harness",
+        "layout": "agent"
+      },
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 381,
+        "end": 388,
+        "duration": 7,
+        "zoom": [
+          1.4,
+          1.6
+        ],
+        "focus": [
+          0.9,
+          0.36
+        ],
+        "badge": "安装与连接引导",
+        "layout": "agent"
+      }
+    ],
+    "voice_starts": [
+      0.35,
+      7.4
+    ]
+  },
+  {
+    "id": 10,
+    "title": "可运行，也可交付",
+    "segments": [
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 310,
+        "end": 317.5,
+        "duration": 7.5,
+        "zoom": [
+          1.12,
+          1.38
+        ],
+        "focus": [
+          0.6,
+          0.29
+        ],
+        "badge": "Windows CI · 41822011858 · 41ec469"
+      },
+      {
+        "source": "out/demo-video/paid-robot4/raw",
+        "begin": 207,
+        "end": 214.5,
+        "duration": 7.5,
+        "zoom": [
+          1.15,
+          1
+        ],
+        "badge": "macOS · 真实 FreeCAD 建模"
+      }
+    ],
+    "voice_starts": [
+      0.35,
+      7.4
+    ]
+  },
+  {
+    "id": 11,
+    "title": "从图纸，到可理解、可修改的工程成果",
+    "segments": [
+      {
+        "source": "out/demo-video/showcase-01",
+        "begin": 410,
+        "end": 422,
+        "duration": 12,
+        "zoom": [
+          1.15,
+          1
+        ],
+        "focus": [
+          0.58,
+          0.6
+        ]
+      }
+    ],
+    "voice_starts": [
+      0.35,
+      6.5
+    ]
+  }
+]
