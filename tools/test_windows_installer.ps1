@@ -23,6 +23,8 @@ foreach ($directory in @($root, $install, $evidence)) {
 }
 $node = (Get-Command node.exe).Source
 $script = Join-Path $evidence 'run.ps1'
+# 与 workflow 使用同一 PowerShell 7；5.1 会把重定向的原生 stderr 当成 Stop 错误。
+$shell = Join-Path $PSHOME 'pwsh.exe'
 @"
 `$ErrorActionPreference = 'Stop'
 Start-Transcript -LiteralPath '$($evidence.Replace("'", "''"))/bootstrap.log' | Out-Null
@@ -40,7 +42,7 @@ exit `$LASTEXITCODE
 "@ | Set-Content -LiteralPath $script -Encoding utf8BOM
 try {
     Start-Service seclogon
-    $test = Start-Process powershell.exe -Credential $credential -LoadUserProfile -WorkingDirectory $evidence -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"") -PassThru
+    $test = Start-Process $shell -Credential $credential -LoadUserProfile -WorkingDirectory $evidence -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"") -PassThru
     if (!$test.WaitForExit(300000)) { Stop-Process -Id $test.Id; throw 'Installed acceptance exceeded five minutes' }
     if ($test.ExitCode -ne 0) { throw "Installed acceptance failed: $($test.ExitCode); see $evidence" }
     $result = Get-Content "$evidence/result.json" -Raw | ConvertFrom-Json

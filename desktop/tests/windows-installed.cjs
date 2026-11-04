@@ -15,7 +15,7 @@ const env = { ...process.env, GONGKE_DESKTOP_USER_DATA: userdata, GONGKE_TEST_DI
   GONGKE_FREECAD_SESSION: join(userdata, 'freecad-session.json') };
 for (const name of ['PYTHONPATH', 'PYTHONHOME', 'GONGKE_PYTHON', 'GONGKE_FREECAD_EXE', 'ELECTRON_RUN_AS_NODE']) delete env[name];
 function processes() {
-  const script = 'Get-CimInstance Win32_Process | Select-Object ProcessId,ExecutablePath | ConvertTo-Json -Compress';
+  const script = '[Console]::OutputEncoding = [Text.UTF8Encoding]::new(); Get-CimInstance Win32_Process | Select-Object ProcessId,ExecutablePath | ConvertTo-Json -Compress';
   return JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { encoding: 'utf8' }));
 }
 (async () => {
