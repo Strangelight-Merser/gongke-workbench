@@ -11,6 +11,25 @@ internal sealed class OperationStore
     private readonly string folder;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
     internal OperationStore(string folder) { this.folder = folder; Directory.CreateDirectory(folder); }
+    // 临时 CI 诊断：关键路径只入队，首次恢复查询后才输出，避免日志 I/O 掩盖锁竞争。
+#if CONTRACT_DIAGNOSTICS
+    private static readonly System.Collections.Concurrent.ConcurrentQueue<object> TraceEvents = new();
+#endif
+    [System.Diagnostics.Conditional("CONTRACT_DIAGNOSTICS")]
+    internal static void Trace(string phase, object detail)
+    {
+#if CONTRACT_DIAGNOSTICS
+        TraceEvents.Enqueue(new { at = DateTimeOffset.UtcNow, tick = System.Diagnostics.Stopwatch.GetTimestamp(),
+            pid = Environment.ProcessId, phase, detail });
+#endif
+    }
+    [System.Diagnostics.Conditional("CONTRACT_DIAGNOSTICS")]
+    internal static void FlushTrace()
+    {
+#if CONTRACT_DIAGNOSTICS
+        while (TraceEvents.TryDequeue(out var item)) Console.Error.WriteLine(JsonSerializer.Serialize(item));
+#endif
+    }
     internal string RecordPath(string id) => Path.Combine(folder, Hash(id) + ".json");
     private string LockPath(string id) => Path.Combine(folder, Hash(id) + ".lock");
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
@@ -66,11 +85,17 @@ internal sealed class OperationStore
         // 持有锁时再读取，避免把刚入队的活跃操作误判为已退出。
         FileStream? probe = null;
         try { probe = OpenLock(id, FileMode.Open); }
-        catch (FileNotFoundException) { return Record.Unknown(id); }
-        catch (IOException e) when (OperatingSystem.IsWindows() ? (e.HResult & 0xffff) == 33 : File.Exists(LockPath(id))) { return Read(id); }
+        catch (FileNotFoundException) { Trace("get.missing", new { id }); return Record.Unknown(id); }
+        catch (IOException e) when (OperatingSystem.IsWindows() ? (e.HResult & 0xffff) == 33 : File.Exists(LockPath(id)))
+        {
+            var active = Read(id);
+            Trace("get.lock-conflict", new { id, active.Status, hresult = $"0x{e.HResult:X8}", native = e.HResult & 0xffff });
+            return active;
+        }
         using (probe)
         {
             var record = Read(id);
+            Trace("get.lock-acquired", new { id, record.Status });
             return record.Status switch
             {
                 "queued" => record with { Status = "interrupted_before_start", Outcome = "unchanged" },
@@ -84,14 +109,30 @@ internal sealed class OperationStore
     {
         // Windows 的独占共享模式会与普通读者（例如文件扫描）冲突，不能证明操作仍在执行。
         // 用字节范围锁表示操作所有权，只有 ERROR_LOCK_VIOLATION 才表示活跃操作。
-        var stream = new FileStream(LockPath(id), mode, FileAccess.ReadWrite,
-            OperatingSystem.IsWindows() ? FileShare.ReadWrite : FileShare.None);
+        FileStream stream;
+        try
+        {
+            stream = new FileStream(LockPath(id), mode, FileAccess.ReadWrite,
+                OperatingSystem.IsWindows() ? FileShare.ReadWrite : FileShare.None);
+            Trace("lock.opened", new { id, mode = mode.ToString(), handle = stream.SafeFileHandle.DangerousGetHandle().ToInt64() });
+        }
+        catch (Exception e)
+        {
+            Trace("lock.open-failed", new { id, mode = mode.ToString(), type = e.GetType().Name, hresult = $"0x{e.HResult:X8}", native = e.HResult & 0xffff });
+            throw;
+        }
         try
         {
             if (OperatingSystem.IsWindows()) stream.Lock(0, 1);
+            Trace("lock.acquired", new { id, mode = mode.ToString() });
             return stream;
         }
-        catch { stream.Dispose(); throw; }
+        catch (Exception e)
+        {
+            Trace("lock.range-failed", new { id, mode = mode.ToString(), type = e.GetType().Name, hresult = $"0x{e.HResult:X8}", native = e.HResult & 0xffff });
+            stream.Dispose();
+            throw;
+        }
     }
 
     private Record Read(string id)

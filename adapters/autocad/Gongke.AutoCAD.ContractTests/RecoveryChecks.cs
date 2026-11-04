@@ -15,6 +15,7 @@ internal static class RecoveryChecks
         if (state != "queued") lease.Update("running", "unknown");
         if (state == "completed") lease.Update("completed", "committed", new { id = "original-request", result = new {
             path = "copy.dwg", native_fingerprint = "native-guid", disk_reopen_verified = true, original_preserved = true } });
+        OperationStore.FlushTrace();
         Console.WriteLine("ready");
         Console.Out.Flush();
         Thread.Sleep(Timeout.Infinite);
@@ -22,6 +23,8 @@ internal static class RecoveryChecks
 
     internal static async Task Run(string temporary, Action<bool, string> check)
     {
+        OperationStore.Trace("recovery.environment", new { os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+            runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription, temporary });
         var folder = Path.Combine(temporary, "restart");
         var store = new OperationStore(folder);
         foreach (var state in new[] { "queued", "running", "completed" })
@@ -38,7 +41,14 @@ internal static class RecoveryChecks
                 check(store.Begin(RequestFor(state), "second-session", out var live) is null && live!.Status == state,
                     "Second process cannot replay live operation " + state);
             }
-            finally { if (!child.HasExited) child.Kill(); await child.WaitForExitAsync(); }
+            finally
+            {
+                OperationStore.Trace("child.kill", new { state, child.Id, child.HasExited });
+                if (!child.HasExited) child.Kill();
+                await child.WaitForExitAsync();
+                OperationStore.Trace("child.wait-returned", new { state, child.Id, child.HasExited, child.ExitCode,
+                    processHandleClosed = child.SafeHandle.IsClosed });
+            }
 
             var restarted = new OperationStore(folder);
             // 普通文件读者不拥有操作；不能把共享访问冲突当作活跃写操作。
@@ -47,7 +57,37 @@ internal static class RecoveryChecks
                     FileAccess.Read, FileShare.ReadWrite)
                 : null;
             var recovered = restarted.Get(state);
-            check(recovered.Status == (state == "queued" ? "interrupted_before_start" : state == "running" ? "interrupted" : "completed"),
+            OperationStore.FlushTrace();
+            var expected = state == "queued" ? "interrupted_before_start" : state == "running" ? "interrupted" : "completed";
+            if (recovered.Status != expected)
+            {
+                // 只观察首次失败后的状态；不能以稍后恢复成功替代原断言。
+                void Observe(string phase)
+                {
+                    try
+                    {
+                        var file = new FileInfo(Path.ChangeExtension(store.RecordPath(state), ".lock"));
+                        OperationStore.Trace(phase, new { state, file.Exists, length = file.Exists ? file.Length : -1,
+                            modified = file.Exists ? file.LastWriteTimeUtc : (DateTime?)null,
+                            status = restarted.Get(state).Status });
+                    }
+                    catch (Exception e) { OperationStore.Trace(phase, new { state, type = e.GetType().Name, hresult = $"0x{e.HResult:X8}", e.Message }); }
+                    finally { OperationStore.FlushTrace(); }
+                }
+                Observe("recovery.reader-open");
+                reader?.Dispose();
+                Observe("recovery.reader-closed");
+                var processHandle = child.SafeHandle;
+                child.Dispose();
+                OperationStore.Trace("child.process-handle-disposed", new { state, processHandle.IsClosed });
+                Observe("recovery.process-handle-closed");
+                foreach (var delay in new[] { 10, 50, 200, 1000 })
+                {
+                    await Task.Delay(delay);
+                    Observe("recovery.after-delay-" + delay);
+                }
+            }
+            check(recovered.Status == expected,
                 "Crash recovery state " + state + ": " + JsonSerializer.Serialize(recovered));
             check(recovered.Outcome == (state == "queued" ? "unchanged" : state == "running" ? "unknown" : "committed"),
                 "Crash recovery outcome " + state);
