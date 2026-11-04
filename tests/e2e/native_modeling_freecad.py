@@ -114,12 +114,18 @@ async def journey(args, service, evidence):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--endpoint", type=Path, required=True)
+    parser.add_argument("--endpoint", type=Path, help="借用已启动的隔离桥接；省略时启动并回收本轮宿主")
+    parser.add_argument("--freecad", default=os.environ.get("GONGKE_FREECAD_EXE", "/Applications/FreeCAD.app/Contents/MacOS/FreeCAD"))
     parser.add_argument("--study", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True, help="必须为未使用目录")
     args = parser.parse_args()
-    args.output = args.output.resolve(); args.endpoint = args.endpoint.resolve(); args.study = args.study.resolve()
+    args.output = args.output.resolve(); args.study = args.study.resolve()
     args.output.mkdir(parents=True, exist_ok=False)
+    if args.endpoint is None:
+        from scripts.acceptance_host import start_host
+        args.endpoint = start_host(OWNED, args.output / "host", args.freecad)
+    else:
+        args.endpoint = args.endpoint.resolve()
     evidence = {"status": "failed", "calls": []}
     bootstrap = args.endpoint.parent / "bootstrap.json"
     boot = json.loads(bootstrap.read_text(encoding="utf-8"))
@@ -140,4 +146,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    from scripts.owned_processes import OwnedProcesses
+    OWNED = OwnedProcesses()
+    try:
+        main()
+    finally:
+        OWNED.close()

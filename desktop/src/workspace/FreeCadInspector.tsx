@@ -18,6 +18,7 @@ import { Empty } from "../ui/Empty";
 import { DrawingViewer } from "./DrawingViewer";
 import { ModelView } from "./ModelView";
 export function FreeCadInspector({
+  hostInstance,
   project,
   run,
   onContext,
@@ -26,6 +27,7 @@ export function FreeCadInspector({
   setPendingOperation,
 }: {
   project: Data | null;
+  hostInstance: string | undefined;
   run: any;
   onContext: (data: Data) => void;
   onProjectChange: () => Promise<void>;
@@ -116,7 +118,7 @@ export function FreeCadInspector({
       active = false;
       queue.close();
     };
-  }, [project?.path]);
+  }, [project?.path, hostInstance]);
   useEffect(() => {
     if (!newest) return;
     focusDocument.current = modelResult(newest).document;

@@ -1,5 +1,5 @@
 // 真实 Electron；可传入真实 Agent 配置，否则使用确定性 ACP 协议替身。
-const { _electron: electron } = require("playwright");
+const { electron } = require("./helpers/owned-electron.cjs");
 const { mkdirSync, writeFileSync } = require("node:fs");
 const { resolve, join } = require("node:path");
 const assert = require("node:assert/strict");
@@ -37,11 +37,12 @@ if (!live)
       GONGKE_AGENT_CONFIG: configPath,
     },
   });
-  const page = await app.firstWindow();
-  page.setDefaultTimeout(20_000);
+  let page;
   const errors = [];
-  page.on("pageerror", (e) => errors.push(String(e)));
   try {
+    page = await app.firstWindow();
+    page.setDefaultTimeout(20_000);
+    page.on("pageerror", (e) => errors.push(String(e)));
     await page.waitForFunction(() => !!window.gongke);
     await page.evaluate(
       async (path) => {

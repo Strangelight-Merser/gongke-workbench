@@ -28,6 +28,8 @@ class Application:
         self.tasks = Tasks(state_dir, emit)
         self.hosts = Hosts()
         self.commands = Commands(self.hosts)
+        from gongke_app.freecad_lifecycle import FreeCADLifecycle
+        self.freecad = FreeCADLifecycle()
 
     def current(self):
         if self.project is None:
@@ -82,6 +84,14 @@ class Application:
     def _dispatch(self, method, params):
         if not isinstance(method, str) or not isinstance(params, dict):
             raise ValueError("请求需要 method 字符串和 params 对象")
+        if method == "freecad.connect":
+            validate(params, schema({"executable": TEXT}))
+            return self.freecad.connect(**params)
+        if method == "system.prepare_close":
+            validate(params, schema())
+            if self.project and self.tasks.active(str(self.project.path)):
+                raise ValueError("当前工程仍有任务执行中，请等待结束或取消后退出")
+            return self.freecad.close()
         if method == "system.status":
             validate(params, schema())
             return {"version": __version__, "ready": True, "python": sys.version.split()[0],
@@ -140,6 +150,7 @@ class Application:
 
     def close(self):
         self.tasks.close()
+        self.freecad.close()
 
 
 class InstanceLock:

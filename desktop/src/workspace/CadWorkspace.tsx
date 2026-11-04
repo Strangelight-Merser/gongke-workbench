@@ -131,6 +131,11 @@ export function CadWorkspace({
                 {inspect ? "返回 CAD 编辑" : "工程检查"}
               </Button>
             )}
+            {kind === "freecad" && (
+              <Button size="small" onClick={() => run("连接 FreeCAD", async () => {
+                await call("freecad.connect"); await refresh();
+              })}>连接 FreeCAD</Button>
+            )}
             {!window.cadEmbed?.supported && (
               <span className="muted">原生窗口嵌入需要 Windows</span>
             )}
@@ -143,6 +148,7 @@ export function CadWorkspace({
       >
         <div className="document-surface" hidden={kind !== "freecad"}>
           <FreeCadInspector
+            hostInstance={hosts.find((host) => host.host === "freecad" && host.connected)?.host_instance}
             project={project}
             run={run}
             onContext={freecadContext}

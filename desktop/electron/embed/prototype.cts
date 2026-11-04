@@ -9,7 +9,7 @@ app.whenReady().then(async () => {
   const window = new BrowserWindow({ width: 1440, height: 960, title: "构想引擎 · CAD 嵌入原型", webPreferences: {
     preload: join(__dirname, "../preload.cjs"), sandbox: true, contextIsolation: true, nodeIntegration: false,
   } });
-  installCadEmbedding(window);
+  installCadEmbedding(window, async () => { throw new Error("FreeCAD 启动与嵌入请从构想引擎主窗口验证"); }, () => {});
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
   await window.loadFile(join(__dirname, "../../native/embed/prototype.html"));

@@ -58,6 +58,30 @@
           "!**/obj/**",
           "!**/bin/**"
         ]
+      },
+      {
+        "from": "../freecad",
+        "to": "host-module/freecad",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**"
+        ]
+      },
+      {
+        "from": "../gongke_core",
+        "to": "host-module/gongke_core",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**"
+        ]
+      },
+      {
+        "from": "../data",
+        "to": "host-module/data",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**"
+        ]
       }
     ],
     "mac": {

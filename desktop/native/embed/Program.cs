@@ -114,6 +114,7 @@ internal sealed class Host : NativeWindow, IDisposable
                 return new { installations, windows = Discovery.Windows() };
             case "launch":
                 var install = installations.Single(i => i.Id == p.GetProperty("id").GetString());
+                if (install.Kind == "freecad") throw new InvalidOperationException("FreeCAD 必须通过应用宿主管理器启动");
                 var existing = launched.FirstOrDefault(i => !i.HasExited && string.Equals(i.MainModule?.FileName, install.Path, StringComparison.OrdinalIgnoreCase));
                 if (existing != null) return new { pid = existing.Id };
                 var process = Process.Start(new ProcessStartInfo(install.Path) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(install.Path)! })!;

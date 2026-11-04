@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import atexit
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -15,6 +14,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from tests.e2e.agent_modeling_result import classify, summarize
+from scripts.owned_processes import OwnedProcesses
+OWNED = OwnedProcesses()
 SOURCE = Path("/Users/huaiyi/Documents/gongke-workbench/samples/student-materials/drawing-to-model-sheet-01.jpg")
 PDF_SOURCE = Path("/Users/huaiyi/Documents/gongke-workbench/samples/student-materials/quadruped-robot-drawings.pdf")
 PDF_CASES = {"robot14": 14, "robot13": 13, "robot4": 4}
@@ -61,22 +62,14 @@ def cad_environment(env):
     # macOS 启动器会输出环境；CAD 不需要 Agent 的凭据或服务环境。
     system = {"HOME", "PATH", "TMPDIR", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "DISPLAY", "XAUTHORITY"}
     return {k: v for k, v in env.items() if k in system or k in {
-        "GONGKE_MODELING_ROOT", "GONGKE_FREECAD_SESSION", "GONGKE_TRIAL_OUTPUT", "GONGKE_CONSTRAINT_EXIT", "GONGKE_TRIAL_EXIT", "GONGKE_TRIAL_BACKGROUND"}}
+        "GONGKE_MODELING_ROOT", "GONGKE_FREECAD_SESSION", "GONGKE_TRIAL_OUTPUT", "GONGKE_CONSTRAINT_EXIT", "GONGKE_TRIAL_BACKGROUND"}}
 
 
 def launch_cad(args, macro, env, log):
     local = cad_environment(env)
-    if args.background:
-        # LaunchServices 的后台/隐藏启动避免抢焦点，--env 只传 CAD 必需项。
-        command = ["open", "-g", "-j", "-n", "-W", "-a", str(args.freecad.parents[2]),
-                   "--stdout", str(log), "--stderr", str(log)]
-        for key, value in local.items():
-            command += ["--env", key+"="+value]
-        command += ["--args", str(macro)]
-    else:
-        command = [str(args.freecad), str(macro)]
+    command = [str(args.freecad), str(macro)]
     with log.open("w") as stream:
-        return subprocess.Popen(command, cwd=ROOT, env=local, stdout=stream, stderr=subprocess.STDOUT)
+        return OWNED.spawn(command, cwd=ROOT, env=local, stdout=stream, stderr=subprocess.STDOUT)
 
 
 def prepare_pdf(args):
@@ -299,17 +292,14 @@ def main():
         raise
     host_dir = args.output / "host"
     host_dir.mkdir()
-    if args.background:
-        env["GONGKE_TRIAL_EXIT"] = str(host_dir / "exit")
-        atexit.register(lambda: Path(env["GONGKE_TRIAL_EXIT"]).touch())
     host = launch_cad(args, ROOT / "tests/e2e/native_modeling_host.FCMacro", env, host_dir / "freecad.log")
     write_json(host_dir / "process.json", {"pid": host.pid})
     wait_for_host(host, host_dir)
     env.update(GONGKE_TRIAL_OUTPUT=str(args.output), GONGKE_TRIAL_STUDY=str(args.study),
                GONGKE_TRIAL_DSH=str(args.dsh), GONGKE_TRIAL_TIMEOUT=str(args.timeout))
-    print(f"FreeCAD 启动进程 PID={host.pid}；" + ("后台隔离运行，结束后关闭本试验的 CAD/Agent。" if args.background else "保留 CAD 窗口和现场。"), flush=True)
+    print(f"FreeCAD 启动进程 PID={host.pid}；结束后关闭本试验的 CAD/Agent。", flush=True)
     with (args.output / "runner.log").open("w") as log:
-        with subprocess.Popen(["node", "tests/agent-modeling-live.cjs"], cwd=desktop, env=env,
+        with OWNED.spawn(["node", "tests/agent-modeling-live.cjs"], cwd=desktop, env=env,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8") as runner:
             for line in runner.stdout:
                 log.write(line)
@@ -339,4 +329,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        OWNED.close()

@@ -90,7 +90,7 @@ export class Service extends EventEmitter {
     if (!child) return;
     await new Promise<void>((resolve) => {
       child.once("exit", () => resolve());
-      child.kill();
+      child.stdin.end();
     });
   }
 }
