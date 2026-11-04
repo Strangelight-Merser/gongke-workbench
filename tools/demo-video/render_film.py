@@ -1,9 +1,10 @@
 """真实连续帧剪辑：时间戳采样、缓动镜头、实际光标、外置字幕及逐镜检查图。"""
-import bisect,hashlib,json,math,re,subprocess
+import os,bisect,hashlib,json,math,re,subprocess
 from functools import lru_cache
 from pathlib import Path
 from PIL import Image,ImageDraw,ImageFont,ImageFilter
-ROOT=Path(__file__).resolve().parents[2];OUT=ROOT/'out/demo-video';FPS=30
+ROOT=Path(__file__).resolve().parents[2];OUT=ROOT/os.environ.get('GONGKE_DEMO_OUTPUT','out/demo-video');FPS=30
+VOICE=ROOT/os.environ.get('GONGKE_DEMO_VOICE','out/demo-video/voice')
 @lru_cache(None)
 def font(size,weight=500):
  f=ImageFont.truetype(str(ROOT/'desktop/src/assets/preview-font.ttf'),size);f.set_variation_by_axes([weight]);return f
@@ -36,12 +37,13 @@ def background():
  return im
 
 def main():
- plan=json.loads((ROOT/'tools/demo-video/timeline.json').read_text());records={p:Recording(p) for p in {s['source'] for sh in plan for s in sh['segments']}}
- voice=json.loads((OUT/'voice/segments.json').read_text());subs=[];position=0;audio=[];sources=[]
+ OUT.mkdir(parents=True,exist_ok=True);(OUT/'voice').mkdir(exist_ok=True)
+ plan=json.loads((ROOT/os.environ.get('GONGKE_DEMO_PLAN','tools/demo-video/timeline.json')).read_text());records={p:Recording(p) for p in {s['source'] for sh in plan for s in sh['segments']}}
+ voices=json.loads((VOICE/'segments.json').read_text());voice=[next(v for v in voices if v['shot']==s['id']) for s in plan];subs=[];position=0;audio=[];sources=[]
  for shot,v in zip(plan,voice):
   duration=sum(s['duration'] for s in shot['segments']);shot['start']=position;shot['duration']=duration
   offset=.25;assert v['voice_seconds']+offset<duration+.1,(shot['id'],v['voice_seconds'],duration)
-  src=OUT/f"voice/{shot['id']:02}.srt"
+  src=VOICE/f"{shot['id']:02}.srt"
   blocks=src.read_text().strip().split('\n\n')
   for sentence_index,block in enumerate(blocks):
    lines=block.splitlines();a,b=map(sec,lines[1].split(' --> '));original_a=a;original_b=b

@@ -1,4 +1,5 @@
 """按已批准分镜逐镜生成中文神经配音，保留原始语音边界便于按动作剪辑。"""
+import os
 import asyncio
 import json
 from pathlib import Path
@@ -7,7 +8,7 @@ import subprocess
 import edge_tts
 
 ROOT=Path(__file__).resolve().parents[2]
-OUT=ROOT/'out/demo-video/voice'
+OUT=ROOT/os.environ.get('GONGKE_DEMO_VOICE','out/demo-video/voice')
 
 async def main():
     OUT.mkdir(parents=True,exist_ok=True)

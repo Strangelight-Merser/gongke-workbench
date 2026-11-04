@@ -1,5 +1,7 @@
 # 构想引擎演示视频
 
+当前为逐帧反馈修订阶段：旧 film.mp4 保留；第二次 dsh 尚未授权。详见 docs/demo-video/revision-review.md。不要把当前混有待替换 Agent 片段的 timeline.json 直接发布为最终片。
+
 正式片为 `out/demo-video/film.mp4`，184 秒、1920×1080、30 fps、H.264/AAC。中文字幕烧录，另附 `film.srt`、`narration.txt`、`sources.md`、`sources.json`、`validation.json`、`qa/`。大文件不提交；`style-preview.mp4` 是上一阶段截图预览，不是正式片。
 
 ## 从现有原片重现成片（不启动 Agent）
@@ -42,3 +44,21 @@
 ## 事实与限制
 
 减速器、凸台检查和 robot4 是三个明确区分的案例。减速器结果取自同一真实修订的工作副本；输入变动后的过期标记是真实 UI。Windows 证据来自指定 GitHub run 的安装工件；片中不宣称 Windows 商业 CAD 真机通过。没有 WorkBuddy 客户端镜头。原生参数编辑自动化展示的是学生可操作的真实入口，不是用户本人操作的实录。
+
+## 本轮修改审阅片（无需 dsh）
+
+```sh
+GONGKE_DEMO_VOICE=out/demo-video/voice-revision /private/tmp/gongke-demo-video-venv/bin/python tools/demo-video/voice.py
+GONGKE_DEMO_OUTPUT=out/demo-video/revision-review GONGKE_DEMO_VOICE=out/demo-video/voice-revision GONGKE_DEMO_PLAN=tools/demo-video/revision-timeline.json /private/tmp/gongke-demo-video-venv/bin/python tools/demo-video/render_film.py
+GONGKE_DEMO_OUTPUT=out/demo-video/revision-review /private/tmp/gongke-demo-video-venv/bin/python tools/demo-video/validate_film.py
+```
+
+新非付费原片目录：revision-model-01、revision-check-02、revision-ui-02。动作存档在 actions/revision-*.jsonl。再次录制会改变时间戳，须重新选区间，不照搬旧 begin/end。
+
+独立应用开场由 `record-native.py --output out/demo-video/revision-native-02` 启动自有 Preview/FreeCAD/LibreOffice，并用 ScreenCaptureKit 按 PID 录窗口；只终止自有 PID。需要 macOS 已授予当前运行宿主屏幕录制权限。首次因 -3801 被拒，无有效帧。先获得系统权限再执行，不改 TCC 数据库、不录其他窗口。
+
+说明书 PDF 来自已有同修订 DOCX，通过独立 LibreOffice profile 渲染，原 DOCX 不修改：
+
+```sh
+/Applications/LibreOffice.app/Contents/MacOS/soffice -env:UserInstallation=file:///tmp/gongke-demo-report-profile --headless --convert-to pdf --outdir out/demo-video/revision-report out/demo-video/showcase-01/reducer/revisions/6f2c35f49d77/report.docx
+```

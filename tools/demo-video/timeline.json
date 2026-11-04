@@ -121,42 +121,55 @@
   },
   {
     "id": 4,
-    "title": "智能体调用真实 CAD",
+    "title": "轮廓草图与拉伸特征",
     "segments": [
       {
-        "source": "out/demo-video/paid-robot4/raw",
-        "begin": 176,
-        "end": 188,
-        "duration": 6,
+        "source": "out/demo-video/revision-model-01",
+        "begin": 5,
+        "end": 13,
+        "duration": 8,
         "zoom": [
-          1,
-          1.2
+          1.1,
+          1.35
         ],
         "focus": [
           0.65,
-          0.55
-        ],
-        "badge": "建模片段"
+          0.51
+        ]
       },
       {
-        "source": "out/demo-video/paid-robot4/raw",
-        "begin": 188,
-        "end": 204,
-        "duration": 16,
+        "source": "out/demo-video/revision-model-01",
+        "begin": 13,
+        "end": 20,
+        "duration": 7,
         "zoom": [
-          1.2,
-          1.05
+          1.3,
+          1.55
         ],
         "focus": [
-          0.6,
-          0.57
+          0.72,
+          0.55
+        ]
+      },
+      {
+        "source": "out/demo-video/revision-model-01",
+        "begin": 20,
+        "end": 27,
+        "duration": 7,
+        "zoom": [
+          1.45,
+          1.1
+        ],
+        "focus": [
+          0.63,
+          0.5
         ]
       }
     ],
     "voice_starts": [
-      0.35,
-      5,
-      15
+      0.25,
+      4.0,
+      8.0
     ]
   },
   {
@@ -164,29 +177,32 @@
     "title": "留下可继续编辑的特征",
     "segments": [
       {
-        "source": "out/demo-video/showcase-01",
+        "source": "out/demo-video/revision-model-01",
+        "begin": 8,
+        "end": 16,
+        "duration": 8,
+        "zoom": [
+          1.35,
+          1.6
+        ],
+        "focus": [
+          0.72,
+          0.54
+        ]
+      },
+      {
+        "source": "out/demo-video/revision-model-01",
         "begin": 52,
         "end": 60,
         "duration": 8,
         "zoom": [
-          1.1,
-          1.35
+          1.4,
+          1.75
         ],
         "focus": [
-          0.7,
-          0.49
+          0.6,
+          0.19
         ]
-      },
-      {
-        "source": "out/demo-video/showcase-01",
-        "begin": 89,
-        "end": 97,
-        "duration": 8,
-        "zoom": [
-          1.15,
-          1
-        ],
-        "badge": "原生文件 · 工作修订"
       }
     ],
     "voice_starts": [
@@ -213,19 +229,19 @@
         ]
       },
       {
-        "source": "out/demo-video/preflight-03",
+        "source": "out/demo-video/revision-check-02",
         "begin": 0,
         "end": 12,
         "duration": 12,
         "zoom": [
-          1.18,
-          1.32
+          1.25,
+          1.7
         ],
         "focus": [
-          0.58,
-          0.56
+          0.76,
+          0.48
         ],
-        "badge": "尺寸检查示例 · 确定性工具操作"
+        "badge": "尺寸检查示例 · 工具操作演示"
       }
     ],
     "voice_starts": [
@@ -309,20 +325,19 @@
         "end": 217,
         "duration": 3,
         "zoom": [
-          1.1,
-          1.22
+          1.5,
+          1.9
+        ],
+        "focus": [
+          0.52,
+          0.38
         ]
       },
       {
         "source": "out/demo-video/reducer-viewport",
         "begin": 3,
         "end": 6,
-        "duration": 3,
-        "zoom": [
-          1,
-          1.04
-        ],
-        "badge": "FreeCAD 视口 · 同修订 STEP"
+        "duration": 3
       },
       {
         "source": "out/demo-video/documents-01",
@@ -330,43 +345,41 @@
         "end": 7,
         "duration": 3,
         "zoom": [
-          1,
-          1.12
+          1.3,
+          1.55
         ],
         "focus": [
-          0.57,
-          0.55
+          0.55,
+          0.5
         ]
       },
       {
-        "source": "out/demo-video/showcase-01",
-        "begin": 252,
-        "end": 256,
-        "duration": 4,
+        "source": "out/demo-video/revision-ui-02",
+        "begin": 320,
+        "end": 326,
+        "duration": 6,
         "zoom": [
-          1.12,
-          1.28
+          1.4,
+          1.8
         ],
         "focus": [
-          0.48,
-          0.45
-        ],
-        "badge": "同修订说明书"
+          0.58,
+          0.53
+        ]
       },
       {
         "source": "out/demo-video/reducer-01",
         "begin": 150,
-        "end": 158,
-        "duration": 8,
+        "end": 156,
+        "duration": 6,
         "zoom": [
-          1,
-          1.18
+          1.3,
+          1.75
         ],
         "focus": [
-          0.25,
-          0.3
-        ],
-        "badge": "修改输入后 · 历史成果已过期"
+          0.57,
+          0.35
+        ]
       }
     ],
     "voice_starts": [
@@ -379,35 +392,17 @@
     "title": "接入已有智能体",
     "segments": [
       {
-        "source": "out/demo-video/showcase-01",
-        "begin": 361,
-        "end": 368,
+        "source": "out/demo-video/revision-ui-02",
+        "begin": 2,
+        "end": 9,
         "duration": 7,
-        "zoom": [
-          1.25,
-          1.6
-        ],
-        "focus": [
-          0.9,
-          0.4
-        ],
-        "badge": "DeepSeek Harness",
         "layout": "agent"
       },
       {
-        "source": "out/demo-video/showcase-01",
-        "begin": 381,
-        "end": 388,
+        "source": "out/demo-video/revision-ui-02",
+        "begin": 10,
+        "end": 17,
         "duration": 7,
-        "zoom": [
-          1.4,
-          1.6
-        ],
-        "focus": [
-          0.9,
-          0.36
-        ],
-        "badge": "安装与连接引导",
         "layout": "agent"
       }
     ],
@@ -457,17 +452,17 @@
     "title": "从图纸，到可理解、可修改的工程成果",
     "segments": [
       {
-        "source": "out/demo-video/showcase-01",
-        "begin": 410,
-        "end": 422,
+        "source": "out/demo-video/revision-model-01",
+        "begin": 84,
+        "end": 96,
         "duration": 12,
         "zoom": [
           1.15,
-          1
+          1.02
         ],
         "focus": [
-          0.58,
-          0.6
+          0.62,
+          0.5
         ]
       }
     ],

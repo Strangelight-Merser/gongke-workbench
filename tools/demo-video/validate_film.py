@@ -1,8 +1,8 @@
 """验证已编码交付规格，逐镜从 MP4 抽帧，整理原片与素材来源。"""
-import hashlib,json,subprocess
+import os,hashlib,json,subprocess
 from pathlib import Path
 from PIL import Image,ImageDraw
-ROOT=Path(__file__).resolve().parents[2];OUT=ROOT/'out/demo-video'
+ROOT=Path(__file__).resolve().parents[2];OUT=ROOT/os.environ.get('GONGKE_DEMO_OUTPUT','out/demo-video')
 def digest(p):
  with p.open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
 def main():
@@ -42,6 +42,8 @@ def main():
  '- 声音：Microsoft Edge zh-CN-XiaoxiaoNeural，逐句使用原始时间边界，剪入停顿而非强行变速；旁白另附 narration.txt。没有配乐。',
  '- 字体：项目 Noto Sans SC，OFL；没有使用第三方演示片的图像、声音或音乐。',
  '', '## 原片校验','']
+ if os.environ.get('GONGKE_DEMO_OUTPUT'):
+  lines=lines[:lines.index('## 来源说明')]+['## 来源说明','','本次修改片段使用真实产品录屏；revision-check-02 为确定性工程工具演示，不是 Agent 自主纠错。revision-ui-02 的 PDF 来自原生成 report.docx 经 LibreOffice 渲染。配音 zh-CN-XiaoxiaoNeural，无配乐。独立应用开场受 macOS 录屏权限阻挡；新的 Agent 录屏待付费授权。','','## 原片校验','']
  checks={}
  for name in sorted({s['source'] for s in sources}):
   p=ROOT/name/'raw.mp4';assert p.exists(),p;checks[name]={'raw_sha256':digest(p),'recording_sha256':digest(ROOT/name/'recording.json')};lines.append(f"- `{name}/raw.mp4` SHA256：`{checks[name]['raw_sha256']}`")

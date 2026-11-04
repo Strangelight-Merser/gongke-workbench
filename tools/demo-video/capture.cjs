@@ -56,6 +56,9 @@ async function main() {
       phases.push({name,start,end:Date.now()});
     }
     for(const name of ['sketch','base','tube-sketch','tube','fail']) await phase(name);
+    await page.getByRole('button',{name:'Agent 连接设置',exact:true}).click();
+    await page.getByRole('menuitem',{name:'使用已配置的 Agent',exact:true}).click();
+    await page.locator('.modeling-steps .agent-tool[data-state="failed"] > summary').click();
     await pause(1200);
     await page.screenshot({path:path.join(output,'before.png')});
     fs.writeFileSync(path.join(output,'before.txt'),await page.locator('body').innerText());
