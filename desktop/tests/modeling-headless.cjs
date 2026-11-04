@@ -47,8 +47,11 @@ const path = require("node:path"),
       ),
       before + 1,
     );
+    await page.locator(".modeling-steps .agent-tool > summary").first().click();
+    await page.getByRole("button", {name:"在模型中定位",exact:true}).click();
+    await page.getByRole("button", {name:"底板拉伸",exact:true}).and(page.locator(".active")).waitFor();
     await page.evaluate(() => window.fixture.emit("check"));
-    await page.getByText("底板厚度 · 不符", { exact: false }).waitFor();
+    await page.locator(".native").getByText("底板厚度 · 不符", { exact: false }).waitFor();
     await page.screenshot({ path: path.join(out, "headless-check.png") });
     await page.evaluate(() => window.fixture.emit("delete"));
     await page.waitForFunction(() =>
@@ -59,7 +62,7 @@ const path = require("node:path"),
       0,
     );
     assert.equal(
-      await page.getByText("底板厚度 · 不符", { exact: false }).count(),
+      await page.locator(".native").getByText("底板厚度 · 不符", { exact: false }).count(),
       0,
     );
     assert.deepEqual(errors, []);

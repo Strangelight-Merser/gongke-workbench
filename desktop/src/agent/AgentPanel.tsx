@@ -1,6 +1,12 @@
 import { useModelingProgress } from "./ModelingProgress";
 import { ModelingSteps } from "./ModelingTimeline";
-import { stepTitle } from "./modelingSteps";
+import {
+  ToolCall,
+  ToolDetails,
+  CompletedTools,
+  toolResult,
+  toolState,
+} from "./ToolCall";
 import { AgentErrorDetails } from "./AgentErrorDetails";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -32,9 +38,8 @@ import type {
 import type { Step } from "../../electron/onboarding/types.cjs";
 import { AgentOnboarding } from "./AgentOnboarding";
 import { AgentSettings } from "./AgentSettings";
-import { rowsOf } from "./events";
+import { rowsOf, groupCompletedTools } from "./events";
 import { errorText } from "../api";
-import { DataDetails } from "../ui/DataDetails";
 const phases = {
   disconnected: "未连接",
   starting: "连接中",
@@ -94,12 +99,15 @@ export function AgentPanel({
   >({});
   const [error, setError] = useState(""),
     [editing, setEditing] = useState(false);
+  const followTail = useRef(true);
   const end = useRef<HTMLDivElement>(null),
     refresh = useRef(onTurnEnd),
     prior = useRef(state.phase);
   refresh.current = onTurnEnd;
   const openWhenPrompting = useRef(() => {});
-  openWhenPrompting.current = () => { if (mode === "model") openModel(); };
+  openWhenPrompting.current = () => {
+    if (mode === "model") openModel();
+  };
   async function perform(action: () => Promise<unknown>) {
     setError("");
     try {
@@ -151,7 +159,7 @@ export function AgentPanel({
   ].includes(state.phase);
   const ready = active && state.phase === "ready";
   useEffect(() => {
-    end.current?.scrollIntoView({ block: "nearest" });
+    if (followTail.current) end.current?.scrollIntoView({ block: "nearest" });
   }, [state.events.length]);
   async function changeMode(next: "model" | "practice") {
     await perform(async () => {
@@ -329,18 +337,46 @@ export function AgentPanel({
           </div>
         </div>
       )}
-      {conversationVisible && active && state.session?.configOptions
-        ?.filter(c => c.type === "select" && (c.category === "model" || c.id === "model"))
-        .map(c => c.type === "select" && (
-          <Select key={c.id} aria-label="会话模型" value={c.currentValue} disabled={!ready}
-            onChange={(_, data) => { void perform(() => window.gongke.agent.setConfigOption(c.id, data.value)); }}>
-            {c.options.map(o => "group" in o ? (
-              <optgroup key={o.group} label={o.name}>
-                {o.options.map(v => <option key={v.value} value={v.value}>{v.name}</option>)}
-              </optgroup>
-            ) : <option key={o.value} value={o.value}>{o.name}</option>)}
-          </Select>
-        ))}
+      {conversationVisible &&
+        active &&
+        state.session?.configOptions
+          ?.filter(
+            (c) =>
+              c.type === "select" &&
+              (c.category === "model" || c.id === "model"),
+          )
+          .map(
+            (c) =>
+              c.type === "select" && (
+                <Select
+                  key={c.id}
+                  aria-label="会话模型"
+                  value={c.currentValue}
+                  disabled={!ready}
+                  onChange={(_, data) => {
+                    void perform(() =>
+                      window.gongke.agent.setConfigOption(c.id, data.value),
+                    );
+                  }}
+                >
+                  {c.options.map((o) =>
+                    "group" in o ? (
+                      <optgroup key={o.group} label={o.name}>
+                        {o.options.map((v) => (
+                          <option key={v.value} value={v.value}>
+                            {v.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : (
+                      <option key={o.value} value={o.value}>
+                        {o.name}
+                      </option>
+                    ),
+                  )}
+                </Select>
+              ),
+          )}
       {active &&
         state.authMethods
           .filter((m) => !("type" in m) || m.type !== "terminal")
@@ -357,6 +393,11 @@ export function AgentPanel({
           ))}
       <div
         className="conversation"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          followTail.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+        }}
         hidden={
           !conversationVisible &&
           !modeling.steps.length &&
@@ -397,43 +438,21 @@ export function AgentPanel({
           </div>
         )}
         <ModelingSteps openModel={openModel} />
-        {rows.map((row, i) =>
-          row.kind === "tool" ? (
-            <details
-              className="agent-tool"
-              key={i}
-              open={row.tool.status !== "completed"}
+        {groupCompletedTools(
+          rows,
+          (tool) => toolState(tool.status, toolResult(tool)) === "completed",
+        ).map((row, i) =>
+          row.kind === "tool-group" ? (
+            <CompletedTools
+              key={row.tools![0].toolCallId}
+              count={row.tools!.length}
             >
-              <summary>
-                {stepTitle(
-                  row.tool.title || "工程操作",
-                  row.tool.rawInput || {},
-                )}
-                <span>
-                  {
-                    (
-                      {
-                        pending: "等待授权",
-                        in_progress: "执行中",
-                        completed: "完成",
-                        failed: "失败",
-                      } as Record<string, string>
-                    )[row.tool.status]
-                  }
-                </span>
-              </summary>
-              <DataDetails value={row.tool.rawInput} />
-              {row.tool.content?.map((c: any, j: number) => (
-                <div className="tool-content" key={j}>
-                  {c.type === "content" && c.content.type === "text" ? (
-                    c.content.text
-                  ) : (
-                    <DataDetails value={c} />
-                  )}
-                </div>
+              {row.tools!.map((tool) => (
+                <ToolCall key={tool.toolCallId} tool={tool} />
               ))}
-              <DataDetails value={row.tool.rawOutput} />
-            </details>
+            </CompletedTools>
+          ) : row.kind === "tool" ? (
+            <ToolCall key={row.tool.toolCallId} tool={row.tool} />
           ) : row.kind === "thought" ? (
             <details key={i} className="agent-thought">
               <summary>思考过程</summary>
@@ -466,7 +485,7 @@ export function AgentPanel({
               key={event.id}
             >
               <strong>{event.request.toolCall.title || "工程操作"}</strong>
-              <DataDetails value={event.request.toolCall.rawInput} />
+              <ToolDetails raw={event.request.toolCall.rawInput} />
               <div className="permission-actions">
                 {event.request.options
                   .filter(

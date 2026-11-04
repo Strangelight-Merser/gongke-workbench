@@ -1,5 +1,5 @@
 import type { AgentEvent } from "../../electron/acp/types.cjs";
-type Row = { kind: string; text?: string; tool?: any };
+type Row = { kind: string; text?: string; tool?: any; tools?: any[] };
 export function rowsOf(events: AgentEvent[]): Row[] {
   const rows: Row[] = [];
   const tools = new Map<string, Row>();
@@ -63,4 +63,31 @@ export function rowsOf(events: AgentEvent[]): Row[] {
     }
   }
   return rows;
+}
+
+// 仅合并连续且成功的调用；正文、失败、检查不符和授权都会切断分组。
+export function groupCompletedTools(
+  rows: Row[],
+  completed: (tool: any) => boolean,
+): Row[] {
+  const result: Row[] = [];
+  let pending: Row[] = [];
+  const flush = () => {
+    if (pending.length > 3)
+      result.push({
+        kind: "tool-group",
+        tools: pending.map((row) => row.tool),
+      });
+    else result.push(...pending);
+    pending = [];
+  };
+  for (const row of rows) {
+    if (row.kind === "tool" && completed(row.tool)) pending.push(row);
+    else {
+      flush();
+      result.push(row);
+    }
+  }
+  flush();
+  return result;
 }

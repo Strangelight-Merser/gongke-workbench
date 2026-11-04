@@ -156,9 +156,9 @@ const records = [],
                     .count(),
                   0,
                 );
-                await page
-                  .getByRole("button", { name: "新建模型", exact: true })
-                  .click();
+                // prompting 状态会自动打开模型页，开始页按钮已卸载。
+                await page.getByRole("tab", { name: "模型", exact: true }).waitFor();
+                await page.getByRole("button", { name: "返回 CAD 编辑", exact: true }).click();
                 await page.locator(".cad-surface").waitFor();
                 await page
                   .getByRole("button", { name: "进入 CAD", exact: true })

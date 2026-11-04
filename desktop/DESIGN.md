@@ -151,3 +151,15 @@ node tests/visual-review.cjs /absolute/path/to/frontend-review
 依据：[Three.js OrbitControls](https://threejs.org/docs/pages/OrbitControls.html) 的 camera/target 与 damping 生命周期；[ACP tool calls](https://agentclientprotocol.com/protocol/v1/tool-calls) 的展示更新与实际执行分工；同类 [freecad-mcp](https://github.com/neka-nat/freecad-mcp) 的宿主插件读取方式。采用项目已有原生读取和受限工具，没有引入其任意代码执行入口或依赖。
 
 补充无窗口原生验证：`/Applications/FreeCAD.app/Contents/Resources/bin/python tests/e2e/modeling_display_freecad.py` 在全新 Python 进程中创建并关闭自己的内存文档，验证真实 Sketch 轮廓、Body/Sketch/Pad 树和世界坐标边，产出 `native-read.json`。本机已通过；这是 FreeCAD 原生读取证据，仍不等同于 GUI/MCP/Electron 端到端验收。系统缺少可选 3Dconnexion 驱动库的提示保留在 `native-read.log`。
+
+## Agent 步骤密度与详情（2026-11-03）
+
+依据 DSH 官方仓库版本 `8bd073392eef6f54e921a093b95076248eb08cbb` 的 ToolRow、GenericToolCard、ToolCallTree 与 ReasoningRow，来源及许可见根目录 THIRD_PARTY_NOTICES.md。
+
+上游工具行默认 24px，次级字号 13px（正文减一级），摘要单行省略；运行状态独立呈现，错误摘要使用错误色。通用工具按输入/输出组织展开内容，每区限高 150px 独立滚动；专用工具另有读文件、diff、终端等卡片和原始调用检查入口。思考独立折叠，运行时可预览已完成段落首行。调用树按 PTC 的真实父子关系缩进，不能把它误称为按连续次数自动分组。
+
+本项目采用相同的信息层级，独立实现，使用 Fluent token：正文 14px，工具 12px，单行 26px；不移植 DSH 的插件、终端及代码渲染体系。连续超过三次成功调用合为“已完成 N 步”，按原顺序展开；正文、思考、失败、待核实和待授权切断分组，不将检查不符藏入成功组。ACP 流与工程回执各自分组，缺少共同调用 ID 时不猜测合并，保留宿主回执定位能力。
+
+展开第一层显示中文操作摘要对应的结果、错误、特征引用与检查要求/实测值；长度摘要继续按现有 SI → mm 转换。检查详情保留源单位，不猜换算。长消息先显示 240 字，“显示全部”后仍限高 160px；原始参数、ACP 内容及完整回执在下一层 JSON 区域，限高 180px 可滚动和选择复制。思考限高 180px，默认折叠。权限卡片按钮保持可见，参数也收到原始详情层。未读取的错误、未知状态不判为成功；界面只改变展示，不改变权限、写入或重试语义。读者向上阅读时新事件不强制拉回底部。
+
+验证入口：`node tests/agent-visual-review.cjs <目录> before|after`（先构建对应版本）。测试替身含 36 次调用、长参数/回执、失败重试、尺寸不符和授权；不调用模型、不执行 CAD 写入。before/after 使用同一数据与窗口尺寸，另存折叠总览。visual-review 的建模场景等待自动打开的模型页，再通过“返回 CAD 编辑”进入嵌入布局，不再点击已卸载的开始页按钮。
