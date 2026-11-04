@@ -93,7 +93,8 @@
       ],
       "identity": "-",
       "sign": "./scripts/sign-development.cjs",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "icon": "build/icon.icns"
     },
     "win": {
       "target": [
@@ -119,13 +120,15 @@
           "from": "../LICENSE",
           "to": "licenses/gongke-LGPL-2.1.txt"
         }
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "linux": {
       "target": [
         "AppImage"
       ],
-      "category": "Education"
+      "category": "Education",
+      "icon": "assets/brand/logo-512.png"
     },
     "nsis": {
       "oneClick": false,
