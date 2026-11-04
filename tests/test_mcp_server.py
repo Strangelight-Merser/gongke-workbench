@@ -288,3 +288,4 @@ import pytest
 @pytest.fixture(autouse=True)
 def workbuddy_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))

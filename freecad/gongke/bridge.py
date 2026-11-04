@@ -512,6 +512,7 @@ class DocumentState:
             raise ValueError("新工程请指定 .FCStd 保存路径")
         if not Path(doc.FileName).is_file():
             raise ValueError("工程未成功保存")
+        Gui.getDocument(doc.Name).Modified = False
         return {"saved": True, "path": doc.FileName, "revision": state["revision"]}
 
 

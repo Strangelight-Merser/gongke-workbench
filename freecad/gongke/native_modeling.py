@@ -433,6 +433,8 @@ def dispatch(state, method, p):
                 body = doc.addObject("PartDesign::Body", _name(doc, p["name"]))
                 doc.recompute()
                 doc.saveAs(str(target))
+                import FreeCADGui as Gui
+                Gui.getDocument(doc.Name).Modified = False
                 result = {"body_ref": body.Name, "native_ref": body.Name}
             else:
                 source = _bound(state, p["document"], writable=False)
@@ -453,6 +455,9 @@ def dispatch(state, method, p):
             if method == "model.save":
                 changed = True
                 doc.save()
+                # 与 Gui::Document::save 一致：成功写盘后才清除 GUI 未保存标志。
+                import FreeCADGui as Gui
+                Gui.getDocument(doc.Name).Modified = False
                 result = {"path": doc.FileName, "file_exists": Path(doc.FileName).is_file()}
             else:
                 doc.UndoMode = 1

@@ -11,7 +11,7 @@ internal static class RecoveryChecks
     internal static void Child(string folder, string state)
     {
         var store = new OperationStore(folder);
-        var lease = store.Begin(RequestFor(state), "original-session", out _)!;
+        using var lease = store.Begin(RequestFor(state), "original-session", out _)!;
         if (state != "queued") lease.Update("running", "unknown");
         if (state == "completed") lease.Update("completed", "committed", new { id = "original-request", result = new {
             path = "copy.dwg", native_fingerprint = "native-guid", disk_reopen_verified = true, original_preserved = true } });
@@ -41,9 +41,14 @@ internal static class RecoveryChecks
             finally { if (!child.HasExited) child.Kill(); await child.WaitForExitAsync(); }
 
             var restarted = new OperationStore(folder);
+            // 普通文件读者不拥有操作；不能把共享访问冲突当作活跃写操作。
+            using var reader = OperatingSystem.IsWindows()
+                ? new FileStream(Path.ChangeExtension(store.RecordPath(state), ".lock"), FileMode.Open,
+                    FileAccess.Read, FileShare.ReadWrite)
+                : null;
             var recovered = restarted.Get(state);
             check(recovered.Status == (state == "queued" ? "interrupted_before_start" : state == "running" ? "interrupted" : "completed"),
-                "Crash recovery state " + state);
+                "Crash recovery state " + state + ": " + JsonSerializer.Serialize(recovered));
             check(recovered.Outcome == (state == "queued" ? "unchanged" : state == "running" ? "unknown" : "committed"),
                 "Crash recovery outcome " + state);
             check(recovered.SessionId == "original-session" && recovered.Fingerprint == OperationStore.Fingerprint(RequestFor(state)),

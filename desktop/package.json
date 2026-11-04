@@ -10,7 +10,8 @@
     "start": "electron .",
     "dev": "npm run build && electron .",
     "package": "npm run build && electron-builder --dir",
-    "test": "node --test tests/*.test.cjs"
+    "test": "node --test tests/*.test.cjs",
+    "package:windows": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^2.4.0",
@@ -104,6 +105,18 @@
           "filter": [
             "**/*"
           ]
+        },
+        {
+          "from": "runtime/freecad",
+          "to": "freecad"
+        },
+        {
+          "from": "../out/autocad-ci",
+          "to": "plugins/autocad"
+        },
+        {
+          "from": "../LICENSE",
+          "to": "licenses/gongke-LGPL-2.1.txt"
         }
       ]
     },
@@ -115,7 +128,11 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "gongke-${version}-windows-x64-setup.${ext}",
+      "perMachine": false,
+      "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false
     }
   }
 }

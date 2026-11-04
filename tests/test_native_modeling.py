@@ -410,3 +410,22 @@ def test_through_pocket_sets_native_end_condition_and_hides_inactive_length(nati
     assert result["editable_parameters"] == []
     with pytest.raises(ValueError, match="editable_parameters"):
         module._mutate(doc, "model.feature_edit", {"feature_ref": "Bore", "parameter": "Length", "value": .03})
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_save_clears_gui_modified_only_after_success(native, monkeypatch, fails):
+    import sys
+    from types import SimpleNamespace
+    module, state, doc = native
+    doc.Name = "Part"
+    gui = SimpleNamespace(Modified=True)
+    monkeypatch.setitem(sys.modules, "FreeCADGui", SimpleNamespace(getDocument=lambda name: gui))
+    def save():
+        assert gui.Modified
+        if fails:
+            raise OSError("disk write failed")
+        Path(doc.FileName).write_bytes(b"saved")
+    doc.save = save
+    result = module.dispatch(state, "model.save", {"document": DOC, "operation_id": str(uuid4())})
+    assert gui.Modified is fails
+    assert ("error" in result) is fails

@@ -26,3 +26,5 @@ desktop/service/
 .venv/
 *.egg-info/
 !tests/fixtures/**/*.step
+
+/desktop/runtime/

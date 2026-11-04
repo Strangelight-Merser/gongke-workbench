@@ -12,6 +12,7 @@ from gongke_app.project import Project
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     user = Path.home() / ".workbuddy/mcp.json"
     user.parent.mkdir(parents=True)
     project = Project.create(str(tmp_path / "project"), teaching=False)

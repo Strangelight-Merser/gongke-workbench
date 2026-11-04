@@ -63,7 +63,18 @@ npm ci
 npm run package
 ```
 
-产物位于 `desktop/release`。当前是开发构建：macOS 使用本地 ad hoc 签名并校验包完整性，没有 Apple Developer ID 或公证；Windows 未签名，安装过程仍待现场验证。CI 构建 Windows/macOS 目录包，AutoCAD 另有 .NET 8 与 .NET 10 两种原生插件包。商业 CAD 安装与授权不包含在本应用中。
+Windows NSIS 构建还需要先在仓库根目录运行：
+
+```powershell
+./desktop/native/embed/build.ps1
+python adapters/autocad/scripts/build.py --output out/autocad-ci
+python tools/prepare_windows_runtime.py
+# Python 服务已构建后
+cd desktop
+npm run package:windows
+```
+
+产物位于 `desktop/release`。当前是开发构建：macOS 使用本地 ad hoc 签名并校验包完整性，没有 Apple Developer ID 或公证；Windows 未签名，安装过程仍待现场验证。CI 构建 Windows NSIS 安装器及 macOS 目录包，Windows 随包包含固定 FreeCAD、窗口组件和 AutoCAD 的 .NET 8/.NET 10 插件。SOLIDWORKS 二进制仍需官方 SDK 引用，详见交付说明。商业 CAD 安装与授权不包含在本应用中。
 
 ## 验证
 
@@ -98,7 +109,7 @@ ACP 确定性协议测试使用独立 stdio Agent 替身；真实 Agent 联调�
 
 独立 Linux FreeCAD 1.1.4 GUI 的合成轴验收已通过 8 项：真实网格与 SVG、原生对象选择、显示时保留源文档状态及子元素选择、40→38 mm 修改与读回重算、关联原生标注更新、原生 DXF 导出、人工修改后结果过期与 Undo、保存重开且原件不变；DXF 独立读回为 2 个 CIRCLE 和 1 个 DIMENSION，测量值约 38 mm，Unicode 转义解码后文字为“⌀38”，文件审计无错误。证据位于 `out/desktop-native-validation`，它证明该 Linux 原生流程，不代表 macOS FreeCAD 故障已修复，也不代表 Windows SOLIDWORKS/AutoCAD 宿主验收通过。
 
-本机交付范围、验证结果与外部环境待验项见 [交付说明](../docs/delivery-2026-11-02.md)。
+本机交付范围、验证结果与外部环境待验项见 [交付说明](../docs/windows-delivery.md)。
 
 ## 项目 MCP
 
@@ -117,7 +128,7 @@ powershell -ExecutionPolicy Bypass -File desktop/native/embed/build.ps1
 # 然后按上方步骤启动/打包桌面
 ```
 
-Windows 安装包携带 `native/embed/publish/` 全目录到 `resources/embed/`，学生无需安装 .NET。可选 FreeCAD 放在 `resources/freecad/bin/FreeCAD.exe`；当前打包规则不自动下载或分发 CAD。开发环境可用 `GONGKE_FREECAD_EXE` 指向本机 FreeCAD。未发现安装时用“选择程序”。
+Windows 安装包携带 `native/embed/publish/` 全目录到 `resources/embed/`，学生无需安装 .NET。Windows CI 校验并随包附带 FreeCAD 1.0.2，默认路径为 `resources/freecad/bin/FreeCAD.exe`。开发环境可用 `GONGKE_FREECAD_EXE` 指向本机 FreeCAD。未发现安装时用“选择程序”。
 
 不依赖 Python 服务的独立原型与 Windows 冒烟：
 
