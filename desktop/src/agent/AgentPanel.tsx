@@ -472,7 +472,16 @@ export function AgentPanel({
                         ?.name || "Agent"
                     : ""}
               </div>
-              <div>{row.text}</div>
+              {row.kind === "user" ? (
+                <details className="agent-request">
+                  <summary>
+                    <span>{row.text?.split("\n")[0]}</span>
+                  </summary>
+                  <div>{row.text}</div>
+                </details>
+              ) : (
+                <div>{row.text}</div>
+              )}
               {row.reference && (
                 <details className="agent-raw">
                   <summary>图纸参考原文</summary>

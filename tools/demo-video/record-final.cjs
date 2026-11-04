@@ -23,6 +23,7 @@ const source=path.join(root,'out/demo-video/paid-robot4/robot4-1');
   await page.getByRole('button',{name:'Agent 连接设置',exact:true}).click();await page.getByRole('menuitem',{name:'使用已配置的 Agent',exact:true}).click();
   rec=await startRecording(page,out);rec.mark('drawing');await pause(10000);
   await page.getByText('原生 CAD',{exact:true}).click();await page.getByRole('button',{name:'连接 FreeCAD',exact:true}).click();await pause(800);await page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}).click();await page.getByRole('button',{name:'Profile · 草图',exact:true}).waitFor();
+  rec.mark('opening-cad');await page.screenshot({path:path.join(out,'opening-cad.png')});await pause(3000);
   rec.mark('workspace');await pause(13000);
   // 只替换当前独立进程的 ACP 传输。所有执行入口明确拒绝，工程真实读操作照常走产品。
   await app.evaluate(({ipcMain},s)=>{
@@ -35,10 +36,17 @@ const source=path.join(root,'out/demo-video/paid-robot4/robot4-1');
   const replayed=[];const weights=snapshot.events.map(e=>e.type==='user'?3:e.type==='notice'?2:e.type==='update'&&e.update.status==='failed'?3:e.type==='update'&&['agent_thought_chunk','agent_message_chunk','tool_call_update'].includes(e.update.sessionUpdate)?1.4:.15);
   const sum=weights.reduce((a,b)=>a+b,0);let cumulative=0;const started=Date.now();rec.mark('replay-start');
   for(let i=0;i<snapshot.events.length;i++){
-   const e=snapshot.events[i];replayed.push(e);
+   const e=snapshot.events[i];replayed.push(e);rec.mark('event-'+i);
    // 原文不变；仅将旧版存储的用户参考长文本放进新版已有的折叠区域。
    const view=replayed.map(x=>x.type==='user'&&x.text.startsWith(prompt)?{...x,displayText:prompt}:x);
    await app.evaluate(({BrowserWindow},s)=>{globalThis.demoSnapshot=s;BrowserWindow.getAllWindows()[0].webContents.send('acp-state',s)}, {...snapshot,project,events:view,phase:i===snapshot.events.length-1?'ready':'prompting'});
+   if(e.type==='user'){
+    await page.locator('details.agent-request').waitFor();
+    const request=page.locator('details.agent-request');assert.equal(await request.count(),1);
+    assert.equal(await request.getAttribute('open'),null);
+    assert.equal((await request.locator('div').textContent()).trim(),prompt.trim());
+    fs.writeFileSync(path.join(out,'request-display-test.json'),JSON.stringify({collapsed_by_default:true,collapsed_content_preserves_prompt:true,collapsed_for_recording:true}));
+   }
    for(const group of await page.locator('details.agent-tool-group:not([open]) > summary').all()) await group.click();
    // 让新增原始记录保持可见；不修改节点或内容。
    await page.getByRole('log',{name:'工程对话',exact:true}).evaluate(el=>{el.scrollTop=el.scrollHeight}).catch(()=>{});

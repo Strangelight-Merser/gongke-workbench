@@ -3,6 +3,7 @@ import os,bisect,hashlib,json,math,re,subprocess
 from functools import lru_cache
 from pathlib import Path
 from PIL import Image,ImageDraw,ImageFont,ImageFilter
+from graphics import opening, evidence
 ROOT=Path(__file__).resolve().parents[2];OUT=ROOT/os.environ.get('GONGKE_DEMO_OUTPUT','out/demo-video');FPS=30
 VOICE=ROOT/os.environ.get('GONGKE_DEMO_VOICE','out/demo-video/voice')
 @lru_cache(None)
@@ -38,7 +39,7 @@ def background():
 
 def main():
  OUT.mkdir(parents=True,exist_ok=True);(OUT/'voice').mkdir(exist_ok=True)
- plan=json.loads((ROOT/os.environ.get('GONGKE_DEMO_PLAN','tools/demo-video/timeline.json')).read_text());records={p:Recording(p) for p in {s['source'] for sh in plan for s in sh['segments']}}
+ plan=json.loads((ROOT/os.environ.get('GONGKE_DEMO_PLAN','tools/demo-video/timeline.json')).read_text());records={p:Recording(p) for p in {s['source'] for sh in plan for s in sh['segments'] if 'source' in s}}
  voices=json.loads((VOICE/'segments.json').read_text());voice=[next(v for v in voices if v['shot']==s['id']) for s in plan];subs=[];position=0;audio=[];sources=[]
  for shot,v in zip(plan,voice):
   duration=sum(s['duration'] for s in shot['segments']);shot['start']=position;shot['duration']=duration
@@ -78,16 +79,18 @@ def main():
  for shot in plan:
   local=0;qa_saved=False
   for segment in shot['segments']:
-   record=records[segment['source']];speed=(segment['end']-segment['begin'])/segment['duration'];assert speed>0
-   sources.append({**segment,'shot':shot['id'],'film_start':shot['start']+local,'speed':speed,'source_first_timestamp':record.base})
+   record=records.get(segment.get('source'));speed=(segment['end']-segment['begin'])/segment['duration'] if record else 1;assert speed>0
+   sources.append({**segment,'shot':shot['id'],'film_start':shot['start']+local,'speed':speed,'source_first_timestamp':record.base if record else None})
    count=round(segment['duration']*FPS)
    for n in range(count):
-    t=n/FPS;absolute=shot['start']+local+t;source_t=segment['begin']+t*speed;frame=record.frame(source_t);canvas=base.copy();draw=ImageDraw.Draw(canvas)
+    t=n/FPS;absolute=shot['start']+local+t;source_t=segment.get('begin',0)+t*speed;frame=record.frame(source_t) if record else None;canvas=base.copy();draw=ImageDraw.Draw(canvas)
     draw.text((160,17),'构想引擎',font=font(25,650),fill='#ecf4fa');draw.text((330,19),shot['title'],font=font(23),fill='#9fb2c6')
     badge=segment.get('badge','')
     if speed>1.001:badge=(badge+'  ·  ' if badge else '')+f'×{speed:g} 加速'
     if badge:draw.text((1760,20),badge,font=font(22),fill='#77d6cd',anchor='ra')
-    if segment.get('layout') in ['replay','validation','opening']:
+    if segment.get('graphic')=='opening':opening(canvas,t,ROOT,font,ease)
+    elif segment.get('graphic')=='evidence':evidence(canvas,t,ROOT,font,ease)
+    elif segment.get('layout') in ['replay','validation','opening']:
      w,h=frame.size
      def panel(box,dest):
       pic=frame.crop(tuple(round(v*(w if i%2==0 else h)) for i,v in enumerate(box)))
@@ -123,7 +126,7 @@ def main():
      draw=ImageDraw.Draw(canvas);draw.text((175,290),'学生接手',font=font(65,650),fill='#eef5fa');draw.text((175,390),'参数，由你修改',font=font(50,600),fill='#77d6cd');draw.text((180,550),'4 mm → 5 mm',font=font(43),fill='#d4e2ee');draw.text((180,635),'工作副本中的厚度修改练习',font=font(26),fill='#9fb2c6')
     else:
      w,h=frame.size;z0,z1=segment.get('zoom',[1,1.12]);progress=ease(t/min(4,max(1,segment['duration']*.65)));z=z0+(z1-z0)*progress
-     cx,cy=segment.get('focus',[.5,.5]);cw=w/z;ch=h/z;left=max(0,min(w-cw,cx*w-cw/2));top=max(0,min(h-ch,cy*h-ch/2));pic=frame.crop((left,top,left+cw,top+ch)).resize((1600,900),Image.Resampling.LANCZOS);canvas.paste(pic,(160,60),mask)
+     cx,cy=segment.get('focus',[.5,.5]);ex,ey=segment.get('focus_end',[cx,cy]);cx+=(ex-cx)*progress;cy+=(ey-cy)*progress;cw=w/z;ch=h/z;left=max(0,min(w-cw,cx*w-cw/2));top=max(0,min(h-ch,cy*h-ch/2));pic=frame.crop((left,top,left+cw,top+ch)).resize((1600,900),Image.Resampling.LANCZOS);canvas.paste(pic,(160,60),mask)
      # 原始指针坐标来自1920×1080 Electron控件事件；强调真实输入，不生成演示点击。
      pointer=record.cursor(source_t)
      if pointer and 0<=pointer['x']<1920:

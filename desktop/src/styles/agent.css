@@ -441,3 +441,23 @@
   font-family: "Cascadia Code", Consolas, monospace;
   margin: 8px 0;
 }
+
+/* 用户请求保留原文，默认只露一行；展开后完整阅读。 */
+.agent-request {
+  min-width: 0;
+}
+.agent-request > summary {
+  cursor: pointer;
+}
+.agent-request > summary > span {
+  display: inline-block;
+  max-width: calc(100% - 22px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.agent-request > div {
+  margin-top: 10px;
+  white-space: pre-wrap;
+}
