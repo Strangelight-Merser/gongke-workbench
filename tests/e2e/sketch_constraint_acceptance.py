@@ -43,6 +43,7 @@ def exercise(output):
     corrected["constraints"] = [c for i,c in enumerate(corrected["constraints"]) if i not in {6,8}]
     cases.append(("ClockwiseArc", corrected, True))
     for name, geometry, constraints, success in [
+        ("ExpandedFixedMapping", circle, [fixed, *[{"kind":"radius", "entities":[{"geometry":0}], "value":.005} for _ in range(2)]], False),
         ("WholeBlock", circle, [{"kind": "fixed", "entities": [{"geometry": 0}]}], True),
         ("PointXY", circle, [fixed], True),
         ("PointOnAxis", [{**circle[0], "center": [0, .03]}], [fixed], True),
@@ -59,6 +60,12 @@ def exercise(output):
         operation = str(uuid4())
         result = call("host.sketch", document=new["document"], body_ref=new["body_ref"], operation_id=operation, **deepcopy(sketch))
         assert (result.get("outcome") == "committed") == success, result
+        if name == "ExpandedFixedMapping":
+            solver = json.loads(result["error"]["message"])
+            assert solver["constraint_index_base"] == 0
+            assert solver["constraint_sources"] == [
+                {"input_index":0,"native_indices":[0,1]}, {"input_index":1,"native_indices":[2]}, {"input_index":2,"native_indices":[3]}]
+            assert solver["redundant_constraints"] and set(solver["redundant_constraints"]).issubset({2,3}), solver
         if name == "ClockwiseArcRecorded":
             solver = json.loads(result["error"]["message"])
             assert not solver["conflicting_constraints"] and solver["redundant_constraints"], solver

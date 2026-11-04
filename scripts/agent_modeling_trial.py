@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 from tests.e2e.agent_modeling_result import classify, summarize
 SOURCE = Path("/Users/huaiyi/Documents/gongke-workbench/samples/student-materials/drawing-to-model-sheet-01.jpg")
 PDF_SOURCE = Path("/Users/huaiyi/Documents/gongke-workbench/samples/student-materials/quadruped-robot-drawings.pdf")
-PDF_CASES = {"robot14": 14, "robot13": 13}
+PDF_CASES = {"robot14": 14, "robot13": 13, "robot4": 4}
 STUDY = Path("/Users/huaiyi/Documents/gongke-workbench/out/drawing-to-model-study")
 # 只裁局部原图，不放大、不补画尺寸。参考体不进入模型可读的工程。
 CROPS = {"p7": (77, 1282, 451, 1574), "p8": (472, 1282, 876, 1575), "p6": (473, 1009, 862, 1267)}
@@ -261,7 +261,7 @@ def main():
         parser.error("尺寸/视觉比较支持 P7 与 P6；P6 模糊读数显式列为假设")
     if args.delivery == "pdf":
         if any(case not in PDF_CASES for case in args.cases):
-            parser.error("PDF 试验请选择 robot14 或 robot13")
+            parser.error("PDF 试验请选择 robot14、robot13 或 robot4")
         if args.source == SOURCE:
             args.source = PDF_SOURCE
     elif any(case in PDF_CASES for case in args.cases):

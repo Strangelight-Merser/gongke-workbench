@@ -136,3 +136,5 @@ FreeCAD 的 Block 只接受一个完整几何，不能传点号。`fixed` 的 `p
 FreeCAD 的三点圆弧保留输入方向，但 Sketcher 的点 1/2 按逆时针排序。对负法向圆弧，工具将 `start/end` 映射到原生 2/1；公开含义始终为三点输入的首末点，追加约束也相同，不增加持久化映射属性。真实探针见本地 `out/agent-modeling-dev/round7/arc-probe.json`。第六轮 P7 原调用同时有冗余关系：修复端点后从冲突变为明确冗余；回归保留原请求，再移除重复的圆心水平/等半径关系验证可拉伸及保存。`sketch_constraint_acceptance.py` 现在包含 10 项，每项都验证后续读写仍可用。
 
 `host.sketch.geometry` 增加求解后的局部坐标（m）、圆心和半径，便于在生成特征前识别欠约束求解引起的漂移；不将输入坐标冒充求解结果。原生几何索引不变。创建轮廓与必要约束可一次提交；已有草图追加须 `geometry=[]`。这是公开回执的增量改动，原因是机器人 PDF 首轮直到实体检查才发现漂移，产生了整树删除重建。
+
+第八轮修正约束错误定位：FreeCAD 的 `ConflictingConstraints/RedundantConstraints` 原始值为1基，现与 `constraints[].index` 一致转换为0基。`host.sketch` 增加 `constraint_sources` 将本次输入约束映射到展开后的原生约束；失败 JSON 同样保留映射及自动约束，解决固定点展开与矩形自动约束导致的错删。来源和真实预检见 [第八轮记录](agent-modeling-round8.md)。

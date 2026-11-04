@@ -270,6 +270,7 @@ async function trial(caseName, repetition) {
       p7: "为便于复核，以槽左端圆心为 XY 原点，X 指向右侧圆筒，底面 z=0。",
       p8: "为便于复核，以鼻端底孔圆心为 XY 原点，X 指向后立板，底面 z=0。",
       p6: "以底板左前下角为原点，X 向右、Y 向后、Z 向上。",
+      robot4: "以主视图水平和竖直中心线交点为 XY 原点，轮廓置于 XY 面，X 向右、Y 向图上方，底面 Z=0，厚度沿 +Z。",
       robot14: "以大平板左前下角为原点，主视图轮廓放在 XY 面，X 向右、Y 向图上方，凸柱沿 +Z。",
       robot13: "以主视图左右中心为 X=0、底面为 Z=0、前端为 Y=0；主视图轮廓置于 XZ 面，Y 向后。",
     }[caseName];
@@ -285,7 +286,7 @@ async function trial(caseName, repetition) {
     if (manifest.delivery === "pdf") {
       prompt = `根据当前矢量 PDF 的这一个零件建模，保存到当前工程 ${caseName}.FCStd。原始图纸第 ${manifest.crops[caseName].source_page} 页已在本地摘为单页，文件 ${drawing}。` +
         "只使用 project.read_drawing 的矢量几何、尺寸文字与位置理解图纸；不使用图片/截图/OCR，不读其他工程或参考模型。当前参考已包含解析结果，按 next_offset 补齐该页即可，不重复读同一批。" +
-        "页面坐标 pt 不等于 mm。标注文字可能含旋转、由矢量绘制的符号；结合视图边线、引线与投影关系，先简要列关键尺寸和不确定项，再自行规划原生特征。" +
+        "页面坐标 pt 不等于 mm。标注文字可能含旋转、由矢量绘制的符号；结合视图边线、引线与投影关系，先列各正投影视图在页面的位置、对应的模型平面及尺寸链，再简要列关键尺寸和不确定项，自行规划原生特征。不要默认左上就是主视图，不得擅自交换指定模型轴；小尺寸与凹口不能因难解释而省略后声称完成。" +
         coordinate + "使用构想引擎 MCP 创建草图/特征，长度传 m。一次草图提交完整轮廓和必要约束，不追求全约束；检查依据图纸，合并 host.check 条件，最后保存并简短列结果和推断。";
     }
     if (manifest.delivery === "mcp") {
@@ -399,7 +400,7 @@ async function trial(caseName, repetition) {
     if (manifest.delivery === "vision") {
       // 首轮只发图片与字段含义；期望值仅在试验进程，不复制进工程或提示词。
       const probe =
-        "请先只读这张图片，不建模。先核对尺寸界线和剖面：小字或底部是否留实体看不清时，调用 project.read_image 的 crop/scale 局部复读。不能只根据阴影猜孔槽是否贯通。" +
+        "请先只读这张图片，不建模。先核对尺寸界线和剖面：小字或底部是否留实体看不清时，调用 project.read_image 的 crop/scale 局部复读。不能只根据阴影猜孔槽是否贯通。已有整图，不必重复读全图；同一区域复读仍无法确认时填 null，不靠反复放大或像素比例强行补数字。" +
         "按图中明确标注给出以下字段，长度单位 mm，数值为数字，布尔字段为 true/false，看不清填 null：" +
         Object.entries(manifest.vision_fields[caseName])
           .map(([field, label]) => `${field}（${label}）`)

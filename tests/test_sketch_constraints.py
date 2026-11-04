@@ -78,3 +78,12 @@ def test_solved_geometry_reports_post_solver_local_coordinates(native):
     assert rows[0]["start"] == [.002,.003] and rows[0]["end"] == [.008,.003]
     assert rows[1]["center"] == [.005,.006] and rows[1]["radius"] == .002
     assert rows[2]["start"] == [0,.005] and rows[2]["end"] == [0,-.005]
+
+
+def test_solver_indices_match_zero_based_inspection_indices(native):
+    module, _, _ = native
+    obj = SimpleNamespace(Name="Sketch", FullyConstrained=False, DoF=2, ConflictingConstraints=[1,3],
+                          RedundantConstraints=[4], isValid=lambda:True)
+    result = module._sketch_status(obj)
+    assert result["conflicting_constraints"] == [0,2]
+    assert result["redundant_constraints"] == [3]
