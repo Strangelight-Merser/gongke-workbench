@@ -11,7 +11,7 @@ def test_development_workbuddy_configuration_and_other_servers(tmp_path):
     app = Application(tmp_path / "state")
     try:
         project = tmp_path / "工程"
-        app.dispatch("project.create", {"path": str(project), "teaching": True})
+        app.dispatch("project.create", {"path": str(project)})
         path = Path.home() / ".workbuddy/mcp.json"
         path.parent.mkdir(parents=True)
         path.write_text(json.dumps({"mcpServers": {"other": {"command": "existing"}}}))

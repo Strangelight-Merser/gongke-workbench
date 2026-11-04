@@ -99,7 +99,7 @@ class Application:
         if method in {"project.create", "project.open"} and self.project and self.tasks.active(str(self.project.path)):
             raise ValueError("当前工程仍有任务执行中，请等待结束或取消后切换工程")
         if method == "project.create":
-            validate(params, schema({"path": TEXT, "name": TEXT, "teaching": BOOL}, ["path"]))
+            validate(params, schema({"path": TEXT, "name": TEXT}, ["path"]))
             self.project = Project.create(**params)
             self.project_epoch = uuid4().hex
             return self.project.view()

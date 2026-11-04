@@ -1,77 +1,77 @@
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const Module = require("node:module");
-const ts = require("typescript");
-const filename = path.resolve(__dirname, "../src/project/workflow.ts");
-const compiled = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-}).outputText;
-const loaded = new Module(filename, module);
-loaded.filename = filename;
-loaded.paths = module.paths;
-loaded._compile(compiled, filename);
-const { stageState } = loaded.exports;
-
-test("旧文件不能让已改条件的图纸或说明书变成完成", () => {
-  const project = {
-    generations: [{ current: false }],
-    files: [
+const test = require("node:test"),
+  assert = require("node:assert/strict");
+const fs = require("node:fs"),
+  path = require("node:path"),
+  Module = require("node:module"),
+  ts = require("typescript");
+function load(name) {
+  const file = path.resolve(__dirname, "../src", name),
+    m = new Module(file, module);
+  m.filename = file;
+  m.paths = module.paths;
+  m._compile(
+    ts.transpileModule(fs.readFileSync(file, "utf8"), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS },
+    }).outputText,
+    file,
+  );
+  return m.exports;
+}
+const { documentLabel, revisionOf } = load("project/types.ts");
+const { checkSuperseded } = load("agent/modelingSteps.ts");
+test("文件导航不显示输入存储目录，成果仍沿用同一修订状态", () => {
+  const file = {
+    path: "inputs/6bbb178a-e04/robot4.pdf",
+    name: "robot4.pdf",
+    kind: "pdf",
+  };
+  assert.equal(documentLabel({ type: "file", file }), "图纸 › robot4.pdf");
+  const revision = {
+    path: "revisions/part",
+    current: false,
+    status: "complete",
+  };
+  const project = { generations: [revision] };
+  for (const name of ["model.FCStd", "drawing.pdf", "report.pdf"])
+    assert.equal(
+      revisionOf(project, { path: "revisions/part/" + name }),
+      revision,
+    );
+});
+test("原生模型改变后旧检查过期；其他文档不使本模型检查过期", () => {
+  const doc = {
+    host_instance: "host",
+    document_id: "part",
+    configuration: "",
+    revision: 1,
+  };
+  const check = {
+    command: "host.check",
+    phase: "finished",
+    result: { document: doc, checks: [{ ok: true }] },
+  };
+  const edit = {
+    command: "host.feature_edit",
+    phase: "finished",
+    result: { document: { ...doc, revision: 2 } },
+  };
+  assert.equal(checkSuperseded(check, [check]), false);
+  assert.equal(checkSuperseded(check, [check, edit]), true);
+  assert.equal(
+    checkSuperseded(check, [
+      check,
       {
-        kind: "svg",
-        path: "revisions/old/drawings/assembly.svg",
-        name: "assembly.svg",
+        ...edit,
+        result: { document: { ...doc, document_id: "other", revision: 2 } },
       },
-      { kind: "md", path: "revisions/old/report.md", name: "report.md" },
-    ],
-  };
-  for (const kind of ["drawings", "report"]) {
-    const value = stageState(null, project, kind);
-    assert.equal(value.state, "");
-    assert.match(value.note, /过期/);
-  }
-});
-
-test("当前修订缺文件或生成失败不会沿用历史成功状态", () => {
-  const project = {
-    delivery: {
-      status: "complete",
-      calculation_ok: true,
-      artifacts: {
-        drawings: {
-          status: "complete",
-          available: false,
-          files: ["drawings/a.svg"],
-        },
-      },
-    },
-  };
-  assert.equal(stageState(null, project, "drawings").state, "fail");
-  project.delivery = { status: "failed" };
-  assert.equal(stageState(null, project, "drawings").state, "fail");
-});
-
-test("图纸数量只来自当前完整修订，校核失败仍明确保留", () => {
-  const project = {
-    delivery: {
-      status: "complete",
-      calculation_ok: true,
-      artifacts: {
-        drawings: {
-          status: "complete",
-          available: true,
-          files: ["drawings/a.svg", "drawings/a.dxf"],
-        },
-      },
-    },
-  };
-  assert.deepEqual(stageState(null, project, "drawings"), {
-    state: "done",
-    note: "1 张",
-  });
-  project.delivery.calculation_ok = false;
-  assert.equal(stageState(null, project, "drawings").state, "warn");
-  project.delivery.drawing_check = { total: 2 };
-  assert.equal(stageState(null, project, "drawings").state, "fail");
+    ]),
+    false,
+  );
+  assert.equal(
+    checkSuperseded(
+      { ...check, result: { document: edit.result.document, checks: [] } },
+      [check, edit],
+    ),
+    false,
+  );
 });

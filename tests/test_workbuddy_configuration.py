@@ -16,7 +16,7 @@ def test_configured_interpreter_keeps_venv_from_unrelated_directory(tmp_path):
     runtime = tmp_path / "runtime"
     venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt").create(runtime)
     executable = runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    project = Project.create(str(tmp_path / "工程"), teaching=False)
+    project = Project.create(str(tmp_path / "工程"))
     configured = write_workbuddy(project, tmp_path / "state", executable, False,
                                  prefix=("-m", "gongke_app"), env={"PYTHONPATH": str(Path(__file__).resolve().parents[1])})
     server = configured["server"]

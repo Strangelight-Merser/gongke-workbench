@@ -163,8 +163,7 @@ async function trial(caseName, repetition) {
     page.on("pageerror", (e) => evidence.errors.push(String(e)));
     await page.waitForFunction(() => !!window.gongke);
     await page.evaluate(
-      (p) =>
-        window.gongke.request("project.create", { path: p, teaching: false }),
+      (p) => window.gongke.request("project.create", { path: p }),
       project,
     );
     await page.reload();

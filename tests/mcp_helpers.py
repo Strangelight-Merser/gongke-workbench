@@ -37,6 +37,9 @@ class ServiceProcess:
         self.reader.start()
         method = "project.open" if (self.project / "gongke-project.json").exists() else "project.create"
         self.request(method, {"path": str(self.project)})
+        if method == "project.create":
+            from gongke_core import api
+            self.request("project.set_task", {"task": api.example_task(), "teaching": True})
 
     def request(self, method, params=None):
         with self.condition:

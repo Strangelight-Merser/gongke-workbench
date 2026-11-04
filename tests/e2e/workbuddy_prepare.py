@@ -29,7 +29,7 @@ def prepare(study: Path, output: Path):
         if not path.is_file():
             raise FileNotFoundError(path)
     output.mkdir(parents=True, exist_ok=False)
-    project = Project.create(str(output / "project"), name="WorkBuddy P7 验收", teaching=False)
+    project = Project.create(str(output / "project"), name="WorkBuddy P7 验收")
     references = project.path / "references"
     references.mkdir()
     records = []

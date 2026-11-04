@@ -317,78 +317,6 @@
   },
   {
     "id": 8,
-    "title": "减速器课程设计",
-    "segments": [
-      {
-        "source": "out/demo-video/showcase-01",
-        "begin": 214,
-        "end": 217,
-        "duration": 3,
-        "zoom": [
-          1.5,
-          1.9
-        ],
-        "focus": [
-          0.52,
-          0.38
-        ]
-      },
-      {
-        "source": "out/demo-video/reducer-viewport",
-        "begin": 3,
-        "end": 6,
-        "duration": 3
-      },
-      {
-        "source": "out/demo-video/documents-01",
-        "begin": 4,
-        "end": 7,
-        "duration": 3,
-        "zoom": [
-          1.3,
-          1.55
-        ],
-        "focus": [
-          0.55,
-          0.5
-        ]
-      },
-      {
-        "source": "out/demo-video/revision-ui-02",
-        "begin": 320,
-        "end": 326,
-        "duration": 6,
-        "zoom": [
-          1.4,
-          1.8
-        ],
-        "focus": [
-          0.58,
-          0.53
-        ]
-      },
-      {
-        "source": "out/demo-video/reducer-01",
-        "begin": 150,
-        "end": 156,
-        "duration": 6,
-        "zoom": [
-          1.3,
-          1.75
-        ],
-        "focus": [
-          0.57,
-          0.35
-        ]
-      }
-    ],
-    "voice_starts": [
-      0.35,
-      13.5
-    ]
-  },
-  {
-    "id": 9,
     "title": "接入已有智能体",
     "segments": [
       {
@@ -412,7 +340,7 @@
     ]
   },
   {
-    "id": 10,
+    "id": 9,
     "title": "可运行，也可交付",
     "segments": [
       {
@@ -448,7 +376,7 @@
     ]
   },
   {
-    "id": 11,
+    "id": 10,
     "title": "从图纸，到可理解、可修改的工程成果",
     "segments": [
       {

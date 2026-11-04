@@ -32,9 +32,13 @@ def main():
         timer.start()
         rows, result = [], None
         try:
+            process.stdin.write(json.dumps({"id": 0, "method": "design.example"}) + "\n")
+            process.stdin.flush()
+            example = json.loads(process.stdout.readline())["result"]["task"]
             requests = [
                 {"id": 1, "method": "system.status"},
-                {"id": 2, "method": "project.create", "params": {"path": str(installed / "project"), "teaching": True}},
+                {"id": 2, "method": "project.create", "params": {"path": str(installed / "project")}},
+                {"id": 5, "method": "project.set_task", "params": {"task": example, "teaching": True}},
                 {"id": 3, "method": "design.calculate"},
                 {"id": 4, "method": "design.generate", "params": {"name": "verified", "step": True, "drawings": True, "report_docx": True}},
             ]
@@ -45,7 +49,7 @@ def main():
                 rows.append(row)
                 if "error" in row:
                     raise RuntimeError(row["error"])
-                if row.get("event") == "task.updated" and row["task"]["status"] not in {"queued", "running"}:
+                if row.get("event") == "task.updated" and row["task"]["kind"] == "generation" and row["task"]["status"] not in {"queued", "running"}:
                     result = row["task"]
                     break
             process.stdin.close()

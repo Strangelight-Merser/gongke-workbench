@@ -8,7 +8,13 @@ import {
 } from "./ToolCall";
 import { groupCompletedTools } from "./events";
 import { useModelingProgress } from "./ModelingProgress";
-import { modelResult, resultRef, stepInput, stepTitle } from "./modelingSteps";
+import {
+  checkSuperseded,
+  modelResult,
+  resultRef,
+  stepInput,
+  stepTitle,
+} from "./modelingSteps";
 export function ModelingSteps({ openModel }: { openModel(): void }) {
   const { steps, error, locate } = useModelingProgress();
   if (!steps.length && !error) return null;
@@ -19,6 +25,7 @@ export function ModelingSteps({ openModel }: { openModel(): void }) {
         steps.map((step) => ({ kind: "tool", tool: step })),
         (step) =>
           step.phase === "finished" &&
+          !checkSuperseded(step, steps) &&
           toolState("completed", modelResult(step)) === "completed",
       ).map((row) =>
         row.kind === "tool-group" ? (
@@ -34,12 +41,17 @@ export function ModelingSteps({ openModel }: { openModel(): void }) {
   function renderStep(step: import("../api").Data) {
     const result = modelResult(step),
       input = stepInput(step.command, step.params);
+    const stale = checkSuperseded(step, steps);
     const failed = !!result.error,
       done = step.phase === "finished";
     return (
       <details
         className="agent-tool"
-        data-state={toolState(done ? "completed" : "in_progress", result)}
+        data-state={
+          stale
+            ? "unknown"
+            : toolState(done ? "completed" : "in_progress", result)
+        }
         key={`${step.task_id}:${step.at}:${step.command}`}
       >
         <summary>
@@ -47,12 +59,14 @@ export function ModelingSteps({ openModel }: { openModel(): void }) {
             {stepTitle(step.command, step.params)}
           </span>
           <span className="tool-status">
-            {toolState(done ? "completed" : "in_progress", result) ===
-              "failed" && !failed
-              ? "尺寸不符"
-              : toolStates[
-                  toolState(done ? "completed" : "in_progress", result)
-                ]}
+            {stale
+              ? "已过期 · 请重新检查"
+              : toolState(done ? "completed" : "in_progress", result) ===
+                    "failed" && !failed
+                ? "尺寸不符"
+                : toolStates[
+                    toolState(done ? "completed" : "in_progress", result)
+                  ]}
           </span>
         </summary>
         <ToolDetails
@@ -66,6 +80,7 @@ export function ModelingSteps({ openModel }: { openModel(): void }) {
             !result.deleted_ref &&
             (resultRef(result, input) || result.checks) && (
               <Button
+                disabled={stale}
                 onClick={() => {
                   locate(step);
                   openModel();

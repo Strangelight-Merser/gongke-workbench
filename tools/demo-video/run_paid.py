@@ -10,7 +10,7 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
 from tests.e2e.agent_modeling_result import classify, summarize
 
-OUTPUT=ROOT/'out/demo-video/paid-robot4'
+OUTPUT=ROOT/os.environ.get('GONGKE_DEMO_PAID_OUTPUT','out/demo-video/paid-robot4')
 PYTHON='/private/tmp/gongke-modeling-venv/bin/python'
 DSH='/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh'
 FREECAD='/Applications/FreeCAD.app/Contents/MacOS/FreeCAD'

@@ -24,11 +24,10 @@ export default function PdfDocument({ content }: { content: string }) {
     page: number;
     scale: number;
   }>();
-  const [fitting, setFitting] = useState(false);
+  const [fitWidth, setFitWidth] = useState(true);
   const rendering =
     !error &&
     (!pdf ||
-      fitting ||
       rendered?.pdf !== pdf ||
       rendered?.page !== page ||
       rendered?.scale !== scale);
@@ -37,6 +36,7 @@ export default function PdfDocument({ content }: { content: string }) {
   useEffect(() => {
     setPdf(undefined);
     setPage(1);
+    setFitWidth(true);
     setError("");
 
     const task = getDocument({
@@ -58,6 +58,29 @@ export default function PdfDocument({ content }: { content: string }) {
       void task.destroy();
     };
   }, [content]);
+  useEffect(() => {
+    if (!pdf || !viewport.current || !fitWidth) return;
+    const container = viewport.current;
+    let active = true;
+    const fit = async () => {
+      const width = container.clientWidth - 48;
+      if (width <= 0) return;
+      const p = await pdf.getPage(page);
+      if (active) {
+        setScale(width / p.getViewport({ scale: 1 }).width);
+        container.scrollLeft = 0;
+      }
+    };
+    const observer = new ResizeObserver(() => {
+      void fit();
+    });
+    observer.observe(container);
+    void fit();
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [pdf, page, fitWidth]);
   useEffect(() => {
     if (!pdf || !canvas.current) return;
     let active = true,
@@ -135,7 +158,10 @@ export default function PdfDocument({ content }: { content: string }) {
           title="缩小 PDF"
           disabled={!pdf}
           aria-label="缩小 PDF"
-          onClick={() => setScale((s) => Math.max(0.25, s - 0.25))}
+          onClick={() => {
+            setFitWidth(false);
+            setScale((s) => Math.max(0.25, s - 0.25));
+          }}
         />
         <span>{Math.round(scale * 100)}%</span>
         <Button
@@ -145,32 +171,13 @@ export default function PdfDocument({ content }: { content: string }) {
           title="放大 PDF"
           disabled={!pdf}
           aria-label="放大 PDF"
-          onClick={() => setScale((s) => Math.min(4, s + 0.25))}
-        />
-        <Button
-          size="small"
-          disabled={!pdf}
-          onClick={async () => {
-            if (!pdf || !viewport.current) return;
-            setFitting(true);
-            try {
-              const p = await pdf.getPage(page);
-              setScale(
-                Math.min(
-                  (viewport.current.clientWidth - 48) /
-                    p.getViewport({ scale: 1 }).width,
-                  (viewport.current.clientHeight - 48) /
-                    p.getViewport({ scale: 1 }).height,
-                ),
-              );
-            } catch (e) {
-              setError(String(e));
-            } finally {
-              setFitting(false);
-            }
+          onClick={() => {
+            setFitWidth(false);
+            setScale((s) => Math.min(4, s + 0.25));
           }}
-        >
-          适应窗口
+        />
+        <Button size="small" disabled={!pdf} onClick={() => setFitWidth(true)}>
+          适应宽度
         </Button>
       </div>
       {error && (

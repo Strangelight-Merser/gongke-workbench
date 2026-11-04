@@ -17,9 +17,13 @@ test("桌面通信在源码目录之外执行真实计算，退出后不重放�
     assert.equal((await service.request("system.status")).ready, true);
     const project = await service.request("project.create", {
       path: join(state, "教学轴"),
-      teaching: true,
     });
-    assert.equal(project.teaching, true);
+    assert.equal(project.task, null);
+    assert.deepEqual(project.results, []);
+    await service.request(
+      "project.set_task",
+      await service.request("design.example"),
+    );
     const calculated = await service.request("design.calculate");
     assert.equal(calculated.motor.model, "Y132S-4");
     assert.ok(calculated.shaft_states.length >= 3);

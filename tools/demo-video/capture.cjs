@@ -38,7 +38,7 @@ async function main() {
     await page.waitForFunction(() => !!window.gongke);
     const errors=[]; page.on('pageerror', e=>errors.push(String(e)));
     await page.evaluate(p=>window.gongke.request('project.create',{
-      path:p, name:'凸台尺寸检查', teaching:false}), path.join(output,'project'));
+      path:p, name:'凸台尺寸检查'}), path.join(output,'project'));
     await page.reload();
     await page.getByText('原生 CAD',{exact:true}).click();
     const phases=[];

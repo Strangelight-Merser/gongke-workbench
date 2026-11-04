@@ -1,3 +1,4 @@
+import { documentLabel } from "../project/types";
 import { useCallback, useEffect, useState } from "react";
 import {
   FluentProvider,
@@ -47,7 +48,6 @@ import { DocumentTabs } from "../workspace/DocumentTabs";
 import { StartPage } from "../workspace/StartPage";
 import { CadWorkspace } from "../workspace/CadWorkspace";
 import { FileDocument } from "../workspace/FileDocument";
-import { ReducerTask } from "../project/ReducerTask";
 import { OperationPanel, PanelTab } from "../operations/OperationPanel";
 import { locateModelTarget, ModelTarget } from "../operations/modelChecks";
 import { AgentPanel } from "../agent/AgentPanel";
@@ -95,7 +95,6 @@ export function AppShell() {
   const [hostKind, setHostKind] = useState("freecad");
   const [native, setNative] = useState<Data>({});
   const [cadFocus, setCadFocus] = useState(0);
-  const [result, setResult] = useState<Data | null>(null);
   const [mode, setMode] = useState<"model" | "practice">("model");
   const open = useCallback((doc: DocumentRef) => {
     setDocuments((d) => {
@@ -185,31 +184,10 @@ export function AppShell() {
     setSplitActive("");
     setFocusedGroup(1);
     setNative({});
-    setResult(null);
   }, [project?.path]);
   useEffect(() => {
     document.title = project ? `${project.name} — 构想引擎` : "构想引擎";
   }, [project?.name]);
-  const taskKey = JSON.stringify([
-    project?.path,
-    project?.task,
-    project?.teaching,
-  ]);
-  useEffect(() => {
-    setResult(null);
-    if (!project?.task?.conveyor) return;
-    let live = true;
-    call("design.calculate", { task: project.task })
-      .then((r) => {
-        if (live) setResult(r);
-      })
-      .catch((e) => {
-        if (live) setError(String(e));
-      });
-    return () => {
-      live = false;
-    };
-  }, [taskKey]);
   const current =
     focusedGroup === 2
       ? split.find((d) => d.id === splitActive)
@@ -566,11 +544,7 @@ export function AppShell() {
                     <span>{project?.name || "欢迎"}</span>
                     <span>›</span>
                     <span>
-                      {visited
-                        .find((d) => d.id === active)
-                        ?.file?.path.split("/")
-                        .join(" › ") ||
-                        visited.find((d) => d.id === active)?.title}
+                      {documentLabel(visited.find((d) => d.id === active))}
                     </span>
                     {active === "cad" && native.document && (
                       <>
@@ -634,17 +608,6 @@ export function AppShell() {
                             openCad={() => open(cadDocument)}
                           />
                         )}
-                        {doc.type === "reducer" && project && (
-                          <ReducerTask
-                            project={project}
-                            setProject={state.setProject}
-                            run={run}
-                            refresh={refresh}
-                            result={result}
-                            onResult={setResult}
-                            openFile={openFile}
-                          />
-                        )}
                       </section>
                     ))}
                   </div>
@@ -677,10 +640,7 @@ export function AppShell() {
                     />
                     <nav className="breadcrumbs" aria-label="分屏面包屑">
                       {project?.name} ›{" "}
-                      {split
-                        .find((d) => d.id === splitActive)
-                        ?.file?.path.split("/")
-                        .join(" › ")}
+                      {documentLabel(split.find((d) => d.id === splitActive))}
                     </nav>
                     <div className="documents">
                       {split.map((doc) => (

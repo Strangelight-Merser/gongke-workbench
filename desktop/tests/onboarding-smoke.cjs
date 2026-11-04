@@ -55,7 +55,7 @@ const agent = new AgentClient(
   service.start();
   const timer = setTimeout(() => agent.disconnect(), 150000);
   try {
-    await service.request("project.create", { path: project, teaching: true });
+    await service.request("project.create", { path: project });
     const configuration = new AgentConfiguration(output, root);
     if (process.env.GONGKE_TEST_DSH_HOME) {
       const settings = configuration.read();

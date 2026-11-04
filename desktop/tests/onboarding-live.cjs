@@ -26,7 +26,7 @@ mkdirSync(output, { recursive: true });
     await page.waitForFunction(() => !!window.gongke?.onboarding);
     await page.evaluate(
       async (path) => {
-        await window.gongke.request("project.create", { path, teaching: true });
+        await window.gongke.request("project.create", { path });
       },
       join(output, "学生工程"),
     );

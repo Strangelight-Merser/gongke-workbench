@@ -88,7 +88,7 @@ const records = [],
                     return c && c.width > 0;
                   });
                   await page
-                    .getByRole("button", { name: "适应窗口", exact: true })
+                    .getByRole("button", { name: "适应宽度", exact: true })
                     .click();
                   await page
                     .locator('.pdf-document[data-render-state="ready"]')
@@ -99,7 +99,7 @@ const records = [],
                 } else if (file.endsWith(".dxf")) {
                   await page.locator(".dxf-canvas canvas").waitFor();
                   await page
-                    .getByRole("button", { name: "适应窗口", exact: true })
+                    .getByRole("button", { name: "适应宽度", exact: true })
                     .waitFor();
                   await page
                     .locator(".dxf-document[data-ready=true]")

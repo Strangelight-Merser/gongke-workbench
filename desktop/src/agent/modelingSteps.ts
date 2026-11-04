@@ -156,3 +156,20 @@ export function modelResult(step: Data): Data {
     ? result.result || {}
     : result;
 }
+
+// 检查只适用于它读取的精确修订；后续原生写入不能沿用旧结论。
+export function checkSuperseded(step: Data, steps: Data[]) {
+  const result = modelResult(step);
+  if (!result.checks || !result.document) return false;
+  const latest = [...steps]
+    .reverse()
+    .find(
+      (s) =>
+        s.phase === "finished" &&
+        commandOf(s.command, s.params) !== "host.check" &&
+        sameIdentity(modelResult(s).document, result.document),
+    );
+  return (
+    !!latest && !sameDocument(modelResult(latest).document, result.document)
+  );
+}

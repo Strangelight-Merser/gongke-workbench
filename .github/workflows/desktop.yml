@@ -122,13 +122,15 @@ jobs:
         shell: python
         run: |
           import json, os, pathlib, subprocess, tempfile
+          from gongke_core import api
           root = pathlib.Path.cwd()
           exe = root / 'desktop/service/gongke-service' / ('gongke-service.exe' if os.name == 'nt' else 'gongke-service')
           with tempfile.TemporaryDirectory(prefix='gongke-frozen-') as temp:
               workspace = pathlib.Path(temp)
               commands = [
                   {'id': 1, 'method': 'system.status', 'params': {}},
-                  {'id': 2, 'method': 'project.create', 'params': {'path': str(workspace / 'project'), 'teaching': True}},
+                  {'id': 2, 'method': 'project.create', 'params': {'path': str(workspace / 'project')}},
+                  {'id': 0, 'method': 'project.set_task', 'params': {'task': api.example_task(), 'teaching': True}},
                   {'id': 3, 'method': 'design.calculate', 'params': {}},
               ]
               env = {key: value for key, value in os.environ.items() if key not in ('PYTHONPATH', 'PYTHONHOME')}
@@ -136,11 +138,13 @@ jobs:
                   input=''.join(json.dumps(item) + '\n' for item in commands), cwd=workspace,
                   env=env, text=True, capture_output=True, timeout=90, check=True)
               replies = {item['id']: item for item in map(json.loads, result.stdout.splitlines()) if 'id' in item}
-              assert all('error' not in replies[i] for i in (1, 2, 3)), replies
+              assert all('error' not in replies[i] for i in (0, 1, 2, 3)), replies
               assert replies[1]['result']['packaged'] is True
+              assert replies[2]['result']['task'] is None
+              assert replies[2]['result']['results'] == []
               assert replies[3]['result']['motor']['power_kw'] > 0
               assert (workspace / 'project/gongke-project.json').is_file()
-          print('Frozen service starts and performs a real teaching calculation without the source checkout.')
+          print('Frozen service starts and creates an empty project then performs an explicitly configured backend calculation without the source checkout.')
       - name: Package macOS application
         if: runner.os == 'macOS'
         working-directory: desktop
@@ -152,10 +156,11 @@ jobs:
       - name: Verify macOS development bundle signature
         if: runner.os == 'macOS'
         run: codesign --verify --deep --strict desktop/release/mac*/构想引擎.app
+      - name: Install FreeCAD for macOS native acceptance
+        if: runner.os == 'macOS'
+        run: brew install --cask freecad
       - name: Exercise packaged desktop with a fresh user directory
-        env:
-          GONGKE_TEST_WINDOW_WIDTH: "1100"
-        timeout-minutes: 15
+        timeout-minutes: 30
         shell: python
         run: |
           import json, os, pathlib, subprocess
@@ -168,10 +173,10 @@ jobs:
           env = dict(os.environ, GONGKE_TEST_EXECUTABLE=str(executables[0].resolve()))
           for key in ('PYTHONPATH', 'PYTHONHOME', 'ELECTRON_RUN_AS_NODE'):
               env.pop(key, None)
-          subprocess.run(['node', str(root / 'desktop/tests/desktop-flow.cjs')], cwd=root,
-              env=env, timeout=420, check=True)
-          subprocess.run(['node', str(root / 'desktop/tests/workflow-flow.cjs')], cwd=root,
-              env=env, timeout=420, check=True)
+          for width in ('1366', '1920'):
+              for flow in ('desktop', 'workflow'):
+                  subprocess.run(['node', str(root / f'desktop/tests/{flow}-flow.cjs')], cwd=root,
+                      env=dict(env, GONGKE_TEST_WIDTH=width), timeout=420, check=True)
       - uses: actions/upload-artifact@v4
         if: always()
         with:
