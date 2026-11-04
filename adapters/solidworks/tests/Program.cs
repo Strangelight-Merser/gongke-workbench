@@ -42,9 +42,9 @@ try
     {
         var task = dispatcher.Submit(new JObject { ["id"] = "test" });
         Check(executedOn == -1, "network enqueue does not execute host work");
-        Task.Run(() => dispatcher.OnIdle()).GetAwaiter().GetResult();
+        Task.Run(() => dispatcher.Drain()).GetAwaiter().GetResult();
         Check(executedOn == -1, "wrong thread cannot drain host queue");
-        dispatcher.OnIdle();
+        dispatcher.Drain();
         Check(task.GetAwaiter().GetResult()["result"].Value<bool>() && executedOn == hostThread, "host idle drains on owning thread");
         var queued = dispatcher.Submit(new JObject { ["id"] = "cancel" });
         dispatcher.Dispose();
