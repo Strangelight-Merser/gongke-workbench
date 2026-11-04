@@ -1,6 +1,6 @@
 # 通用只读模型检查
 
-本轮决策（2026-11-03）：FreeCAD 与 SOLIDWORKS 共用 `host.context`、`host.inspect`、`host.section`、`host.measure`、`host.check`。工具清单仍在 `gongke_app/tools.py`，经 Commands / Hosts 执行，桌面服务、ACP 注入的 MCP、WorkBuddy MCP 不另建执行路径。不改前端。
+本轮决策（2026-11-03）：FreeCAD 与 SOLIDWORKS 共用 `host.context`、`host.inspect`、`host.section`、`host.measure`、`host.check`。工具清单仍在 `gongke_app/tools.py`，经 Commands / Hosts 执行，桌面服务、ACP 注入的 MCP、WorkBuddy MCP 不另建执行路径。前端呈现独立依据与未核对状态，见 [独立图纸检查](independent-drawing-check.md)。
 
 - 文档引用由宿主产生：`host_instance / document_id / revision / configuration`；实体引用是该修订中的 `native_ref`。读取也验证文档身份和修订，禁止将旧 Face 编号用于新模型。
 - 原生宿主负责读特征、草图、B-rep 与截面；应用层负责统一量测与逐项比较。只访问明确指定的对象，不自动绑定、重算、保存或切换文档。
@@ -58,7 +58,7 @@ selectors 可用 `native_ref` 精确定位；也可用 `kind/radius/direction/in
 }
 ```
 
-`host.check` 逐条返回原条件、SI 期望与公差、实际数值、定位、pass/fail/unknown。未知原因包含缺失、歧义、单位不符、待重建、不支持的量测组合。任何一项 fail 则总状态 fail；否则有 unknown 则总状态 unknown。模型读取与截面的修订不同则整个请求拒绝，不混用新旧模型。输入无效或宿主调用失败仍作为错误返回，不伪装成几何不符。
+`host.check` 逐条返回原条件、SI 期望与公差、实际数值、定位、pass/fail/unknown/unverified。自由文本来源的条件即使数值匹配也只能 unverified；独立标注引用或矢量轮廓依据见 [独立图纸检查](independent-drawing-check.md)。未知原因包含缺失、歧义、单位不符、待重建、不支持的量测组合。任何一项 fail 则总状态 fail；否则有 unknown 则总状态 unknown，再有 unverified 则总状态 unverified。空检查为 unknown。模型读取与截面的修订不同则整个请求拒绝，不混用新旧模型。输入无效或宿主调用失败仍作为错误返回，不伪装成几何不符。
 
 旧 `freecad.*` 轴类流程与 Windows 特有写命令仍有现存调用方，本轮未将它们改为兼容别名；新增任意零件检查只走上述公共入口。工作副本、写入回执和权限逻辑保持原执行器检查。
 

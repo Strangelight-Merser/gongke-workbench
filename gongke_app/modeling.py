@@ -63,7 +63,7 @@ FreeCAD：fixed 只接受一个实体；whole 固定整个几何，start/end/cen
 pad 沿草图正法向；pocket/hole 沿负法向，reversed 翻转。孔为直孔，不推断螺纹/公差；SOLIDWORKS 用圆草图+原生切除，圆直径必须等于 diameter。圆角/倒角最后做。
 贯通切除用 pocket 的 through_all=true，不传 length；从切入侧沿切除方向贯穿，底面草图向上切须 reversed=true。固定高度草图加固定切深不会随上游加高自动贯通。
 阵列 spacing 为相邻间距；polar_pattern angle 为总扫角，2π 为整圆均布。新建 SolidWorks Body 在首个实体特征生成时出现。
-使用 typed host.inspect 读取特征树/面边，不猜 model.snapshot，也不要拿 native_ref 当 freecad.read 的 entity_id。空 Body 尚无实体时可检查已创建的 sketch_ref。特征写入回执已含重建状态，按需要检查几何；检查优先用 inspect 的 native_ref；不要用任意面内坐标作 near，near 是返回 point 的邻近筛选，平面也可用 direction+offset。同一修订多项尺寸/截面条件合并到一次 host.check（可含 section_area），避免同值重复 measure。重点检查 B-rep 尺寸与孔槽底部截面，不只检查自己刚写入的 Length。最终 host.check 对照图纸并修改失败项，再 host.model_save。保存不等于尺寸通过。
+使用 typed host.inspect 读取特征树/面边，不猜 model.snapshot，也不要拿 native_ref 当 freecad.read 的 entity_id。空 Body 尚无实体时可检查已创建的 sketch_ref。特征写入回执已含重建状态，按需要检查几何；检查优先用 inspect 的 native_ref；不要用任意面内坐标作 near，near 是返回 point 的邻近筛选，平面也可用 direction+offset。同一修订多项尺寸/截面条件合并到一次 host.check（可含 section_area），避免同值重复 measure。重点检查 B-rep 尺寸与孔槽底部截面，不只检查自己刚写入的 Length。最终 host.check 用 evidence 或 drawing 对照图纸并修改失败项，再 host.model_save。自填期望值是 unverified（未经独立核对），不得宣称图纸通过；保存不等于尺寸通过。
 错误原样保留；FreeCAD 事务失败回滚仍可能增加 revision，重新 context。SOLIDWORKS 部分失败标 needs_review/unknown，先读回。
 确认 rolled_back 后修改参数须新 operation_id；原 ID 不能用于不同请求。结果未知只用同一个 operation_id 调 host.model_operation；not_found 也不代表没执行，禁止换 ID 重做。
 """
