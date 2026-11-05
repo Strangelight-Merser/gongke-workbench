@@ -1,0 +1,68 @@
+# 在本进程通过 Qt 真实鼠标键盘操作；不调用模型修改 API。
+import os,json,time,traceback
+from pathlib import Path
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide6 import QtCore,QtGui,QtWidgets,QtTest
+out=Path(os.environ['GONGKE_QT_OUT']);out.mkdir(parents=True,exist_ok=True)
+QtWidgets.QApplication.instance().setQuitOnLastWindowClosed(False)
+exec(compile((Path(os.environ['GONGKE_MODELING_ROOT'])/'tools/demo-video/raw/host.FCMacro').read_text(),'host.FCMacro','exec'))
+App.openDocument(str(out/'project/robot4.FCStd'))
+Gui.activateWorkbench('PartDesignWorkbench')
+main=Gui.getMainWindow();main.resize(1440,810);main.show()
+Gui.activeDocument().activeView().viewTop();Gui.activeDocument().activeView().fitAll()
+frames=[];events=[];seen=set();started=None;target=None
+class InputFilter(QtCore.QObject):
+ def eventFilter(self,obj,e):
+  if started is None:return False
+  kind=e.type()
+  if kind in [QtCore.QEvent.MouseMove,QtCore.QEvent.MouseButtonPress,QtCore.QEvent.MouseButtonRelease,QtCore.QEvent.KeyPress,QtCore.QEvent.KeyRelease]:
+   if isinstance(obj,QtWidgets.QWidget):
+    p=main.mapFromGlobal(e.globalPosition().toPoint()) if hasattr(e,'globalPosition') else main.mapFromGlobal(QtGui.QCursor.pos())
+    events.append({'seconds':time.monotonic()-started,'kind':str(kind),'x':p.x()*2560/main.width(),'y':p.y()*1440/main.height(),'key':e.key() if hasattr(e,'key') else None,'text':e.text() if hasattr(e,'text') else None})
+  return False
+filter=InputFilter();QtWidgets.QApplication.instance().installEventFilter(filter)
+def dump():
+ rows=[]
+ for w in main.findChildren(QtWidgets.QWidget):
+  if not w.isVisible():continue
+  r={'class':w.metaObject().className(),'name':w.objectName(),'rect':[w.mapTo(main,QtCore.QPoint()).x(),w.mapTo(main,QtCore.QPoint()).y(),w.width(),w.height()]}
+  for key in ['text','title']:
+   try:r[key]=getattr(w,key)()
+   except:pass
+  rows.append(r)
+ (out/'widgets.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+ main.grab().save(str(out/'current.png'))
+def click(w,x,y,double=False):
+ # QtTest 发送真实控件事件，移动轨迹同时记录；不修改文档数据。
+ p0=w.mapFromGlobal(QtGui.QCursor.pos());dest=QtCore.QPoint(x,y)
+ for i in range(1,25):
+  p=QtCore.QPoint(round(p0.x()+(x-p0.x())*i/24),round(p0.y()+(y-p0.y())*i/24))
+  if started is not None:
+   q=main.mapFromGlobal(w.mapToGlobal(p));events.append({'seconds':time.monotonic()-started,'kind':'pointermove','x':q.x()*2560/main.width(),'y':q.y()*1440/main.height()})
+  QtTest.QTest.mouseMove(w,p,12)
+ QtTest.QTest.qWait(150)
+ if double:QtTest.QTest.mouseDClick(w,QtCore.Qt.LeftButton,pos=dest)
+ else:QtTest.QTest.mouseClick(w,QtCore.Qt.LeftButton,pos=dest)
+exec((Path(os.environ['GONGKE_MODELING_ROOT'])/'tools/demo-video/raw/qt-frame.py').read_text(),globals())
+def capture_tick():
+ if started is not None:
+  at=time.monotonic()-started;name=f'{len(frames):06}.jpg';capture().save(str(target/'frames'/name),'JPG',92);frames.append({'file':name,'seconds':at})
+def tick():
+ global started,target,frames,events
+ for p in sorted(out.glob('action-*.json')):
+  if p.name in seen:continue
+  seen.add(p.name);a=json.loads(p.read_text())
+  try:
+   if a.get('start'):
+    target=Path(a['start']);(target/'frames').mkdir(parents=True,exist_ok=True);frames=[];events=[];started=time.monotonic()
+   if a.get('mark') and started is not None:events.append({'seconds':time.monotonic()-started,'kind':'event','description':a['mark']})
+   if a.get('code'):exec(a['code'],globals())
+   if a.get('stop'):
+    duration=time.monotonic()-started;started=None
+    (target/'frames.json').write_text(json.dumps(frames));(target/'events.json').write_text(json.dumps({'width':2560,'height':1440,'fps':60,'duration':duration,'source':'FreeCAD Qt QWidget.grab','system_cursor':False,'overlays':False,'coordinate_space':'output pixels; top left origin','events':events},ensure_ascii=False,indent=2))
+   dump();(out/(p.stem+'-done')).write_text('ok')
+  except:(out/(p.stem+'-error.txt')).write_text(traceback.format_exc())
+captureTimer=QtCore.QTimer();captureTimer.timeout.connect(capture_tick);captureTimer.start(50)
+timer=QtCore.QTimer();timer.timeout.connect(tick);timer.start(50)
+QtCore.QTimer.singleShot(1200,dump)

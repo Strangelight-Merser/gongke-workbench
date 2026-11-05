@@ -1,0 +1,6 @@
+# 本次采集专用独立宿主；不访问其他 FreeCAD 进程。
+import os
+from pathlib import Path
+from PySide6 import QtWidgets
+QtWidgets.QApplication.instance().setQuitOnLastWindowClosed(False)
+exec(compile((Path(os.environ['GONGKE_MODELING_ROOT'])/'tests/e2e/native_modeling_host.FCMacro').read_text(),'native_modeling_host.FCMacro','exec'))
