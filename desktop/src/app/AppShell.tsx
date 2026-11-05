@@ -775,7 +775,7 @@ export function AppShell() {
             appearance="transparent"
             onClick={() => showPanel("checks")}
           >
-            问题 {problemCount}
+            问题
           </Button>
           <span className="status-project">
             {busy || (running ? `${running} 项执行中` : "")}

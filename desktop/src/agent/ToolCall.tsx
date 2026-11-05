@@ -218,6 +218,14 @@ export function ToolDetails({
           ))}
         </div>
       )}
+      {Array.isArray(result.items) && result.items
+        .filter((item: Data) => item.type === "text" && item.dimension_candidate)
+        .map((item: Data) => (
+          <details key={item.source} className="drawing-annotation">
+            <summary>标注 {item.text}</summary>
+            <p>第 {result.page} 页 · 图纸原文 {item.text}</p>
+          </details>
+        ))}
       {children}
       <details className="agent-raw">
         <summary>原始参数与回执</summary>
