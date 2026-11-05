@@ -3,7 +3,10 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const {pause}=require('./app-recorder.cjs');
 module.exports=async function(app,page,root,project,target){
  const source=path.join(root,'out/demo-video/paid-robot4/robot4-1');
- const snapshot=JSON.parse(fs.readFileSync(path.join(source,'conversation.json')));
+ const archive=JSON.parse(fs.readFileSync(path.join(source,'conversation.json')));
+ const connection=await page.evaluate(()=>window.gongke.agent.state());
+ if(connection.phase!=='ready')throw Error('录制前必须真实连接 Agent');
+ const snapshot={...archive,...connection,events:archive.events};
  const prompt=fs.readFileSync(path.join(source,'modeling-prompt.txt'),'utf8');
  const original=snapshot.events.slice(0,16);
  await app.evaluate(({ipcMain},s)=>{

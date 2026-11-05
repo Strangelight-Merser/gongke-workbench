@@ -10,7 +10,7 @@ async function encode(out,frames,duration){
  fs.writeFileSync(path.join(out,'frames.ffconcat'),rows.join('\n'));
  await new Promise((resolve,reject)=>{
   const p=spawn('ffmpeg',['-v','error','-y','-f','concat','-safe','0','-i',path.join(out,'frames.ffconcat'),'-vf','scale=2560:1440:flags=lanczos,fps=60','-t',String(duration),'-c:v','libx264','-preset','fast','-crf','17','-pix_fmt','yuv420p','-an','-movflags','+faststart',path.join(out,'clip.mp4')],{stdio:'inherit'});
-  p.on('exit',c=>c===0?resolve():reject(Error('编码失败')));
+  p.on('exit',c=>{if(c!==0)return reject(Error('编码失败'));fs.rmSync(path.join(out,'frames'),{recursive:true,force:true});for(const name of ['frames.ffconcat','frames.json'])fs.rmSync(path.join(out,name),{force:true});resolve();});
  });
 }
 async function startRecording(page,out){

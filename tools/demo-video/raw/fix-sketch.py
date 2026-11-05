@@ -8,7 +8,7 @@ for index in (32,29):
     elements.scrollToItem(elements.item(index),QtWidgets.QAbstractItemView.PositionAtCenter)
     r=elements.visualItemRect(elements.item(index))
     click(elements.viewport(),210,r.center().y())
-    QtTest.QTest.qWait(400)
+    QtTest.QTest.qWait(1100)
     QtTest.QTest.keyClick(elements,QtCore.Qt.Key_Delete)
     QtTest.QTest.qWait(500)
 for label,start,end in [('上三角形',(407,280),(305,214)),('下三角形',(407,352),(509,418))]:

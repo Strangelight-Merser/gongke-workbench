@@ -1,0 +1,13 @@
+await page.evaluate(p=>window.gongke.request('project.create',{path:p,name:'机器人零件'}),path.join(out,'project'));
+const input=path.join(out,'project/inputs/f00b1b9d-e9b');fs.mkdirSync(input,{recursive:true});
+fs.copyFileSync(path.join(root,'out/demo-video/paid-robot4/inputs/robot4.pdf'),path.join(input,'robot4.pdf'));
+await page.reload();await page.getByText('就绪',{exact:true}).waitFor();
+if(await page.getByRole('button',{name:'展开工程树',exact:true}).count())await click(page,page.getByRole('button',{name:'展开工程树',exact:true}));
+await click(page,page.getByRole('button',{name:'Agent 连接设置',exact:true}));
+await click(page,page.getByRole('menuitem',{name:'使用已配置的 Agent',exact:true}));
+await click(page,page.getByRole('button',{name:'连接',exact:true}));
+await click(page,page.getByText('原生 CAD',{exact:true}));await click(page,page.getByRole('button',{name:'连接 FreeCAD',exact:true}));
+for(let i=0;i<4;i++)await run('reexecute_session.py',[out,String(i)]);
+await click(page,page.getByText('robot4.pdf',{exact:true}).first());await page.locator('.pdf-document[data-render-state="ready"]:visible').waitFor();
+await page.waitForFunction(async()=>((await window.gongke.agent.state()).phase==='ready'));
+console.log('CONNECTED_NO_PROMPT');
