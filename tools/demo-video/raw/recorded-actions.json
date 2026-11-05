@@ -89,7 +89,7 @@
     {
       "start": "07-fix/parts/02-check",
       "mark": "GUI 修正后重新执行独立图纸检查",
-      "code": "await run('check-model.py',[out,'/Users/huaiyi/.codex/worktrees/d0e8/gongke-workbench/out/independent-drawing-check/local-manifest.json']);if(JSON.parse(fs.readFileSync(path.join(out,'report.json'))).status!=='pass')throw Error('复查未通过');await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await click(page,page.locator('details.agent-tool > summary').last());await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await pause(2000);",
+      "code": "await run('check-model.py',[out,'out/independent-drawing-check/local-manifest.json']);if(JSON.parse(fs.readFileSync(path.join(out,'report.json'))).status!=='pass')throw Error('复查未通过');await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await click(page,page.locator('details.agent-tool > summary').last());await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await pause(2000);",
       "end": true
     }
   ]

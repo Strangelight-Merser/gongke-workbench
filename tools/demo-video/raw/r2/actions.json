@@ -59,7 +59,7 @@
     {
       "start": "06-check",
       "mark": "正视模型，执行独立图纸轮廓检查",
-      "code": "await run('check-model.py',[out,'/Users/huaiyi/.codex/worktrees/d0e8/gongke-workbench/out/independent-drawing-check/local-manifest.json']);await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await click(page,page.locator('details.agent-tool > summary').last());await pause(2500);"
+      "code": "await run('check-model.py',[out,'out/independent-drawing-check/local-manifest.json']);await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await click(page,page.locator('details.agent-tool > summary').last());await pause(2500);"
     },
     {
       "mark": "在模型中定位：只高亮两条错边",
@@ -74,7 +74,7 @@
     {
       "start": "07-fix/parts/02-check",
       "mark": "修正后复查图纸轮廓，两侧完整入框",
-      "code": "await run('check-model.py',[out,'/Users/huaiyi/.codex/worktrees/d0e8/gongke-workbench/out/independent-drawing-check/local-manifest.json']);if(JSON.parse(fs.readFileSync(path.join(out,'report.json'))).status!=='pass')throw Error('复查未通过');await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await click(page,page.locator('details.agent-tool > summary').last());await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await pause(2500);",
+      "code": "await run('check-model.py',[out,'out/independent-drawing-check/local-manifest.json']);if(JSON.parse(fs.readFileSync(path.join(out,'report.json'))).status!=='pass')throw Error('复查未通过');await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await click(page,page.locator('details.agent-tool > summary').last());await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await pause(2500);",
       "end": true
     }
   ],
@@ -86,17 +86,17 @@
       "code": "tree=next(w for w in main.findChildren(QtWidgets.QTreeWidget) if w.metaObject().className()=='Gui::TreeWidget' and w.isVisible());click(tree.viewport(),18,27);click(tree.viewport(),30,63);click(tree.viewport(),90,81,double=True);QtTest.QTest.qWait(700);a=next(a for a in main.findChildren(QtGui.QAction) if a.objectName()=='Std_DockOverlayAll');a.trigger();QtTest.QTest.qWait(500);viewWidget=next(w for w in main.findChildren(QtWidgets.QWidget) if w.metaObject().className()=='QOpenGLWidget' and w.width()>300);elements=main.findChild(QtWidgets.QListWidget,'listWidgetElements');capture().save(str(out/'qt-sketch.png'));"
     },
     {
-      "start": "/Users/huaiyi/.codex/worktrees/abfd/gongke-workbench/out/demo-video/raw/07-fix/parts/01-edit",
+      "start": "out/demo-video/raw/07-fix/parts/01-edit",
       "code": "exec((Path(os.environ['GONGKE_MODELING_ROOT'])/'tools/demo-video/raw/fix-sketch.py').read_text(),globals());QtTest.QTest.qWait(1100)",
       "stop": true
     },
     {
-      "start": "/Users/huaiyi/.codex/worktrees/abfd/gongke-workbench/out/demo-video/raw/07-fix/parts/03-save-reopen",
+      "start": "out/demo-video/raw/07-fix/parts/03-save-reopen",
       "code": "exec((Path(os.environ['GONGKE_MODELING_ROOT'])/'tools/demo-video/raw/save-reopen.py').read_text(),globals());capture().save(str(out/'reopen-final.png'))",
       "stop": true
     },
     {
-      "start": "/Users/huaiyi/.codex/worktrees/abfd/gongke-workbench/out/demo-video/raw/07-fix/parts/04-tree",
+      "start": "out/demo-video/raw/07-fix/parts/04-tree",
       "code": "QtTest.QTest.qWait(1100);mark('重开后展开 Plate，显示保留的 Profile 草图');tree=next(w for w in main.findChildren(QtWidgets.QTreeWidget) if w.metaObject().className()=='Gui::TreeWidget' and w.isVisible());click(tree.viewport(),30,63);QtTest.QTest.qWait(2200);capture().save(str(out/'tree-final-007.png'));",
       "stop": true
     }

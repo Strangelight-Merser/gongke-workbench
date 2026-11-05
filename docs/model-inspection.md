@@ -74,7 +74,7 @@ selectors 可用 `native_ref` 精确定位；也可用 `kind/radius/direction/in
 沙箱外运行原生采集验收（不会读取用户当前文档；仅创建并关闭测试文档）：
 
 ```sh
-cd /Users/huaiyi/.codex/worktrees/f755/gongke-workbench
+cd ~/.codex/worktrees/f755/gongke-workbench
 /Applications/FreeCAD.app/Contents/Resources/bin/python tests/e2e/model_inspection_freecad.py
 ```
 

@@ -37,7 +37,7 @@
 ```sh
 # 从仓库根目录；使用本机已有完整 Python 环境。
 node tools/demo-video/record-growth.cjs out/demo-video/rebuild/growth-new
-/Users/huaiyi/Documents/gongke-workbench/.venv/bin/python tools/demo-video/remotion/prepare.py growth-new
+.venv/bin/python tools/demo-video/remotion/prepare.py growth-new
 ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 \
   -i out/demo-video/rebuild/growth-new/frames.ffconcat -vf fps=60 \
   -c:v libx264 -preset ultrafast -crf 18 -pix_fmt yuv420p -movflags +faststart \
@@ -71,5 +71,5 @@ node tools/demo-video/remotion/render.cjs
 python3 tools/demo-video/remotion/verify.py growth-new
 # 产品图纸定位验收：传入现有本地真实清单，只改新建的工作副本。
 node tools/demo-video/check-highlights.cjs out/demo-video/rebuild/highlight-new \
-  /Users/huaiyi/.codex/worktrees/d0e8/gongke-workbench/out/independent-drawing-check/local-manifest.json
+  out/independent-drawing-check/local-manifest.json
 ```

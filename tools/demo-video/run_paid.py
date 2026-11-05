@@ -28,7 +28,7 @@ def main():
     env={**os.environ,'GONGKE_PYTHON':PYTHON,'GONGKE_MODELING_ROOT':str(ROOT),
          'GONGKE_FREECAD_SESSION':str(OUTPUT/'host/session.json'),
          'GONGKE_TRIAL_BACKGROUND':'1','GONGKE_TRIAL_OUTPUT':str(OUTPUT),
-         'GONGKE_TRIAL_STUDY':'/Users/huaiyi/Documents/gongke-workbench/out/drawing-to-model-study',
+         'GONGKE_TRIAL_STUDY':'out/drawing-to-model-study',
          'GONGKE_TRIAL_DSH':DSH,'GONGKE_TRIAL_TIMEOUT':'480'}
     for k in ['GONGKE_AGENT_CONFIG','ELECTRON_RUN_AS_NODE']:env.pop(k,None)
     cadenv={k:v for k,v in env.items() if k in ['HOME','PATH','TMPDIR','USER','LOGNAME','LANG','LC_ALL','LC_CTYPE',

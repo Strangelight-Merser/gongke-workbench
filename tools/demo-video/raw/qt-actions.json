@@ -7,24 +7,24 @@
       "code": "tree=next(w for w in main.findChildren(QtWidgets.QTreeWidget) if w.metaObject().className()=='Gui::TreeWidget' and w.isVisible());click(tree.viewport(),18,27);click(tree.viewport(),30,63);click(tree.viewport(),90,81,double=True);QtTest.QTest.qWait(700);a=next(a for a in main.findChildren(QtGui.QAction) if a.objectName()=='Std_DockOverlayAll');a.trigger();QtTest.QTest.qWait(500);viewWidget=next(w for w in main.findChildren(QtWidgets.QWidget) if w.metaObject().className()=='QOpenGLWidget' and w.width()>300);elements=main.findChild(QtWidgets.QListWidget,'listWidgetElements');capture().save(str(out/'qt-sketch.png'));"
     },
     {
-      "start": "/Users/huaiyi/.codex/worktrees/abfd/gongke-workbench/out/demo-video/raw/07-fix/parts/01-edit",
+      "start": "out/demo-video/raw/07-fix/parts/01-edit",
       "code": "exec((Path(os.environ['GONGKE_MODELING_ROOT'])/'tools/demo-video/raw/fix-sketch.py').read_text(),globals());QtTest.QTest.qWait(1100)",
       "stop": true
     }
   ],
   "save_reopen": {
-    "start": "/Users/huaiyi/.codex/worktrees/abfd/gongke-workbench/out/demo-video/raw/07-fix/parts/03-save-reopen",
+    "start": "out/demo-video/raw/07-fix/parts/03-save-reopen",
     "code": "exec((Path(os.environ['GONGKE_MODELING_ROOT'])/'tools/demo-video/raw/save-reopen.py').read_text(),globals())",
     "stop": true
   },
   "tree": [
     {
-      "start": "/Users/huaiyi/.codex/worktrees/abfd/gongke-workbench/out/demo-video/raw/07-fix/parts/04-tree",
+      "start": "out/demo-video/raw/07-fix/parts/04-tree",
       "code": "QtTest.QTest.qWait(1100);mark('展开重开文件的 Body、Plate 与 Profile 特征树');tree=next(w for w in main.findChildren(QtWidgets.QTreeWidget) if w.metaObject().className()=='Gui::TreeWidget' and w.isVisible());click(tree.viewport(),18,27);click(tree.viewport(),30,63);viewWidget=next(w for w in main.findChildren(QtWidgets.QWidget) if w.metaObject().className()=='QOpenGLWidget' and w.width()>300);click(viewWidget,60,60);QtTest.QTest.qWait(1800);capture().save(str(out/'final-tree.png'));",
       "stop": true
     },
     {
-      "start": "/Users/huaiyi/.codex/worktrees/abfd/gongke-workbench/out/demo-video/raw/07-fix/parts/04-tree",
+      "start": "out/demo-video/raw/07-fix/parts/04-tree",
       "code": "QtTest.QTest.qWait(1100);mark('展开重开文件的 Plate，确认 Profile 草图仍然保留');tree=next(w for w in main.findChildren(QtWidgets.QTreeWidget) if w.metaObject().className()=='Gui::TreeWidget' and w.isVisible());click(tree.viewport(),30,63);QtTest.QTest.qWait(2000);capture().save(str(out/'final-tree-007.png'));",
       "stop": true
     }
