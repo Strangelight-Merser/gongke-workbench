@@ -24,6 +24,7 @@ export function ModelView({
   detail,
   checks,
   focusRequest = 0,
+  locateCheck = false,
 }: {
   scene: Data;
   selected: string;
@@ -31,6 +32,7 @@ export function ModelView({
   detail?: Data | null;
   checks?: Data;
   focusRequest?: number;
+  locateCheck?: boolean;
 }) {
   const focused = useRef(0);
   const mount = useRef<HTMLDivElement>(null);
@@ -173,42 +175,36 @@ export function ModelView({
     dispose(v.overlays);
     for (const object of v.models.children)
       ((object as THREE.Mesh).material as THREE.MeshStandardMaterial).color.set(
-        object.userData.id === selected ? "#e8742a" : "#8e8b86",
+        !locateCheck && object.userData.id === selected ? "#e8742a" : "#8e8b86",
       );
-    function line(points: number[][], color: string, depthTest = false) {
+    function line(
+      points: number[][],
+      color: string,
+      depthTest = false,
+      width = 4,
+    ) {
       if (points.length < 2) return;
-      if (!depthTest) {
-        const geometry = new LineGeometry();
-        geometry.setPositions(
-          points.flatMap((p) => vector(p).multiplyScalar(1000).toArray()),
-        );
-        const material = new LineMaterial({
-          color,
-          linewidth: 4,
-          depthTest: false,
-          depthWrite: false,
-        });
-        material.resolution.set(
-          mount.current!.clientWidth,
-          mount.current!.clientHeight,
-        );
-        const object = new Line2(geometry, material);
-        object.renderOrder = 2;
-        v.overlays.add(object);
-        return;
-      }
-      const geometry = new THREE.BufferGeometry().setFromPoints(
-        points.map((p) => vector(p).multiplyScalar(1000)),
+      const geometry = new LineGeometry();
+      geometry.setPositions(
+        points.flatMap((p) => vector(p).multiplyScalar(1000).toArray()),
       );
-      const object = new THREE.Line(
-        geometry,
-        new THREE.LineBasicMaterial({ color, depthTest }),
+      const material = new LineMaterial({
+        color,
+        linewidth: width,
+        depthTest,
+        depthWrite: false,
+      });
+      material.resolution.set(
+        mount.current!.clientWidth,
+        mount.current!.clientHeight,
       );
+      const object = new Line2(geometry, material);
       object.renderOrder = 2;
       v.overlays.add(object);
     }
-    for (const edge of detail?.edges || [])
-      line(edge.samples || [edge.start, edge.end], "#e8742a", true);
+    if (!locateCheck)
+      for (const edge of detail?.edges || [])
+        line(edge.samples || [edge.start, edge.end], "#f4c99e", true, 3);
     const box = new THREE.Box3().setFromObject(v.models);
     box.union(new THREE.Box3().setFromObject(v.overlays));
     const center = box.getCenter(new THREE.Vector3()),
@@ -221,7 +217,11 @@ export function ModelView({
       v.fitted = scene.session_id;
       v.controls.update();
     }
-    if (focusRequest !== focused.current && detail?.object_ref === selected) {
+    if (
+      !locateCheck &&
+      focusRequest !== focused.current &&
+      detail?.object_ref === selected
+    ) {
       const targetBox = new THREE.Box3().setFromObject(v.overlays);
       if (!targetBox.isEmpty()) {
         const target = targetBox.getCenter(new THREE.Vector3());
@@ -243,18 +243,25 @@ export function ModelView({
     for (const check of checks?.checks || []) {
       if (check.status !== "fail") continue;
       for (const location of check.actual?.locations || []) {
+        if (locateCheck && location.difference === "missing_or_shifted")
+          continue;
         const snapshots = scene.snapshots || [];
         const edge = snapshots
           .flatMap((s: Data) => s.edges || [])
           .find((e: Data) => e.native_ref === location.native_ref);
         if (edge) {
-          line(edge.samples || [edge.start, edge.end], "#e54b4b");
+          line(
+            edge.samples || [edge.start, edge.end],
+            locateCheck ? "#E8742A" : "#e54b4b",
+            false,
+            locateCheck ? 5 : 4,
+          );
           continue;
         }
         const face = (scene.objects || [])
           .flatMap((o: Data) => o.faces || [])
           .find((f: Data) => f.native_ref === location.native_ref);
-        if (face?.triangles?.length) {
+        if (face?.triangles?.length && !locateCheck) {
           const geometry = new THREE.BufferGeometry();
           geometry.setAttribute(
             "position",
@@ -280,23 +287,32 @@ export function ModelView({
           for (const edge of location.edges)
             line(
               edge.samples || [edge.start, edge.end],
-              location.difference === "missing_or_shifted"
-                ? "#3f9a62"
-                : "#e54b4b",
+              locateCheck
+                ? "#E8742A"
+                : location.difference === "missing_or_shifted"
+                  ? "#3f9a62"
+                  : "#e54b4b",
+              false,
+              locateCheck ? 5 : 4,
             );
-        } else if (detail?.object_ref === location.native_ref) {
+        } else if (!locateCheck && detail?.object_ref === location.native_ref) {
           for (const e of detail?.edges || [])
-            line(e.samples || [e.start, e.end], "#e54b4b");
+            line(
+              e.samples || [e.start, e.end],
+              locateCheck ? "#E8742A" : "#e54b4b",
+            );
         }
       }
     }
-  }, [scene, selected, detail, checks, focusRequest]);
+  }, [scene, selected, detail, checks, focusRequest, locateCheck]);
   return (
     <div className="model-view" ref={mount}>
       <span className="viewport-hint">
         拖动旋转 · 滚轮缩放 · 点击选择
         {checks?.status === "fail"
-          ? " · 红色：模型不符边；绿色：图纸要求的位置"
+          ? locateCheck
+            ? " · 橙色：模型不符边"
+            : " · 红色：模型不符边；绿色：图纸要求的位置"
           : ""}
       </span>
     </div>

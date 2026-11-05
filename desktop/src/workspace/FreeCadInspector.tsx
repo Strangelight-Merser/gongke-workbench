@@ -48,8 +48,10 @@ export function FreeCadInspector({
     [operation, setOperation] = useState(""),
     [connectionError, setConnectionError] = useState("");
   const [locateRequest, setLocateRequest] = useState(0);
+  const [locateCheck, setLocateCheck] = useState(false);
   const select = useCallback(
     (id: string) => {
+      setLocateCheck(false);
       setSelected(id);
       setLocateRequest((value) => value + 1);
       setObject(null);
@@ -265,6 +267,7 @@ export function FreeCadInspector({
       stepInput(target.command, target.params),
     );
     if (id && features.some((f) => f.native_ref === id)) {
+      setLocateCheck(!!modelResult(target).checks);
       setSelected(id);
       setPage("");
       setLocateRequest((value) => value + 1);
@@ -561,6 +564,7 @@ export function FreeCadInspector({
                 onSelect={select}
                 detail={detail}
                 focusRequest={locateRequest}
+                locateCheck={locateCheck}
                 checks={locatedChecks}
               />
             </div>
