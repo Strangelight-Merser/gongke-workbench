@@ -121,9 +121,10 @@ jobs:
       - name: Check frozen service from a clean directory
         shell: python
         run: |
-          import json, os, pathlib, subprocess, tempfile
-          from gongke_core import api
+          import json, os, pathlib, subprocess, sys, tempfile
           root = pathlib.Path.cwd()
+          sys.path.insert(0, str(root))  # 示例任务的数据文件在源码目录，不在已安装的包里
+          from gongke_core import api
           exe = root / 'desktop/service/gongke-service' / ('gongke-service.exe' if os.name == 'nt' else 'gongke-service')
           with tempfile.TemporaryDirectory(prefix='gongke-frozen-') as temp:
               workspace = pathlib.Path(temp)
