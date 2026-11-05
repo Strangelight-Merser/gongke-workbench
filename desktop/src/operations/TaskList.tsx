@@ -15,8 +15,6 @@ const statuses: Data = {
   needs_attention: "需检查",
 };
 const kinds: Data = {
-  generation: "生成减速器成果",
-  "design.calculate": "计算方案",
   "revision.inspect": "检查模型与图纸",
   execution: "工程操作",
 };

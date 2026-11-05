@@ -1,0 +1,17 @@
+import os
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide6 import QtCore, QtWidgets
+window=Gui.getMainWindow()
+window.resize(1500,950)
+window.show()
+App.openDocument(os.environ['GONGKE_DEMO_MODEL'])
+Gui.activeDocument().activeView().viewAxonometric()
+Gui.activeDocument().activeView().fitAll()
+# 仅旋转自己打开的模型视图；不写原生文档。
+step=0
+def rotate():
+    global step
+    step+=1
+    Gui.activeDocument().activeView().setCameraOrientation((App.Rotation(App.Vector(0,0,1),step*.3)*App.Rotation(0.424708,0.17592,0.339851,0.820473)).Q)
+timer=QtCore.QTimer();timer.timeout.connect(rotate);timer.start(100)

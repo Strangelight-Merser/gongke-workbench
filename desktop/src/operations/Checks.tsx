@@ -39,7 +39,7 @@ export function Checks({
     return (
       <Empty
         title="还没有检查结果"
-        body="在 Agent 面板发起对照图纸检查，或打开减速器专项查看计算校核。"
+        body="在 Agent 面板发起对照图纸检查。"
         action="返回模型"
         onAction={openCad}
       />

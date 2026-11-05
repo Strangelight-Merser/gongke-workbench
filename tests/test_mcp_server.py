@@ -213,6 +213,8 @@ def test_active_bound_task_blocks_switch_and_cancel_preserves_committed_result(t
     from gongke_app.mcp_server import call_bound
     app = Application(tmp_path / "state")
     app.dispatch("project.create", {"path": str(tmp_path / "project")})
+    from gongke_core import api
+    app.project.set_task(api.example_task(), teaching=True)
     server = ConnectionServer(app, tmp_path / "state")
     connection = Connection(tmp_path / "state")
     binding = connection.request("bind", project=str(app.project.path), allow_writes=True)

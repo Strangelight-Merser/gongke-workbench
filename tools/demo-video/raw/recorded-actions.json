@@ -1,0 +1,96 @@
+{
+  "session3": [
+    {
+      "code": "await page.evaluate(p=>window.gongke.request('project.create',{path:p,name:'机器人零件'}),path.join(out,'project'));await page.reload();await page.getByText('就绪',{exact:true}).waitFor();if(await page.getByRole('button',{name:'切换深色主题',exact:true}).count())await click(page,page.getByRole('button',{name:'切换深色主题',exact:true}));if(await page.getByRole('button',{name:'展开工程树',exact:true}).count())await click(page,page.getByRole('button',{name:'展开工程树',exact:true}));await click(page,page.getByText('原生 CAD',{exact:true}));await click(page,page.getByRole('button',{name:'连接 FreeCAD',exact:true}));await click(page,page.getByRole('button',{name:'Agent 连接设置',exact:true}));await click(page,page.getByRole('menuitem',{name:'使用已配置的 Agent',exact:true}));"
+    },
+    {
+      "code": "await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1440,810));await page.mouse.move(10,10);await pause(500);"
+    },
+    {
+      "start": "03-overview",
+      "mark": "空工程全貌",
+      "code": "await pause(6000)",
+      "end": true
+    },
+    {
+      "code": "await app.evaluate(({dialog},p)=>{dialog.showOpenDialog=async()=>({canceled:false,filePaths:[p]})},path.join(root,'out/demo-video/paid-robot4/inputs/robot4.pdf'));await page.mouse.move(20,20);"
+    },
+    {
+      "start": "04-read",
+      "mark": "通过产品的导入图纸入口导入 robot4.pdf（当前产品不支持拖放导入）",
+      "code": "await click(page,page.getByRole('button',{name:'导入图纸',exact:true}));await page.locator('.pdf-document[data-render-state=\"ready\"]:visible').waitFor();await pause(800);await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await pause(1000);await click(page,page.locator('textarea'));await page.keyboard.type('按这张图纸建模',{delay:180});await pause(1000);"
+    },
+    {
+      "mark": "开始按原顺序回放首次成功会话，至读图完成",
+      "code": "const replay=(await import('file://'+path.join(root,'tools/demo-video/raw/replay-read.cjs'))).default;await replay(app,page,root,path.join(out,'project'),path.join(root,'out/demo-video/raw/04-read'));await pause(2000);",
+      "end": true
+    },
+    {
+      "code": "const input=path.join(out,'project/inputs/f00b1b9d-e9b');fs.mkdirSync(input,{recursive:true});fs.copyFileSync(path.join(root,'out/demo-video/paid-robot4/inputs/robot4.pdf'),path.join(input,'robot4.pdf'));await app.evaluate(({BrowserWindow})=>{globalThis.rawReplay={...globalThis.rawReplay,events:[],phase:'idle'};BrowserWindow.getAllWindows()[0].webContents.send('acp-state',globalThis.rawReplay)});await page.locator('textarea').fill('');for(let i=0;i<4;i++)await run('reexecute_session.py',[out,String(i)]);await click(page,page.getByText('原生 CAD',{exact:true}));await page.mouse.move(15,15);"
+    },
+    {
+      "start": "05-growth",
+      "mark": "按首次成功会话的原参数重执行：新建零件",
+      "code": "await run('reexecute_session.py',[out,'4']);await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await pause(1500);"
+    },
+    {
+      "mark": "绘制草图",
+      "code": "await run('reexecute_session.py',[out,'5']);await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await pause(3000);"
+    },
+    {
+      "mark": "拉伸成体",
+      "code": "await run('reexecute_session.py',[out,'6']);await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await pause(3000);"
+    },
+    {
+      "mark": "读取模型",
+      "code": "await run('reexecute_session.py',[out,'7']);await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await pause(1000);"
+    },
+    {
+      "mark": "原会话检查调用",
+      "code": "await run('reexecute_session.py',[out,'8']);await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await pause(1000);"
+    },
+    {
+      "mark": "保存模型",
+      "code": "await run('reexecute_session.py',[out,'9']);await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await pause(1000);",
+      "end": true
+    },
+    {
+      "code": "await click(page,page.getByRole('tab',{name:'robot4.pdf',exact:true}));"
+    },
+    {
+      "code": "await click(page,page.getByRole('button',{name:'收起 Agent',exact:true}));await click(page,page.getByRole('button',{name:'收起工程树',exact:true}));await click(page,page.getByRole('button',{name:'适应宽度',exact:true}));await page.mouse.move(15,15);await pause(800);"
+    },
+    {
+      "start": "02-pdf",
+      "mark": "PDF 原图放大寻找尺寸",
+      "code": "await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await page.mouse.move(520,400,{steps:30});await page.mouse.wheel(0,130);await pause(800);await page.mouse.wheel(150,0);await pause(700);await page.mouse.wheel(-150,-130);await pause(700);",
+      "end": true
+    }
+  ],
+  "guide": [
+    {
+      "code": "await page.evaluate(p=>window.gongke.request('project.create',{path:p,name:'机器人零件'}),path.join(out,'project'));await page.reload();await page.getByText('就绪',{exact:true}).waitFor();console.log(await page.locator('body').innerText());"
+    },
+    {
+      "start": "08-agent",
+      "mark": "DeepSeek Harness 的安装与连接步骤：本机已安装，真实引导进入账号配置",
+      "code": "await pause(1500);await click(page,page.getByRole('button',{name:'下一步：在 dsh 填 Key',exact:true}));await pause(2000);console.log(await page.locator('.agent-onboarding').innerText());"
+    },
+    {
+      "mark": "选择 WorkBuddy，显示它通过 MCP 接入当前工程的说明",
+      "code": "const s=page.getByRole('combobox',{name:'引导 Agent',exact:true});await click(page,s);await page.keyboard.press('Escape');await s.selectOption('workbuddy');await pause(2500);console.log(await page.locator('.agent-onboarding').innerText());",
+      "end": true
+    }
+  ],
+  "fix_check": [
+    {
+      "code": "await page.evaluate(p=>window.gongke.request('project.open',{path:p}),path.join(out,'project'));await page.reload();await page.getByText('就绪',{exact:true}).waitFor();if(await page.getByRole('button',{name:'展开工程树',exact:true}).count())await click(page,page.getByRole('button',{name:'展开工程树',exact:true}));await click(page,page.getByText('原生 CAD',{exact:true}));await click(page,page.getByRole('button',{name:'连接 FreeCAD',exact:true}));await click(page,page.getByRole('button',{name:'Agent 连接设置',exact:true}));await click(page,page.getByRole('menuitem',{name:'使用已配置的 Agent',exact:true}));await click(page,page.getByRole('button',{name:'收起工程树',exact:true}));"
+    },
+    {
+      "start": "07-fix/parts/02-check",
+      "mark": "GUI 修正后重新执行独立图纸检查",
+      "code": "await run('check-model.py',[out,'/Users/huaiyi/.codex/worktrees/d0e8/gongke-workbench/out/independent-drawing-check/local-manifest.json']);if(JSON.parse(fs.readFileSync(path.join(out,'report.json'))).status!=='pass')throw Error('复查未通过');await click(page,page.getByRole('button',{name:'读取 FreeCAD 工程',exact:true}));await click(page,page.locator('details.agent-tool > summary').last());await click(page,page.getByRole('button',{name:'放大 PDF',exact:true}));await pause(2000);",
+      "end": true
+    }
+  ]
+}

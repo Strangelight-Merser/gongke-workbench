@@ -116,14 +116,14 @@ export function DwgView({
       <svg
         className="drawing"
         viewBox={`${minX - pad} ${-maxY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`}
-        style={{ color: "#263b39" }}
+        style={{ color: "#2a2927" }}
       >
         {rendered.map(({ entity, node }: Data) => (
           <g
             key={entity.handle}
             onClick={() => select(entity.handle)}
             fill="none"
-            stroke={entity.handle === selected ? "#df673c" : "currentColor"}
+            stroke={entity.handle === selected ? "#e8742a" : "currentColor"}
             strokeWidth={(maxX - minX) / 1000}
             style={{ cursor: "pointer" }}
           >

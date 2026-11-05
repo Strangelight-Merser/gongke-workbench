@@ -12,7 +12,7 @@ from gongke_app.project import MANIFEST, Project
 
 class LostCopy:
     def __init__(self, tmp_path, monkeypatch, kind="solidworks", pair=False, importing=False):
-        self.project = Project.create(str(tmp_path / "project"), teaching=False)
+        self.project = Project.create(str(tmp_path / "project"))
         self.hosts = Hosts(tmp_path / "hosts")
         self.kind, self.pair = kind, pair
         self.config = {"host_id": kind + "-1", "host": kind,

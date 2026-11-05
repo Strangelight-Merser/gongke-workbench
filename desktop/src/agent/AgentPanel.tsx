@@ -38,6 +38,7 @@ import type {
 import type { Step } from "../../electron/onboarding/types.cjs";
 import { AgentOnboarding } from "./AgentOnboarding";
 import { AgentSettings } from "./AgentSettings";
+import { stepTitle } from "./modelingSteps";
 import { rowsOf, groupCompletedTools } from "./events";
 import { errorText } from "../api";
 const phases = {
@@ -329,7 +330,8 @@ export function AgentPanel({
       {conversationVisible && context && (
         <div className="agent-context">
           <div>
-            <span title={context}>{context}</span>
+            {/* 发给 Agent 的仍是工程内路径；这里只显示文件名，不露出导入时的内部目录。 */}
+            <span title={context}>{context.includes(" · ") ? context : context.split("/").at(-1)}</span>
             <Button
               size="small"
               appearance="subtle"
@@ -411,7 +413,7 @@ export function AgentPanel({
         aria-label="工程对话"
         aria-live="polite"
       >
-        {conversationVisible && !rows.length && (
+        {conversationVisible && !rows.length && !modeling.steps.length && (
           <div className="agent-welcome">
             <h3>{project ? "从一个具体任务开始" : "先打开工程"}</h3>
             <p>
@@ -471,7 +473,22 @@ export function AgentPanel({
                         ?.name || "Agent"
                     : ""}
               </div>
-              <div>{row.text}</div>
+              {row.kind === "user" ? (
+                <details className="agent-request">
+                  <summary>
+                    <span>{row.text?.split("\n")[0]}</span>
+                  </summary>
+                  <div>{row.text}</div>
+                </details>
+              ) : (
+                <div>{row.text}</div>
+              )}
+              {row.reference && (
+                <details className="agent-raw">
+                  <summary>图纸参考原文</summary>
+                  <pre>{row.reference}</pre>
+                </details>
+              )}
             </article>
           ),
         )}
@@ -487,7 +504,12 @@ export function AgentPanel({
               data-permission-id={event.id}
               key={event.id}
             >
-              <strong>{event.request.toolCall.title || "工程操作"}</strong>
+              <strong>
+                {stepTitle(
+                  event.request.toolCall.title || "工程操作",
+                  event.request.toolCall.rawInput || {},
+                )}
+              </strong>
               <ToolDetails raw={event.request.toolCall.rawInput} />
               <div className="permission-actions">
                 {event.request.options

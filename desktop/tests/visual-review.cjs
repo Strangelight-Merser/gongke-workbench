@@ -88,7 +88,7 @@ const records = [],
                     return c && c.width > 0;
                   });
                   await page
-                    .getByRole("button", { name: "适应窗口", exact: true })
+                    .getByRole("button", { name: "适应宽度", exact: true })
                     .click();
                   await page
                     .locator('.pdf-document[data-render-state="ready"]')

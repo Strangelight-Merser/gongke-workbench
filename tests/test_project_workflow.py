@@ -14,6 +14,7 @@ from tests.test_app_service import finished
 
 def test_delivery_tracks_input_reopen_and_missing_files(tmp_path):
     project = Project.create(str(tmp_path / "project"))
+    project.set_task(api.example_task(), teaching=True)
     commands = Commands()
     result = commands.call("design.generate", {"name": "first", "drawings": False, "report_docx": False}, project)
     assert result["exports_complete"]
@@ -34,6 +35,7 @@ def test_delivery_tracks_input_reopen_and_missing_files(tmp_path):
 
 def test_failed_latest_generation_does_not_reuse_old_success(tmp_path, monkeypatch):
     project = Project.create(str(tmp_path / "project"))
+    project.set_task(api.example_task(), teaching=True)
     commands = Commands()
     commands.call("design.generate", {"name": "good", "drawings": False, "report_docx": False}, project)
     def fail(*args, **kwargs):
@@ -48,6 +50,7 @@ def test_failed_latest_generation_does_not_reuse_old_success(tmp_path, monkeypat
 
 def test_teaching_change_invalidates_delivery(tmp_path):
     project = Project.create(str(tmp_path / "project"))
+    project.set_task(api.example_task(), teaching=True)
     Commands().call("design.generate", {"drawings": False, "report_docx": False}, project)
     project.set_task(project.task(), teaching=False)
     assert project.view()["delivery"] is None
@@ -55,7 +58,8 @@ def test_teaching_change_invalidates_delivery(tmp_path):
 
 def test_queued_generation_uses_submitted_conditions_and_source(tmp_path):
     app = Application(tmp_path / "state")
-    app.dispatch("project.create", {"path": str(tmp_path / "project"), "teaching": True})
+    app.dispatch("project.create", {"path": str(tmp_path / "project")})
+    app.project.set_task(api.example_task(), teaching=True)
     original = app.project.task()
     gate = threading.Event()
     blockers = [app.tasks.pool.submit(gate.wait, 5) for _ in range(3)]
@@ -80,6 +84,7 @@ def test_queued_generation_uses_submitted_conditions_and_source(tmp_path):
 
 def test_retired_assistant_history_is_preserved(tmp_path):
     project = Project.create(str(tmp_path / "project"))
+    project.set_task(api.example_task(), teaching=True)
     history = project.path / ".gongke-conversation.json"
     original = '[{"task_id":"old","user":"保留候选 B","messages":[]}]\n'.encode("utf-8")
     history.write_bytes(original)

@@ -1,0 +1,10 @@
+# 核验夹具：在本次新进程只读打开模型副本，不改几何。
+import os
+from pathlib import Path
+import FreeCAD as App
+exec(compile((Path(os.environ['GONGKE_MODELING_ROOT'])/'tests/e2e/native_modeling_host.FCMacro').read_text(), 'native_modeling_host.FCMacro', 'exec'))
+from PySide import QtGui
+QtGui.QApplication.instance().setQuitOnLastWindowClosed(False)
+App.openDocument(os.environ['GONGKE_CHECK_MODEL'])
+App.setActiveDocument(next(iter(App.listDocuments())))
+(endpoint.parent/'opened.json').write_text(json.dumps({'documents':list(App.listDocuments()),'active':App.ActiveDocument.Name if App.ActiveDocument else None}))

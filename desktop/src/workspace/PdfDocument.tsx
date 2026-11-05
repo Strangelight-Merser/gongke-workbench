@@ -14,7 +14,18 @@ import {
 } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 GlobalWorkerOptions.workerSrc = workerUrl;
-export default function PdfDocument({ content }: { content: string }) {
+export type DrawingHighlight = {
+  page: number;
+  coordinates: { width: number; height: number };
+  segments: { item: string; points: number[][] }[];
+};
+export default function PdfDocument({
+  content,
+  highlight,
+}: {
+  content: string;
+  highlight?: DrawingHighlight;
+}) {
   const [pdf, setPdf] = useState<PDFDocumentProxy>();
   const [page, setPage] = useState(1);
   const [scale, setScale] = useState(1);
@@ -24,19 +35,22 @@ export default function PdfDocument({ content }: { content: string }) {
     page: number;
     scale: number;
   }>();
-  const [fitting, setFitting] = useState(false);
+  const [fitWidth, setFitWidth] = useState(true);
   const rendering =
     !error &&
     (!pdf ||
-      fitting ||
       rendered?.pdf !== pdf ||
       rendered?.page !== page ||
       rendered?.scale !== scale);
+  useEffect(() => {
+    if (highlight) setPage(highlight.page);
+  }, [highlight?.page, content]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setPdf(undefined);
-    setPage(1);
+    setPage(highlight?.page ?? 1);
+    setFitWidth(true);
     setError("");
 
     const task = getDocument({
@@ -58,6 +72,29 @@ export default function PdfDocument({ content }: { content: string }) {
       void task.destroy();
     };
   }, [content]);
+  useEffect(() => {
+    if (!pdf || !viewport.current || !fitWidth) return;
+    const container = viewport.current;
+    let active = true;
+    const fit = async () => {
+      const width = container.clientWidth - 48;
+      if (width <= 0) return;
+      const p = await pdf.getPage(page);
+      if (active) {
+        setScale(width / p.getViewport({ scale: 1 }).width);
+        container.scrollLeft = 0;
+      }
+    };
+    const observer = new ResizeObserver(() => {
+      void fit();
+    });
+    observer.observe(container);
+    void fit();
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [pdf, page, fitWidth]);
   useEffect(() => {
     if (!pdf || !canvas.current) return;
     let active = true,
@@ -135,7 +172,10 @@ export default function PdfDocument({ content }: { content: string }) {
           title="缩小 PDF"
           disabled={!pdf}
           aria-label="缩小 PDF"
-          onClick={() => setScale((s) => Math.max(0.25, s - 0.25))}
+          onClick={() => {
+            setFitWidth(false);
+            setScale((s) => Math.max(0.25, s - 0.25));
+          }}
         />
         <span>{Math.round(scale * 100)}%</span>
         <Button
@@ -145,32 +185,13 @@ export default function PdfDocument({ content }: { content: string }) {
           title="放大 PDF"
           disabled={!pdf}
           aria-label="放大 PDF"
-          onClick={() => setScale((s) => Math.min(4, s + 0.25))}
-        />
-        <Button
-          size="small"
-          disabled={!pdf}
-          onClick={async () => {
-            if (!pdf || !viewport.current) return;
-            setFitting(true);
-            try {
-              const p = await pdf.getPage(page);
-              setScale(
-                Math.min(
-                  (viewport.current.clientWidth - 48) /
-                    p.getViewport({ scale: 1 }).width,
-                  (viewport.current.clientHeight - 48) /
-                    p.getViewport({ scale: 1 }).height,
-                ),
-              );
-            } catch (e) {
-              setError(String(e));
-            } finally {
-              setFitting(false);
-            }
+          onClick={() => {
+            setFitWidth(false);
+            setScale((s) => Math.min(4, s + 0.25));
           }}
-        >
-          适应窗口
+        />
+        <Button size="small" disabled={!pdf} onClick={() => setFitWidth(true)}>
+          适应宽度
         </Button>
       </div>
       {error && (
@@ -180,7 +201,46 @@ export default function PdfDocument({ content }: { content: string }) {
       )}
       <div className="pdf-pages" ref={viewport} aria-label="PDF 图纸">
         {rendering && <Spinner size="small" label="正在渲染" />}
-        <canvas ref={canvas} />
+        <div
+          className="pdf-sheet"
+          style={{
+            position: "relative",
+            flexShrink: 0,
+            width: "fit-content",
+            margin: "auto",
+          }}
+        >
+          <canvas ref={canvas} style={{ display: "block" }} />
+          {highlight && page === highlight.page && !rendering && (
+            <svg
+              className="drawing-check-overlay"
+              aria-label="图纸不符边"
+              viewBox={`0 0 ${highlight.coordinates.width} ${highlight.coordinates.height}`}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                pointerEvents: "none",
+              }}
+            >
+              {highlight.segments.map((edge, i) => (
+                <g key={edge.item} data-drawing-item={edge.item}>
+                  <line
+                    x1={edge.points[0][0]}
+                    y1={edge.points[0][1]}
+                    x2={edge.points[1][0]}
+                    y2={edge.points[1][1]}
+                    stroke="#d64545"
+                    strokeWidth={4}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <title>{`差异 ${i + 1} · ${edge.item}`}</title>
+                </g>
+              ))}
+            </svg>
+          )}
+        </div>
       </div>
     </div>
   );

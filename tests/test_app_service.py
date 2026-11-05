@@ -1,3 +1,4 @@
+from gongke_core import api
 import json
 import os
 from pathlib import Path
@@ -25,7 +26,8 @@ def finished(app, task_id):
 @pytest.fixture
 def app(tmp_path):
     service = Application(tmp_path / "state")
-    service.dispatch("project.create", {"path": str(tmp_path / "project"), "teaching": True})
+    service.dispatch("project.create", {"path": str(tmp_path / "project")})
+    service.dispatch("project.set_task", {"task": api.example_task(), "teaching": True})
     yield service
     service.close()
 
@@ -66,7 +68,7 @@ def test_project_paths_and_originals_preserved(app, tmp_path):
 
 
 def test_non_teaching_conditions_are_explicit(app, tmp_path):
-    app.dispatch("project.create", {"path": str(tmp_path / "empty"), "teaching": False})
+    app.dispatch("project.create", {"path": str(tmp_path / "empty")})
     with pytest.raises(ValueError, match="尚无计算条件"):
         app.dispatch("design.calculate", {})
     with pytest.raises(ValueError, match="未知参数"):
@@ -110,6 +112,7 @@ def test_stdio_process_contains_only_json_and_runs_actual_core(tmp_path):
     requests = [
         {"id": 1, "method": "system.status"},
         {"id": 2, "method": "project.create", "params": {"path": str(tmp_path / "project")}},
+        {"id": 0, "method": "project.set_task", "params": {"task": api.example_task(), "teaching": True}},
         {"id": 3, "method": "design.calculate"},
     ]
     process = subprocess.run([sys.executable, "-m", "gongke_app.service", "--state-dir", str(tmp_path / "state")],
@@ -119,7 +122,7 @@ def test_stdio_process_contains_only_json_and_runs_actual_core(tmp_path):
     messages = [json.loads(line) for line in process.stdout.splitlines()]
     responses = [row for row in messages if "id" in row]
     assert any(row.get("event") == "task.receipt" for row in messages)
-    assert [row["id"] for row in responses] == [1, 2, 3]
+    assert [row["id"] for row in responses] == [1, 2, 0, 3]
     assert responses[-1]["result"]["motor"]["power_kw"] > 0
 
 
@@ -143,7 +146,8 @@ def test_stdio_generates_drawings_and_step_while_input_pipe_stays_open(tmp_path)
         pytest.skip("STEP generation requires the geometry or desktop extra")
     root = Path(__file__).resolve().parents[1]
     requests = [
-        {"id": 1, "method": "project.create", "params": {"path": str(tmp_path / "project"), "teaching": True}},
+        {"id": 1, "method": "project.create", "params": {"path": str(tmp_path / "project")}},
+        {"id": 0, "method": "project.set_task", "params": {"task": api.example_task(), "teaching": True}},
         {"id": 2, "method": "design.generate", "params": {"name": "drawing", "drawings": True, "report_docx": False, "step": True}},
     ]
     process = subprocess.Popen(
@@ -176,7 +180,7 @@ def test_stdio_generates_drawings_and_step_while_input_pipe_stays_open(tmp_path)
                 break
             assert "protocol_error" not in reply and "error" not in reply, reply
             record = reply.get("task", {})
-            if record.get("status") in {"complete", "partial", "failed", "canceled"}:
+            if record.get("kind") == "generation" and record.get("status") in {"complete", "partial", "failed", "canceled"}:
                 terminal = record
                 break
         if terminal is None:

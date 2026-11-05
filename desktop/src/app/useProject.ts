@@ -70,7 +70,6 @@ export function useProject() {
       refreshVersion.current++;
       const result = await call(create ? "project.create" : "project.open", {
         path,
-        ...(create ? { teaching: false } : {}),
       });
       current.current = result.path;
       setProject(result);

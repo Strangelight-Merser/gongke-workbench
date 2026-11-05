@@ -160,3 +160,115 @@ test("特征详情优先中文名称，无名称使用类型和 SI 换算尺寸�
   assert.doesNotMatch(html, /特征：Feature0/);
   assert.match(html, /Feature0/);
 });
+
+test("用户请求与图纸参考分开，跨工具的思考按轮次收拢", () => {
+  const update = (sessionUpdate, extra) => ({
+    type: "update",
+    update: { sessionUpdate, ...extra },
+  });
+  const events = [
+    { type: "user", text: '建模\n{"items":[1]}', displayText: "建模" },
+    update("agent_thought_chunk", {
+      content: { type: "text", text: "读图。" },
+    }),
+    update("tool_call", {
+      toolCallId: "one",
+      title: "host.sketch",
+      status: "completed",
+    }),
+    update("agent_thought_chunk", {
+      content: { type: "text", text: "建模。" },
+    }),
+    { type: "user", text: "检查" },
+    update("agent_thought_chunk", {
+      content: { type: "text", text: "核对。" },
+    }),
+  ];
+  const rows = rowsOf(events);
+  assert.equal(rows[0].text, "建模");
+  assert.match(rows[0].reference, /items/);
+  assert.deepEqual(
+    rows.filter((r) => r.kind === "thought").map((r) => r.text),
+    ["读图。建模。", "核对。"],
+  );
+});
+test("真实 dsh 带哈希工具名与人工操作共用工程名称和尺寸", () => {
+  const { stepTitle } = load("modelingSteps.ts");
+  for (const [command, params] of [
+    ["host.sketch", { name: "轮廓" }],
+    ["host.feature", { feature: { kind: "pad", length: 0.004 } }],
+    ["host.model_new", {}],
+    ["project.read_drawing", {}],
+    ["host.check", {}],
+  ]) {
+    assert.equal(
+      stepTitle(
+        "mcp__gongke__" + command.replace(".", "_") + "_b5d6e9ebda25",
+        params,
+      ),
+      stepTitle(command, params),
+    );
+  }
+});
+
+test("自填期望值不进入成功折叠，图纸依据与未知原因保留", () => {
+  const React = require("react");
+  const { renderToStaticMarkup } = require("react-dom/server");
+  const result = {
+    status: "unverified",
+    scope: "仅所选截面",
+    checks: [
+      { id: "self", status: "unverified", source_kind: "agent_defined" },
+      {
+        id: "dimension",
+        status: "pass",
+        source_kind: "drawing_annotation",
+        evidence: { text: "36", page: 1, item: "page-1/text/0" },
+      },
+      {
+        id: "outline",
+        status: "unknown",
+        source_kind: "drawing_geometry",
+        reason: "曲线尚未支持",
+      },
+    ],
+  };
+  assert.equal(
+    toolState("completed", { ...result, checks: result.checks.slice(0, 2) }),
+    "unverified",
+  );
+  const html = renderToStaticMarkup(
+    React.createElement(ToolDetails, { result, raw: {} }),
+  );
+  for (const text of [
+    "未经独立核对",
+    "Agent 自定",
+    "图纸标注",
+    "图纸几何",
+    "曲线尚未支持",
+    "仅所选截面",
+  ])
+    assert.ok(html.includes(text), text);
+});
+
+test("真实 MCP 任务完成外壳不能掩盖内部未独立核对", () => {
+  for (const status of ["unverified", "unknown", "fail"]) {
+    const receipt = {
+      task_id: "receipt",
+      status: "complete",
+      result: { status, checks: [{ id: "x", status }] },
+    };
+    for (const rawOutput of [
+      { structuredContent: receipt },
+      { content: [{ type: "text", text: JSON.stringify(receipt) }] },
+      receipt,
+    ]) {
+      const result = toolResult({ rawOutput });
+      assert.equal(result.status, status);
+      assert.equal(
+        toolState("completed", result),
+        status === "fail" ? "failed" : status,
+      );
+    }
+  }
+});

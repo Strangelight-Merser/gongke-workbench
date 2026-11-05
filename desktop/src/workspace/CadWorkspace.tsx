@@ -137,7 +137,7 @@ export function CadWorkspace({
               })}>连接 FreeCAD</Button>
             )}
             {!window.cadEmbed?.supported && (
-              <span className="muted">原生窗口嵌入需要 Windows</span>
+              <span className="muted">原生模型视图</span>
             )}
           </>
         }

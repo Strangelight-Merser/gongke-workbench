@@ -1,3 +1,4 @@
+from gongke_core import api
 """握手和纯机械计算不依赖几何/数值扩展的冷加载。"""
 import json
 from pathlib import Path
@@ -17,7 +18,8 @@ sys.meta_path.insert(0, NoNumericPreload())
 runpy.run_module('gongke_app.service', run_name='__main__')
 '''
     requests = [dict(id=1, method='system.status'),
-                dict(id=2, method='project.create', params={'path': str(tmp_path / '工程'), 'teaching': True}),
+                dict(id=2, method='project.create', params={'path': str(tmp_path / '工程')}),
+                dict(id=0, method='project.set_task', params={'task': api.example_task(), 'teaching':True}),
                 dict(id=3, method='design.calculate')]
     result = subprocess.run([sys.executable, '-c', bootstrap, '--state-dir', str(tmp_path / 'state')],
         input=''.join(json.dumps(item) + '\n' for item in requests), capture_output=True,

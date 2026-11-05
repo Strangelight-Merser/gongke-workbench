@@ -7,7 +7,7 @@
 | 方法 | 参数与结果 |
 | --- | --- |
 | `system.status` | 服务版本、是否打包、当前工程 |
-| `project.create` | `path,name?,teaching?`；默认创建明确标记的教学工程，界面可传 `teaching:false` 创建空工程 |
+| `project.create` | `path,name?`；所有入口均创建空工程，不预置任务、结果或示例文件 |
 | `project.open` | `path`，选择包含 `gongke-project.json` 的目录 |
 | `project.current` / `project.files` | 工程清单、实际文件；不读取工程目录外的符号链接 |
 | `project.set_task` | `task,teaching?`；校验条件后持久保存 |

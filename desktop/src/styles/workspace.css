@@ -86,7 +86,8 @@ textarea {
 }
 .tree-active {
   background: var(--selection);
-  color: var(--accent);
+  color: var(--ink);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .stale-mark {
   margin-left: 8px;
@@ -435,7 +436,7 @@ p {
 }
 .activity-bar > .fui-Button[aria-pressed="true"] {
   border-left-color: var(--accent);
-  color: var(--accent);
+  color: var(--ink);
 }
 .activity-bar .fui-Button__icon {
   font-size: 24px;

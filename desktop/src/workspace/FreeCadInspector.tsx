@@ -1,3 +1,5 @@
+import PdfDocument from "./PdfDocument";
+import { displayPath } from "../project/displayPath";
 import { useModelingProgress } from "../agent/ModelingProgress";
 import {
   commandOf,
@@ -46,8 +48,10 @@ export function FreeCadInspector({
     [operation, setOperation] = useState(""),
     [connectionError, setConnectionError] = useState("");
   const [locateRequest, setLocateRequest] = useState(0);
+  const [locateCheck, setLocateCheck] = useState(false);
   const select = useCallback(
     (id: string) => {
+      setLocateCheck(false);
       setSelected(id);
       setLocateRequest((value) => value + 1);
       setObject(null);
@@ -161,6 +165,85 @@ export function FreeCadInspector({
           sameDocument(modelResult(newest).document, scene?.nativeDocument)) &&
         sameDocument(s.result.document, scene?.nativeDocument),
     )?.result;
+  const drawingCheck = check?.checks?.find(
+    (c: Data) => c.source_kind === "drawing_geometry" && c.drawing_view,
+  );
+  const [checkPdf, setCheckPdf] = useState<{
+    content: string;
+    path: string;
+    sha256: string;
+  } | null>(null);
+  const [drawingError, setDrawingError] = useState("");
+  const [difference, setDifference] = useState<string | null>(null);
+  useEffect(() => {
+    setCheckPdf(null);
+    setDifference(null);
+    setDrawingError("");
+    if (!drawingCheck?.evidence) return;
+    let active = true;
+    const evidence = drawingCheck.evidence;
+    window.gongke.documents
+      .read(evidence.path)
+      .then(async (file) => {
+        const bytes = Uint8Array.from(atob(file.content), (c) =>
+          c.charCodeAt(0),
+        );
+        const sha = Array.from(
+          new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+        )
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        if (sha !== evidence.sha256)
+          throw Error("图纸已改变，请重新检查后定位");
+        if (active)
+          setCheckPdf({
+            content: file.content,
+            path: evidence.path,
+            sha256: sha,
+          });
+      })
+      .catch((e) => {
+        if (active) setDrawingError(errorText(e));
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    project?.path,
+    drawingCheck?.evidence?.path,
+    drawingCheck?.evidence?.sha256,
+  ]);
+  const drawingSegments = drawingCheck?.drawing_view?.segments || [];
+  const activeSegments = difference
+    ? drawingSegments.filter((e: Data) => e.item === difference)
+    : drawingSegments;
+  const locatedChecks =
+    difference && drawingCheck
+      ? {
+          ...check,
+          checks: [
+            {
+              ...drawingCheck,
+              actual: {
+                locations: [
+                  {
+                    difference: "missing_or_shifted",
+                    edges: activeSegments.map((e: Data) => ({
+                      start: e.world[0],
+                      end: e.world[1],
+                      drawing_item: e.item,
+                    })),
+                  },
+                  {
+                    difference: "extra_or_shifted",
+                    edges: activeSegments.flatMap((e: Data) => e.model_edges),
+                  },
+                ],
+              },
+            },
+          ],
+        }
+      : check;
   useEffect(() => {
     if (
       !target ||
@@ -184,6 +267,7 @@ export function FreeCadInspector({
       stepInput(target.command, target.params),
     );
     if (id && features.some((f) => f.native_ref === id)) {
+      setLocateCheck(!!modelResult(target).checks);
       setSelected(id);
       setPage("");
       setLocateRequest((value) => value + 1);
@@ -309,7 +393,7 @@ export function FreeCadInspector({
             </Button>
           </>
         )}
-        <span>{context.path || ""}</span>
+        <span>{displayPath(context.path || "", project?.path)}</span>
       </div>
       {pendingOperation && (
         <div className="error">
@@ -422,14 +506,66 @@ export function FreeCadInspector({
                 )}
               </div>
             </div>
-            <div className="model-document" hidden={!!page}>
+            <div
+              className="model-document"
+              hidden={!!page}
+              style={
+                checkPdf
+                  ? { display: "grid", gridTemplateColumns: "1fr 1fr" }
+                  : undefined
+              }
+            >
+              {checkPdf && drawingCheck && (
+                <div
+                  className="check-drawing"
+                  style={{
+                    minWidth: 0,
+                    minHeight: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <div className="toolbar">
+                    <strong>图纸核对</strong>
+                    <Button
+                      onClick={() => {
+                        setDifference(null);
+                        setLocateRequest((v) => v + 1);
+                      }}
+                    >
+                      全部差异
+                    </Button>
+                    {drawingSegments.map((e: Data, i: number) => (
+                      <Button
+                        key={e.item}
+                        appearance={
+                          difference === e.item ? "primary" : "subtle"
+                        }
+                        onClick={() => {
+                          setDifference(e.item);
+                          setLocateRequest((v) => v + 1);
+                        }}
+                      >{`差异 ${i + 1}`}</Button>
+                    ))}
+                  </div>
+                  <PdfDocument
+                    content={checkPdf.content}
+                    highlight={{
+                      ...drawingCheck.drawing_view,
+                      segments: activeSegments,
+                    }}
+                  />
+                </div>
+              )}
+              {drawingError && <p role="alert">{drawingError}</p>}
               <ModelView
                 scene={scene}
                 selected={selected}
                 onSelect={select}
                 detail={detail}
                 focusRequest={locateRequest}
-                checks={check}
+                locateCheck={locateCheck}
+                checks={locatedChecks}
               />
             </div>
             <div className="properties">
@@ -447,14 +583,34 @@ export function FreeCadInspector({
                   {f.sketch ? " · 草图" : ""}
                 </Button>
               ))}
-              {check?.checks
-                ?.filter((c: Data) => c.status !== "pass")
-                .map((c: Data) => (
-                  <div className="error" key={c.id}>
-                    {c.id} · {c.status === "fail" ? "不符" : "待核实"}
-                    {!c.actual?.locations?.length && " · 无可定位实体"}
-                  </div>
-                ))}
+              {!!check?.checks?.length && (
+                <details>
+                  <summary>检查项</summary>
+                  {check?.checks
+                    ?.filter((c: Data) => c.status !== "pass")
+                    .map((c: Data) => (
+                      <div
+                        className="error"
+                        key={
+                          c.source_kind === "drawing_geometry"
+                            ? "图纸轮廓"
+                            : c.id
+                        }
+                      >
+                        {c.source_kind === "drawing_geometry"
+                          ? "图纸轮廓"
+                          : c.id}{" "}
+                        ·{" "}
+                        {c.status === "fail"
+                          ? "不符"
+                          : c.status === "unverified"
+                            ? "未经独立核对"
+                            : "待核实"}
+                        {!c.actual?.locations?.length && " · 无可定位实体"}
+                      </div>
+                    ))}
+                </details>
+              )}
               {!features.length &&
                 scene.objects?.map((o: Data) => (
                   <Button

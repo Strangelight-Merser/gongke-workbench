@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <title>构想引擎 · 折页成体</title>
+  <rect width="256" height="256" rx="48" fill="#161615"/>
+  <path d="M52 104 88 68 132 42 204 84 204 164 144 200 52 200Z" fill="#2A2927"/>
+  <g fill="none" stroke="#8E8B86" stroke-width="10" stroke-linejoin="round">
+    <path d="M52 104 88 68 132 42 204 84 204 164 144 200 52 200Z"/>
+    <path d="M52 104H88V68M96 96 140 124 204 84M140 124V200"/>
+  </g>
+  <rect x="134" y="118" width="12" height="12" fill="#E8742A"/>
+</svg>

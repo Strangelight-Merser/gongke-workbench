@@ -15,7 +15,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     user = Path.home() / ".workbuddy/mcp.json"
     user.parent.mkdir(parents=True)
-    project = Project.create(str(tmp_path / "project"), teaching=False)
+    project = Project.create(str(tmp_path / "project"))
     def configure(**kwargs):
         return write_workbuddy(project, tmp_path / "state", Path(sys.executable), False, **kwargs)
     return project, user, configure

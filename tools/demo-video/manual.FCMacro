@@ -1,0 +1,41 @@
+# 仅自动点击本进程 Qt 控件；不通过模型 API 修改尺寸。
+import os,json,time,traceback
+from pathlib import Path
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide6 import QtCore,QtGui,QtWidgets,QtTest
+out=Path(os.environ['GONGKE_MANUAL_OUT']);out.mkdir(parents=True,exist_ok=True)
+(out/'frames').mkdir(exist_ok=True)
+doc=App.openDocument(str(out/'robot4-workcopy.FCStd'))
+Gui.activateWorkbench('PartDesignWorkbench')
+main=Gui.getMainWindow();main.resize(1600,1000);main.show()
+view=Gui.activeDocument().activeView();view.setAnimationEnabled(False);view.viewAxonometric();view.fitAll()
+started=time.time();frames=[];inputs=[];seen=set()
+def save():
+    (out/'recording.json').write_text(json.dumps({'started':started*1000,'ended':time.time()*1000,'frames':frames,'inputs':inputs}))
+def dump():
+    widgets=[]
+    for w in main.findChildren(QtWidgets.QWidget):
+        if not w.isVisible():continue
+        row={'class':w.metaObject().className(),'name':w.objectName()}
+        for key in ['text','value','title']:
+            try:row[key]=str(getattr(w,key)())
+            except:pass
+        widgets.append(row)
+    (out/'widgets.json').write_text(json.dumps(widgets,ensure_ascii=False,indent=2))
+def tick():
+    now=time.time();file=f'{len(frames):06}.jpg'
+    main.grab().save(str(out/'frames'/file),'JPG',90)
+    frames.append({'file':file,'timestamp':now})
+    for p in sorted(out.glob('action-*.json')):
+        if p.name in seen:continue
+        seen.add(p.name);a=json.loads(p.read_text());inputs.append({'kind':'mark','name':a['name'],'at':now*1000})
+        try:exec(a['code'],globals());dump()
+        except: (out/(p.stem+'-error.txt')).write_text(traceback.format_exc())
+    if len(frames)%30==0:save()
+    if (out/'stop').exists():
+        timer.stop();save();doc.recompute();
+        (out/'result.json').write_text(json.dumps({'length_mm':doc.Plate.Length.Value,'volume_mm3':doc.Robot4Fender.Shape.Volume,'modified':doc.Modified if hasattr(doc,'Modified') else None}))
+        App.closeDocument(doc.Name);QtWidgets.QApplication.instance().quit()
+timer=QtCore.QTimer();timer.timeout.connect(tick);timer.start(33)
+QtCore.QTimer.singleShot(1000,dump)

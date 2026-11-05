@@ -1,0 +1,31 @@
+# 独立 FreeCAD 真实视口连续采集；导入同一修订的 STEP，不修改或重建几何。
+import os,time,json,traceback,math
+from pathlib import Path
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide6 import QtWidgets,QtCore
+import Part
+out=Path(os.environ['GONGKE_VIEW_OUT']);out.mkdir(parents=True,exist_ok=True);(out/'frames').mkdir(exist_ok=True)
+QtWidgets.QApplication.instance().setQuitOnLastWindowClosed(False)
+main=Gui.getMainWindow();main.show();main.resize(1500,950)
+frames=[];started=time.time()
+def begin():
+ global doc,view,timer,origin,started
+ try:
+  doc=App.newDocument('ReducerFilm')
+  item=doc.addObject('Part::Feature','Assembly');item.Shape=Part.read(os.environ['GONGKE_VIEW_STEP']);doc.recompute()
+  App.setActiveDocument(doc.Name);Gui.activeDocument().activeView().viewAxonometric();view=Gui.activeDocument().activeView();view.fitAll();origin=view.getCameraOrientation();started=time.time()
+  (out/'geometry.json').write_text(json.dumps({'volume':item.Shape.Volume,'solids':len(item.Shape.Solids),'source':os.environ['GONGKE_VIEW_STEP']}))
+  timer=QtCore.QTimer();timer.timeout.connect(tick);timer.start(33)
+ except:
+  (out/'error.txt').write_text(traceback.format_exc());QtWidgets.QApplication.instance().quit()
+def tick():
+ now=time.time();t=now-started
+ try:
+  if t>18:
+   timer.stop();(out/'recording.json').write_text(json.dumps({'started':started*1000,'ended':now*1000,'frames':frames,'inputs':[]}));App.closeDocument(doc.Name);QtWidgets.QApplication.instance().quit();return
+  angle=12*min(1,max(0,(t-3)/10));view.setCameraOrientation((App.Rotation(App.Vector(0,0,1),angle)*origin).Q)
+  file=f'{len(frames):06}.jpg';view.saveImage(str(out/'frames'/file),1920,1080,'White');frames.append({'file':file,'timestamp':now})
+ except:
+  timer.stop();(out/'error.txt').write_text(traceback.format_exc());QtWidgets.QApplication.instance().quit()
+QtCore.QTimer.singleShot(1500,begin)

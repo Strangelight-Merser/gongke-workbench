@@ -1,0 +1,19 @@
+# 仅在本次独立宿主打开本次生成的模型副本。
+import os
+from pathlib import Path
+import FreeCAD as App
+import FreeCADGui as Gui
+from PySide6 import QtWidgets
+QtWidgets.QApplication.instance().setQuitOnLastWindowClosed(False)
+root=Path(os.environ['GONGKE_MODELING_ROOT'])
+exec(compile((root/'tests/e2e/native_modeling_host.FCMacro').read_text(),str(root/'tests/e2e/native_modeling_host.FCMacro'),'exec'))
+if Path(os.environ['GONGKE_DEMO_MODEL']).suffix.lower()=='.step':
+    import Part
+    doc=App.newDocument('Reducer')
+    obj=doc.addObject('Part::Feature','ReducerAssembly')
+    obj.Shape=Part.read(os.environ['GONGKE_DEMO_MODEL'])
+    doc.recompute()
+else:
+    App.openDocument(os.environ['GONGKE_DEMO_MODEL'])
+
+(Path(os.environ['GONGKE_FREECAD_SESSION']).parent/'model-loaded.json').write_text(json.dumps({'documents':list(App.listDocuments()),'active':App.ActiveDocument.Name if App.ActiveDocument else None}))

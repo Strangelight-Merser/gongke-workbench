@@ -20,11 +20,11 @@ class Project:
         self.lock = threading.RLock()
 
     @classmethod
-    def create(cls, path: str, name: str | None = None, teaching: bool = True):
+    def create(cls, path: str, name: str | None = None):
         root = Path(path).expanduser().resolve()
         root.mkdir(parents=True, exist_ok=True)
-        manifest = {"version": 1, "name": name or root.name, "teaching": teaching,
-                    "task": api.example_task() if teaching else None, "results": [], "working_copies": []}
+        manifest = {"version": 1, "name": name or root.name, "teaching": False,
+                    "task": None, "results": [], "working_copies": []}
         # Exclusive creation keeps an existing project and all original files intact.
         with (root / MANIFEST).open("x", encoding="utf-8") as stream:
             json.dump(manifest, stream, ensure_ascii=False, indent=2, allow_nan=False)
@@ -111,7 +111,7 @@ class Project:
         with self.lock:
             task = supplied if supplied is not None else self.manifest.get("task")
             if not isinstance(task, dict):
-                raise ValueError("工程尚无计算条件，请设置任务书或明确选择教学示例")
+                raise ValueError("工程尚无计算条件，请先设置任务书")
             errors = api.validate(task)
             if errors:
                 raise ValueError("；".join(errors))

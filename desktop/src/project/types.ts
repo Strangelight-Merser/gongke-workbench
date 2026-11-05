@@ -10,8 +10,6 @@ export type Project = {
   path: string;
   name: string;
   files: ProjectFile[];
-  task?: Data;
-  teaching?: boolean;
   generations?: Generation[];
   delivery?: Data;
   working_copies?: Data[];
@@ -19,7 +17,7 @@ export type Project = {
 export type DocumentRef = {
   id: string;
   title: string;
-  type: "home" | "cad" | "file" | "reducer";
+  type: "home" | "cad" | "file";
   file?: ProjectFile;
   preview?: boolean;
 };
@@ -53,4 +51,10 @@ export function openDocument(documents: DocumentRef[], document: DocumentRef) {
   return documents.some((d) => d.id === document.id)
     ? documents
     : [...documents, document];
+}
+
+export function documentLabel(document?: DocumentRef) {
+  return document?.file
+    ? `${fileGroup(document.file)} › ${document.file.name}`
+    : document?.title || "";
 }
