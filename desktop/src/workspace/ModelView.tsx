@@ -57,14 +57,14 @@ export function ModelView({
     const models = new THREE.Group(),
       overlays = new THREE.Group();
     world.add(models, overlays);
-    world.add(new THREE.HemisphereLight(0xffffff, 0x8a968f, 2.6));
+    world.add(new THREE.HemisphereLight(0xffffff, 0x8f8b85, 2.6));
     const light = new THREE.DirectionalLight(0xffffff, 3);
     light.position.set(2, 4, 3);
     world.add(light);
     const theme = () => {
       const base = new THREE.Color(
         getComputedStyle(element).getPropertyValue("--surface-base").trim() ||
-          "#20252b",
+          "#242422",
       );
       world.background = null;
       renderer.setClearColor(0x000000, 0);
@@ -158,7 +158,7 @@ export function ModelView({
       const mesh = new THREE.Mesh(
         shaded,
         new THREE.MeshStandardMaterial({
-          color: "#768582",
+          color: "#8e8b86",
           metalness: 0.32,
           roughness: 0.46,
           side: THREE.DoubleSide,
@@ -173,7 +173,7 @@ export function ModelView({
     dispose(v.overlays);
     for (const object of v.models.children)
       ((object as THREE.Mesh).material as THREE.MeshStandardMaterial).color.set(
-        object.userData.id === selected ? "#24b69c" : "#768582",
+        object.userData.id === selected ? "#e8742a" : "#8e8b86",
       );
     function line(points: number[][], color: string, depthTest = false) {
       if (points.length < 2) return;
@@ -208,7 +208,7 @@ export function ModelView({
       v.overlays.add(object);
     }
     for (const edge of detail?.edges || [])
-      line(edge.samples || [edge.start, edge.end], "#24b69c", true);
+      line(edge.samples || [edge.start, edge.end], "#e8742a", true);
     const box = new THREE.Box3().setFromObject(v.models);
     box.union(new THREE.Box3().setFromObject(v.overlays));
     const center = box.getCenter(new THREE.Vector3()),
@@ -281,7 +281,7 @@ export function ModelView({
             line(
               edge.samples || [edge.start, edge.end],
               location.difference === "missing_or_shifted"
-                ? "#24b69c"
+                ? "#3f9a62"
                 : "#e54b4b",
             );
         } else if (detail?.object_ref === location.native_ref) {

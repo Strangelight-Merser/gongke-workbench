@@ -148,7 +148,8 @@
 }
 .native-tabs .active {
   background: var(--selection);
-  color: var(--accent);
+  color: var(--ink);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .model-view {
   position: relative;
@@ -198,7 +199,8 @@
 }
 .object.active {
   background: var(--selection);
-  color: var(--accent);
+  color: var(--ink);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .property {
   display: flex;

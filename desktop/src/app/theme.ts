@@ -3,24 +3,24 @@ import {
   createLightTheme,
   type BrandVariants,
 } from "@fluentui/react-components";
-// 与 Logo 同一青绿色相；控件文字使用更深的色阶保证白底对比度。
+// 石墨 + 信号橙：品牌色只用于主操作、焦点和当前项指示；白底控件文字用 80 级保证对比度。
 const brand: BrandVariants = {
-  10: "#02130f",
-  20: "#06271f",
-  30: "#093c30",
-  40: "#0b493b",
-  50: "#0d574a",
-  60: "#0f6353",
-  70: "#106e5d",
-  80: "#147d69",
-  90: "#168b75",
-  100: "#1aa088",
-  110: "#24b69c",
-  120: "#54cbb7",
-  130: "#79d7c7",
-  140: "#a2e4d8",
-  150: "#c9eee5",
-  160: "#e4f5ef",
+  10: "#1a0c04",
+  20: "#2e1508",
+  30: "#45200c",
+  40: "#5a2a10",
+  50: "#6f3413",
+  60: "#853e16",
+  70: "#9c4919",
+  80: "#b0521b",
+  90: "#c95e20",
+  100: "#e06a25",
+  110: "#e8742a",
+  120: "#ef8a4c",
+  130: "#f3a170",
+  140: "#f7bb97",
+  150: "#fad5bf",
+  160: "#fdede3",
 };
 const typography = {
   fontFamilyBase:
@@ -32,7 +32,7 @@ export const lightTheme = { ...createLightTheme(brand), ...typography };
 export const darkTheme = {
   ...createDarkTheme(brand),
   ...typography,
-  colorNeutralForeground2BrandHover: "#79d7c7",
-  colorNeutralForeground2BrandPressed: "#79d7c7",
-  colorNeutralForeground2BrandSelected: "#79d7c7",
+  colorNeutralForeground2BrandHover: "#f3a170",
+  colorNeutralForeground2BrandPressed: "#f3a170",
+  colorNeutralForeground2BrandSelected: "#f3a170",
 };
