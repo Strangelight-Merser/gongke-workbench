@@ -71,7 +71,8 @@ exports.run = async function (kind) {
       },
     );
     fs.closeSync(log);
-    for (let n = 0; n < 150 && !fs.existsSync(env.GONGKE_FREECAD_SESSION); n++)
+    // Windows 托管机首次冷启动 FreeCAD 可能超过 30 秒，最多等 90 秒。
+    for (let n = 0; n < 450 && !fs.existsSync(env.GONGKE_FREECAD_SESSION); n++)
       await delay(200);
     assert(fs.existsSync(env.GONGKE_FREECAD_SESSION), "隔离 FreeCAD 启动超时");
     await delay(700);
@@ -316,7 +317,9 @@ exports.run = async function (kind) {
       object_ref: body,
       conditions,
     });
-    assert.equal(checked.status, "pass");
+    // 期望值由调用方自填、没有图纸引用，按独立检查语义只能是“未经独立核对”。
+    assert.equal(checked.status, "unverified");
+    assert.deepEqual(checked.unverified, ["板厚"]);
     await page
       .getByRole("button", { name: "Agent 连接设置", exact: true })
       .click();
