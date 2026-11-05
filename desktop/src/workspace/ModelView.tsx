@@ -99,7 +99,7 @@ export function ModelView({
           .sub(controls.target)
           .normalize();
         const distance =
-          (box.getSize(new THREE.Vector3()).length() * 1.1) /
+          (box.getSize(new THREE.Vector3()).length() * 1.4) /
           Math.min(1, camera.aspect);
         camera.position.copy(center).addScaledVector(direction, distance);
         controls.target.copy(center);

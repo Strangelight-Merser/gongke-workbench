@@ -583,24 +583,34 @@ export function FreeCadInspector({
                   {f.sketch ? " · 草图" : ""}
                 </Button>
               ))}
-              {check?.checks
-                ?.filter((c: Data) => c.status !== "pass")
-                .map((c: Data) => (
-                  <div
-                    className="error"
-                    key={
-                      c.source_kind === "drawing_geometry" ? "图纸轮廓" : c.id
-                    }
-                  >
-                    {c.source_kind === "drawing_geometry" ? "图纸轮廓" : c.id} ·{" "}
-                    {c.status === "fail"
-                      ? "不符"
-                      : c.status === "unverified"
-                        ? "未经独立核对"
-                        : "待核实"}
-                    {!c.actual?.locations?.length && " · 无可定位实体"}
-                  </div>
-                ))}
+              {!!check?.checks?.length && (
+                <details>
+                  <summary>检查项</summary>
+                  {check?.checks
+                    ?.filter((c: Data) => c.status !== "pass")
+                    .map((c: Data) => (
+                      <div
+                        className="error"
+                        key={
+                          c.source_kind === "drawing_geometry"
+                            ? "图纸轮廓"
+                            : c.id
+                        }
+                      >
+                        {c.source_kind === "drawing_geometry"
+                          ? "图纸轮廓"
+                          : c.id}{" "}
+                        ·{" "}
+                        {c.status === "fail"
+                          ? "不符"
+                          : c.status === "unverified"
+                            ? "未经独立核对"
+                            : "待核实"}
+                        {!c.actual?.locations?.length && " · 无可定位实体"}
+                      </div>
+                    ))}
+                </details>
+              )}
               {!features.length &&
                 scene.objects?.map((o: Data) => (
                   <Button
