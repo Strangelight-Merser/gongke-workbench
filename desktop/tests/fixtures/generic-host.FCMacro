@@ -1,8 +1,8 @@
 # 通用打包验收的独立宿主；仅重开本次验收保存的原生文件。
 import os
 from pathlib import Path
-from PySide6 import QtWidgets
-QtWidgets.QApplication.instance().setQuitOnLastWindowClosed(False)
+from PySide import QtGui  # FreeCAD 自带的兼容层，Windows 打包版没有 PySide6
+QtGui.QApplication.instance().setQuitOnLastWindowClosed(False)
 root=Path(os.environ['GONGKE_MODELING_ROOT'])
 exec(compile((root/'tests/e2e/native_modeling_host.FCMacro').read_text(),str(root/'tests/e2e/native_modeling_host.FCMacro'),'exec'))
 if os.environ.get('GONGKE_ACCEPT_MODEL'):
