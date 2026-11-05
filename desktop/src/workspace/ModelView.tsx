@@ -296,7 +296,7 @@ export function ModelView({
       <span className="viewport-hint">
         拖动旋转 · 滚轮缩放 · 点击选择
         {checks?.status === "fail"
-          ? " · 红色：模型不符边；青绿：图纸要求的位置"
+          ? " · 红色：模型不符边；绿色：图纸要求的位置"
           : ""}
       </span>
     </div>

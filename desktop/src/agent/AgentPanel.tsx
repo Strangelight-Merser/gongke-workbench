@@ -330,7 +330,8 @@ export function AgentPanel({
       {conversationVisible && context && (
         <div className="agent-context">
           <div>
-            <span title={context}>{context}</span>
+            {/* 发给 Agent 的仍是工程内路径；这里只显示文件名，不露出导入时的内部目录。 */}
+            <span title={context}>{context.includes(" · ") ? context : context.split("/").at(-1)}</span>
             <Button
               size="small"
               appearance="subtle"
