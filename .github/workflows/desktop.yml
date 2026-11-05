@@ -154,6 +154,24 @@ jobs:
         if: runner.os == 'Windows'
         working-directory: desktop
         run: npx electron-builder --win nsis --x64 --publish never
+      - name: Hash Windows installer
+        if: runner.os == 'Windows'
+        shell: python
+        run: |
+          import hashlib, pathlib
+          for path in pathlib.Path('desktop/release').glob('gongke-*-windows-x64-setup.exe'):
+              with path.open('rb') as stream:
+                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+              path.with_suffix('.sha256').write_text(digest + '  ' + path.name + '\n', encoding='ascii')
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: gongke-windows-installer-${{ github.sha }}
+          path: |
+            desktop/release/gongke-*-windows-x64-setup.exe
+            desktop/release/gongke-*-windows-x64-setup.sha256
+          if-no-files-found: error
+          compression-level: 0
       - name: Verify macOS development bundle signature
         if: runner.os == 'macOS'
         run: codesign --verify --deep --strict desktop/release/mac*/构想引擎.app
@@ -202,24 +220,6 @@ jobs:
           path: out/installer-validation/**
           if-no-files-found: warn
           retention-days: 7
-      - name: Hash Windows installer
-        if: runner.os == 'Windows'
-        shell: python
-        run: |
-          import hashlib, pathlib
-          for path in pathlib.Path('desktop/release').glob('gongke-*-windows-x64-setup.exe'):
-              with path.open('rb') as stream:
-                  digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-              path.with_suffix('.sha256').write_text(digest + '  ' + path.name + '\n', encoding='ascii')
-      - uses: actions/upload-artifact@v4
-        if: runner.os == 'Windows'
-        with:
-          name: gongke-windows-installer-${{ github.sha }}
-          path: |
-            desktop/release/gongke-*-windows-x64-setup.exe
-            desktop/release/gongke-*-windows-x64-setup.sha256
-          if-no-files-found: error
-          compression-level: 0
           retention-days: 7
       - name: Archive application preserving executable permissions and symlinks
         if: runner.os == 'macOS'
